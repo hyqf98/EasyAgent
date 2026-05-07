@@ -1,0 +1,22 @@
+# Build
+build/
+.gradle/
+out/
+.intellijPlatform/
+
+# IDE
+.idea/
+*.iml
+
+# OS
+.DS_Store
+
+# Node
+src/main/resources/web/node_modules/
+src/main/resources/web/vue.global.js
+
+# Temp
+*.log
+
+# IDEA sandbox (runIde persistent data)
+.idea-sandbox/

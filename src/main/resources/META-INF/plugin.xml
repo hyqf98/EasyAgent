@@ -1,0 +1,27 @@
+<idea-plugin>
+    <id>io.github.easyagent</id>
+    <name>EasyAgent</name>
+    <vendor>EasyAgent</vendor>
+    <description>EasyAgent - IntelliJ IDEA Plugin powered by AI</description>
+
+    <depends>com.intellij.modules.platform</depends>
+
+    <extensions defaultExtensionNs="com.intellij">
+        <notificationGroup id="EasyAgent.NotificationGroup" displayType="BALLOON"/>
+    </extensions>
+
+    <extensions defaultExtensionNs="com.intellij">
+        <toolWindow id="EasyAgent"
+                    anchor="right"
+                    factoryClass="io.github.easyagent.ui.toolwindow.EasyAgentToolWindowFactory"
+                    icon="/icons/toolWindow.svg"/>
+    </extensions>
+
+    <extensions defaultExtensionNs="com.intellij">
+        <projectService serviceImplementation="io.github.easyagent.settings.EasyAgentState"/>
+    </extensions>
+
+    <actions>
+
+    </actions>
+</idea-plugin>

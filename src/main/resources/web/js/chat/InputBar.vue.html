@@ -1,0 +1,29 @@
+<template>
+<div class="input-area">
+    <div class="input-wrapper">
+        <textarea
+            ref="textarea"
+            v-model="text"
+            :placeholder="placeholder"
+            :disabled="disabled"
+            rows="3"
+            @keydown="handleKeydown"
+            @compositionstart="handleCompositionStart"
+            @compositionend="handleCompositionEnd"
+            @input="autoResize"
+        ></textarea>
+        <div class="input-bottom-bar" v-if="currentModels.length > 0">
+            <div class="model-dropdown-wrapper" :class="{ open: showModelDropdown }">
+                <button class="model-dropdown-trigger" @click="showModelDropdown = !showModelDropdown">
+                    <span class="model-dropdown-label">{{ currentModelLabel }}</span>
+                    <svg class="model-dropdown-arrow" width="8" height="5" viewBox="0 0 8 5"><path d="M0 0l4 5 4-5z" fill="currentColor"/></svg>
+                </button>
+                <div class="model-dropdown-list" v-if="showModelDropdown">
+                    <div class="model-dropdown-item" :class="{ active: !store.selectedModelId }" @click="selectModel('')">{{ i18n.t('chat.defaultModel') }}</div>
+                    <div class="model-dropdown-item" :class="{ active: store.selectedModelId === m.modelId }" v-for="m in currentModels" :key="m.modelId" @click="selectModel(m.modelId)">{{ m.displayName || m.modelId }}</div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+</template>

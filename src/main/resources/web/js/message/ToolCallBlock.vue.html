@@ -1,0 +1,23 @@
+<template>
+<div class="tool-block" :class="statusClass">
+    <div class="tool-header" @click="$emit('toggle')">
+        <span class="tool-icon">🔧</span>
+        <span class="tool-name">{{ displayTitle }}</span>
+        <span class="tool-status">
+            <span class="dot" :class="statusClass"></span>
+            {{ statusLabel }}
+        </span>
+        <span class="chevron" :class="{ open: !collapsed }" style="margin-left:4px;font-size:10px;">▸</span>
+    </div>
+    <div class="tool-body" :class="collapsed ? 'collapsed' : 'expanded'">
+        <div v-if="input" class="tool-section">
+            <div class="tool-section-label">{{ i18n.t('tool.input') }}</div>
+            <pre>{{ input }}</pre>
+        </div>
+        <div v-if="output" class="tool-section">
+            <div class="tool-section-label">{{ i18n.t('tool.output') }}</div>
+            <pre>{{ output }}</pre>
+        </div>
+    </div>
+</div>
+</template>

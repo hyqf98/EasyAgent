@@ -1,0 +1,27 @@
+<template>
+<div class="pending-queue" v-if="items.length > 0" :class="{ collapsed: collapsed }">
+    <div class="pending-header" @click="collapsed = !collapsed">
+        <span class="chevron" :class="{ open: !collapsed }">▸</span>
+        <span class="pending-icon">📨</span>
+        {{ i18n.t('pending.title') }} ({{ items.length }})
+    </div>
+    <div class="pending-list" v-show="!collapsed">
+        <div v-for="(item, index) in items" :key="item.id" class="pending-item">
+            <div class="pending-item-text" v-if="editingId !== item.id">{{ item.text }}</div>
+            <textarea
+                v-else
+                class="pending-item-edit"
+                v-model="editText"
+                rows="2"
+                @keydown.enter.prevent="saveEdit(item.id)"
+                @keydown.escape="cancelEdit"
+                ref="editArea"
+            ></textarea>
+            <div class="pending-item-actions">
+                <button class="pending-action-btn edit" @click="startEdit(item)" :title="i18n.t('pending.edit')">✎</button>
+                <button class="pending-action-btn delete" @click="$emit('remove', item.id)" :title="i18n.t('pending.delete')">✕</button>
+            </div>
+        </div>
+    </div>
+</div>
+</template>

@@ -1,0 +1,140 @@
+<template>
+<div class="settings-page">
+    <div class="settings-sidebar">
+        <div class="settings-sidebar-header">
+            <button class="icon-btn" @click="$emit('close')">←</button>
+            <span class="settings-sidebar-title">{{ i18n.t('settings.title') }}</span>
+        </div>
+        <div class="settings-menu">
+            <div class="settings-menu-item" :class="{ active: activeTab === 'general' }" @click="activeTab = 'general'">
+                <span class="menu-icon">⚙</span>
+                <span class="menu-label">{{ i18n.t('settings.general') }}</span>
+            </div>
+            <div class="settings-menu-item" :class="{ active: activeTab === 'cli' }" @click="activeTab = 'cli'">
+                <span class="menu-icon">⌘</span>
+                <span class="menu-label">{{ i18n.t('settings.cliManager') }}</span>
+            </div>
+            <div class="settings-menu-item" :class="{ active: activeTab === 'models' }" @click="onOpenModels">
+                <span class="menu-icon">🤖</span>
+                <span class="menu-label">{{ i18n.t('settings.models') }}</span>
+            </div>
+        </div>
+    </div>
+    <div class="settings-content">
+        <template v-if="activeTab === 'general'">
+            <div class="settings-content-header">
+                <h3>{{ i18n.t('settings.general') }}</h3>
+            </div>
+            <div class="settings-content-body">
+                <div class="settings-section">
+                    <div class="settings-section-title">{{ i18n.t('settings.language') }}</div>
+                    <div class="settings-options">
+                        <div class="settings-option" :class="{ active: store.currentLocale === 'zh' }" @click="setLocale('zh')">中文</div>
+                        <div class="settings-option" :class="{ active: store.currentLocale === 'en' }" @click="setLocale('en')">English</div>
+                    </div>
+                </div>
+                <div class="settings-section">
+                    <div class="settings-section-title">{{ i18n.t('settings.retryTitle') }}</div>
+                    <div class="settings-field">
+                        <label class="settings-label">{{ i18n.t('settings.retryCount') }}</label>
+                        <div class="settings-stepper">
+                            <button class="stepper-btn" @click="decrementRetry">−</button>
+                            <span class="stepper-value">{{ store.retryMaxCount }}</span>
+                            <button class="stepper-btn" @click="incrementRetry">+</button>
+                        </div>
+                    </div>
+                    <div class="settings-field">
+                        <label class="settings-label">{{ i18n.t('settings.retryTimeout') }}</label>
+                        <div class="settings-input-group">
+                            <input type="number" class="settings-input" v-model.number="timeoutSeconds" min="0" step="5" @change="saveRetry" />
+                            <span class="settings-input-suffix">{{ i18n.t('settings.seconds') }}</span>
+                        </div>
+                    </div>
+                    <div class="settings-hint">{{ i18n.t('settings.retryHint') }}</div>
+                </div>
+            </div>
+        </template>
+        <template v-if="activeTab === 'cli'">
+            <div class="settings-content-header">
+                <h3>{{ i18n.t('settings.cliManager') }}</h3>
+            </div>
+            <div class="settings-content-body">
+                <div class="cli-manager-placeholder">
+                    <div class="cli-manager-icon">⌘</div>
+                    <div class="cli-manager-title">{{ i18n.t('settings.cliManagerTitle') }}</div>
+                    <div class="cli-manager-desc">{{ i18n.t('settings.cliManagerDesc') }}</div>
+                </div>
+            </div>
+        </template>
+        <template v-if="activeTab === 'models'">
+            <div class="settings-content-header">
+                <h3>{{ i18n.t('settings.models') }}</h3>
+                <div class="settings-header-actions">
+                    <button class="sync-btn" :class="{ syncing: isSyncing }" @click="onSyncAllModels" :disabled="isSyncing">
+                        <svg class="sync-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0 1 18.8-4.3M22 12.5a10 10 0 0 1-18.8 4.3"/></svg>
+                        <span>{{ isSyncing ? i18n.t('settings.modelsSyncing') : i18n.t('settings.modelsSync') }}</span>
+                    </button>
+                </div>
+            </div>
+            <div class="settings-content-body">
+                <div class="model-filter-bar">
+                    <div class="model-filter-item cli-claude" :class="{ active: modelFilter === 'CLAUDE' }" @click="modelFilter = 'CLAUDE'">
+                        <span class="model-cli-dot claude"></span>Claude
+                    </div>
+                    <div class="model-filter-item cli-opencode" :class="{ active: modelFilter === 'OPENCODE' }" @click="modelFilter = 'OPENCODE'">
+                        <span class="model-cli-dot opencode"></span>OpenCode
+                    </div>
+                    <div class="model-filter-item cli-codex" :class="{ active: modelFilter === 'CODEX' }" @click="modelFilter = 'CODEX'">
+                        <span class="model-cli-dot codex"></span>Codex
+                    </div>
+                </div>
+                <div class="model-table">
+                    <div class="model-table-header">
+                        <span class="model-col-id">{{ i18n.t('settings.modelId') }}</span>
+                        <span class="model-col-name">{{ i18n.t('settings.modelName') }}</span>
+                        <span class="model-col-cli">CLI</span>
+                        <span class="model-col-ctx">{{ i18n.t('settings.modelContext') }}</span>
+                        <span class="model-col-act"></span>
+                    </div>
+                    <div class="model-table-row" v-for="(m, idx) in filteredModels" :key="m.modelId + '-' + idx">
+                        <template v-if="editingIndex === idx">
+                            <span class="model-col-id"><input class="model-edit-input" v-model="editForm.modelId" /></span>
+                            <span class="model-col-name"><input class="model-edit-input" v-model="editForm.displayName" /></span>
+                            <span class="model-col-ctx">
+                                <div class="ctx-input-wrapper">
+                                    <input class="model-edit-input model-edit-ctx"
+                                           :value="editForm.contextDisplay"
+                                           @input="onCtxInput($event)"
+                                           @focus="showCtxDropdown = true"
+                                           @blur="onCtxBlur"
+                                           :placeholder="i18n.t('settings.modelContextPlaceholder')" />
+                                    <div class="ctx-dropdown" v-if="showCtxDropdown">
+                                        <div class="ctx-dropdown-item" v-for="opt in ctxOptions" :key="opt.value"
+                                             @mousedown.prevent="onCtxSelect(opt.value)">{{ opt.label }}</div>
+                                    </div>
+                                </div>
+                            </span>
+                            <span class="model-col-act">
+                                <button class="icon-btn model-action-btn" @click="onSaveEdit(idx)">✓</button>
+                                <button class="icon-btn model-action-btn" @click="editingIndex = -1">✕</button>
+                            </span>
+                        </template>
+                        <template v-else>
+                            <span class="model-col-id model-cell-ellipsis" :title="m.modelId">{{ m.modelId }}</span>
+                            <span class="model-col-name model-cell-ellipsis" :title="m.displayName">{{ m.displayName }}</span>
+                            <span class="model-col-cli"><span class="model-cli-dot" :class="m.cliType.toLowerCase()"></span>{{ m.cliType }}</span>
+                            <span class="model-col-ctx">{{ formatContextWindow(m.contextWindow) }}</span>
+                            <span class="model-col-act">
+                                <button class="icon-btn model-action-btn" @click="onEditModel(idx)" :title="i18n.t('settings.modelEdit')">✎</button>
+                                <button class="icon-btn model-action-btn model-action-del" @click="onDeleteModel(idx)" :title="i18n.t('settings.modelDelete')">×</button>
+                            </span>
+                        </template>
+                    </div>
+                    <div v-if="filteredModels.length === 0" class="model-empty">{{ i18n.t('settings.modelEmpty') }}</div>
+                </div>
+                <div v-if="cliModelsLoading" class="model-loading">{{ i18n.t('settings.modelsLoading') }}</div>
+            </div>
+        </template>
+    </div>
+</div>
+</template>

@@ -1,0 +1,9 @@
+<template>
+<div class="thinking-block">
+    <div class="thinking-header" @click="$emit('toggle')">
+        <span class="chevron" :class="{ open: !collapsed }">▸</span>
+        💭 {{ i18n.t('thinking.title') }}
+    </div>
+    <div class="thinking-body" :class="{ collapsed: collapsed }">{{ text }}</div>
+</div>
+</template>

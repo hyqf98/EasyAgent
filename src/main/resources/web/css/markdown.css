@@ -1,0 +1,220 @@
+/* === Markdown Content Root === */
+.md-content {
+    font-size: 13px;
+    line-height: 1.7;
+    color: var(--ea-text);
+    max-width: 100%;
+    overflow-wrap: break-word;
+    word-break: break-word;
+}
+
+/* === Typography === */
+.md-content h1, .md-content h2, .md-content h3,
+.md-content h4, .md-content h5, .md-content h6 {
+    margin: 16px 0 6px;
+    font-weight: 600;
+    color: var(--ea-text);
+    line-height: 1.35;
+}
+.md-content h1 { font-size: 1.15em; }
+.md-content h2 { font-size: 1.08em; }
+.md-content h3 { font-size: 1.0em; }
+.md-content h4 { font-size: 0.95em; }
+.md-content h1:first-child, .md-content h2:first-child, .md-content h3:first-child { margin-top: 0; }
+
+.md-content p {
+    margin: 0 0 8px;
+}
+.md-content p:last-child { margin-bottom: 0; }
+
+/* === Lists === */
+.md-content ul, .md-content ol {
+    margin: 6px 0;
+    padding-left: 20px;
+}
+.md-content li { margin: 2px 0; }
+.md-content li > p { margin: 0; }
+
+/* === Inline Code === */
+.md-content code {
+    font-family: var(--ea-font-mono);
+    font-size: 0.85em;
+    background: var(--ea-markdown-code-bg);
+    padding: 2px 6px;
+    border-radius: 4px;
+    color: var(--ea-text);
+    font-weight: 500;
+}
+
+/* === Code Blocks (standalone <pre>) === */
+.md-content pre {
+    margin: 10px 0;
+    border-radius: 8px;
+    overflow: auto;
+    background: var(--ea-code-bg);
+    border: 1px solid var(--ea-border);
+    max-width: 100%;
+}
+.md-content pre code {
+    display: block;
+    padding: 12px 14px;
+    background: transparent;
+    color: var(--ea-text);
+    font-size: 12px;
+    line-height: 1.55;
+    white-space: pre;
+    border-radius: 0;
+    font-weight: 400;
+}
+
+/* === Code Block Wrapper (from custom renderer) === */
+.code-block-wrapper {
+    margin: 10px 0;
+    border-radius: 8px;
+    overflow: hidden;
+    background: var(--ea-code-bg);
+    border: 1px solid var(--ea-border);
+    max-width: 100%;
+}
+.code-block-wrapper pre {
+    margin: 0;
+    border: none;
+    border-radius: 0;
+    max-width: 100%;
+    overflow: auto;
+}
+.code-block-wrapper pre code {
+    padding: 12px 14px;
+}
+
+.code-block-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 6px 12px;
+    background: var(--ea-border-light);
+    border-bottom: 1px solid var(--ea-border);
+    font-size: 11px;
+    color: var(--ea-text-muted);
+    font-family: var(--ea-font-mono);
+}
+.code-block-copy {
+    background: none;
+    border: none;
+    color: var(--ea-text-muted);
+    cursor: pointer;
+    font-size: 11px;
+    padding: 2px 8px;
+    border-radius: 4px;
+    transition: all var(--ea-transition);
+    opacity: 0;
+    font-family: var(--ea-font-sans);
+}
+.code-block-header:hover .code-block-copy { opacity: 1; }
+.code-block-copy:hover { background: var(--ea-bg-hover); color: var(--ea-text); }
+
+/* === Blockquote === */
+.md-content blockquote {
+    margin: 10px 0;
+    padding: 8px 14px;
+    border-left: 3px solid var(--ea-claude);
+    background: var(--ea-markdown-blockquote-bg);
+    border-radius: 0 6px 6px 0;
+    color: var(--ea-text-secondary);
+    font-size: 13px;
+}
+.md-content blockquote p { margin: 0; }
+
+/* === Tables === */
+.md-content table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 10px 0;
+    font-size: 12px;
+    border: 1px solid var(--ea-border);
+    border-radius: 8px;
+    overflow: hidden;
+    display: block;
+    overflow-x: auto;
+}
+.md-content th, .md-content td {
+    padding: 6px 10px;
+    text-align: left;
+    border-bottom: 1px solid var(--ea-border);
+}
+.md-content th {
+    background: var(--ea-table-header-bg);
+    font-weight: 600;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: .3px;
+    color: var(--ea-text-secondary);
+}
+.md-content tr:last-child td { border-bottom: none; }
+.md-content tr:nth-child(even) td { background: var(--ea-table-even-bg); }
+
+/* === Links === */
+.md-content a {
+    color: var(--ea-markdown-link);
+    text-decoration: none;
+    font-weight: 500;
+}
+.md-content a:hover { text-decoration: underline; }
+
+/* === Horizontal Rule === */
+.md-content hr {
+    border: none;
+    border-top: 1px solid var(--ea-border);
+    margin: 14px 0;
+}
+
+/* === Images === */
+.md-content img {
+    max-width: 100%;
+    border-radius: 8px;
+    margin: 6px 0;
+}
+
+/* === Inline Styles === */
+.md-content strong { font-weight: 600; }
+.md-content em { font-style: italic; }
+.md-content del { text-decoration: line-through; color: var(--ea-text-muted); }
+
+/* === Syntax Highlight (highlight.js) === */
+.hljs { background: transparent; }
+.hljs-keyword { color: #cf222e; }
+.hljs-string { color: #0a3069; }
+.hljs-number { color: #0550ae; }
+.hljs-comment, .hljs-quote { color: #6e7781; font-style: italic; }
+.hljs-title { color: #8250df; }
+.hljs-variable, .hljs-attr { color: #953800; }
+.hljs-built_in { color: #cf222e; }
+.hljs-type { color: #0a3069; }
+.hljs-function { color: #8250df; }
+.hljs-params { color: #24292f; }
+.hljs-meta { color: #6e7781; }
+.hljs-selector-class { color: #6639ba; }
+.hljs-selector-id { color: #953800; }
+.hljs-selector-tag { color: #116329; }
+.hljs-attribute { color: #0550ae; }
+.hljs-symbol, .hljs-bullet { color: #cf222e; }
+.hljs-addition { color: #116329; background: #dafbe1; }
+.hljs-deletion { color: #82071e; background: #ffebe9; }
+
+/* === Dark Theme Syntax Override === */
+[data-theme="dark"] .hljs-keyword { color: #ff7b72; }
+[data-theme="dark"] .hljs-string { color: #a5d6ff; }
+[data-theme="dark"] .hljs-number { color: #79c0ff; }
+[data-theme="dark"] .hljs-comment, [data-theme="dark"] .hljs-quote { color: #8b949e; }
+[data-theme="dark"] .hljs-title { color: #d2a8ff; }
+[data-theme="dark"] .hljs-variable, [data-theme="dark"] .hljs-attr { color: #ffa657; }
+[data-theme="dark"] .hljs-built_in { color: #ff7b72; }
+[data-theme="dark"] .hljs-type { color: #a5d6ff; }
+[data-theme="dark"] .hljs-function { color: #d2a8ff; }
+[data-theme="dark"] .hljs-params { color: #c9d1d9; }
+[data-theme="dark"] .hljs-selector-class { color: #d2a8ff; }
+[data-theme="dark"] .hljs-selector-id { color: #ffa657; }
+[data-theme="dark"] .hljs-selector-tag { color: #7ee787; }
+[data-theme="dark"] .hljs-attribute { color: #79c0ff; }
+[data-theme="dark"] .hljs-addition { color: #aff5b4; background: rgba(63,185,80,0.15); }
+[data-theme="dark"] .hljs-deletion { color: #ffdcd7; background: rgba(248,81,73,0.15); }

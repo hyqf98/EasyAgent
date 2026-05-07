@@ -1,0 +1,29 @@
+<template>
+<div class="message-row" :class="message.role.toLowerCase()">
+    <div class="message-bubble">
+        <div v-if="message.role !== 'SYSTEM'" class="bubble-header">
+            <span class="role-icon" :class="message.role === 'USER' ? 'user-icon' : 'ai-icon'">{{ roleEmoji(message.role) }}</span>
+            <span>{{ roleLabel(message.role) }}</span>
+        </div>
+        <div class="bubble-content">
+            <template v-for="(block, i) in message.contents" :key="i">
+                <div v-if="isSystemInfoBlock(block)" class="system-info-bar" @click="toggleSystemInfo(block)">
+                    <span class="system-info-icon">📋</span>
+                    <span v-if="block.collapsed" class="system-info-summary">{{ block.summary }}</span>
+                    <div v-else class="system-info-expanded md-content" v-html="renderMarkdown(block.fullText || block.summary)"></div>
+                    <span class="system-info-chevron" :class="{ open: !block.collapsed }">▸</span>
+                </div>
+                <div v-if="isTextBlock(block)" class="md-content" v-html="renderMarkdown(block.text)"></div>
+                <thinking-block v-if="isThinkingBlock(block)" :text="block.text" :collapsed="block.collapsed" @toggle="toggleThinking(block)"></thinking-block>
+                <tool-call-block v-if="isToolBlock(block)" :tool-name="block.toolName" :title="block.title" :status="block.status" :input="block.input" :output="block.output" :collapsed="block.collapsed" @toggle="toggleTool(block)"></tool-call-block>
+                <todo-list-block v-if="isTodoBlock(block)" :items="block.items" :cli-type="store.cliType"></todo-list-block>
+                <error-block v-if="isErrorBlock(block)" :message="block.text"></error-block>
+            </template>
+        </div>
+        <step-info v-if="message.finishReason" :reason="message.finishReason" :token-usage="message.tokenUsage"></step-info>
+    </div>
+    <div v-if="showRetry" class="message-actions">
+        <button class="retry-btn" @click="$emit('retry')">{{ i18n.t('chat.retry') }}</button>
+    </div>
+</div>
+</template>

@@ -1,0 +1,27 @@
+<template>
+<div class="empty-state">
+    <div class="empty-state-logo">🤖</div>
+    <div class="empty-state-title">{{ i18n.t('app.title') }}</div>
+    <template v-if="cliChecked && hasCLIs">
+        <div class="empty-state-desc">{{ i18n.t('welcome.desc') }}</div>
+        <div class="empty-state-clis">
+            <div v-for="cli in cliCards" :key="cli.type"
+                 class="empty-cli-card"
+                 :class="{ disabled: !cli.available }"
+                 @click="cli.available && selectCLI(cli.type)">
+                <span class="cli-emoji">{{ cli.emoji }}</span>
+                <span class="cli-label">{{ cli.label }}</span>
+                <span v-if="!cli.available" class="cli-unavailable">—</span>
+            </div>
+        </div>
+        <div class="empty-state-hint">{{ i18n.t('welcome.hint') }}</div>
+    </template>
+    <template v-if="cliChecked && !hasCLIs">
+        <div class="empty-state-desc">{{ i18n.t('welcome.noCliDesc') }}</div>
+        <button class="empty-settings-btn" @click="openSettings">
+            <span class="empty-settings-icon">⚙</span>
+            <span>{{ i18n.t('welcome.goSettings') }}</span>
+        </button>
+    </template>
+</div>
+</template>

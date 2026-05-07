@@ -1,0 +1,107 @@
+:root {
+    --ea-font-sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Inter', Roboto, sans-serif;
+    --ea-font-mono: 'SF Mono', 'JetBrains Mono', 'Fira Code', Consolas, monospace;
+    --ea-radius-sm: 6px;
+    --ea-radius-md: 10px;
+    --ea-radius-lg: 14px;
+    --ea-transition: 150ms ease;
+    --ea-claude: #8B5CF6;
+    --ea-claude-light: #EDE9FE;
+    --ea-opencode: #10B981;
+    --ea-opencode-light: #D1FAE5;
+    --ea-codex: #3B82F6;
+    --ea-codex-light: #DBEAFE;
+}
+
+[data-theme="light"] {
+    --ea-bg: #FFFFFF;
+    --ea-bg-secondary: #F9FAFB;
+    --ea-bg-hover: #F3F4F6;
+    --ea-bg-active: #E5E7EB;
+    --ea-border: #E5E7EB;
+    --ea-text: #111827;
+    --ea-text-secondary: #6B7280;
+    --ea-text-muted: #9CA3AF;
+    --ea-user-bubble: #F3F4F6;
+    --ea-ai-bubble: transparent;
+    --ea-thinking-bg: #FFFBEB;
+    --ea-thinking-border: #FDE68A;
+    --ea-tool-bg: #F9FAFB;
+    --ea-tool-border: #E5E7EB;
+    --ea-error-bg: #FEF2F2;
+    --ea-input-bg: #F3F4F6;
+    --ea-input-border: #D1D5DB;
+    --ea-input-focus: #8B5CF6;
+    --ea-code-bg: #F3F4F6;
+    --ea-header-bg: rgba(255,255,255,0.92);
+    --ea-popup-bg: #FFFFFF;
+    --ea-popup-shadow: 0 8px 30px rgba(0,0,0,0.12);
+    --ea-scrollbar: #D1D5DB;
+    --ea-scrollbar-hover: #9CA3AF;
+    --ea-icon-color: #6B7280;
+}
+
+[data-theme="dark"] {
+    --ea-bg: #1A1A2E;
+    --ea-bg-secondary: #16213E;
+    --ea-bg-hover: #1E2D50;
+    --ea-bg-active: #264078;
+    --ea-border: #2A2D3E;
+    --ea-text: #E4E4E7;
+    --ea-text-secondary: #A1A1AA;
+    --ea-text-muted: #71717A;
+    --ea-user-bubble: #1E2D50;
+    --ea-ai-bubble: transparent;
+    --ea-thinking-bg: #2C2417;
+    --ea-thinking-border: #78350F;
+    --ea-tool-bg: #16213E;
+    --ea-tool-border: #2A2D3E;
+    --ea-error-bg: #2D1518;
+    --ea-input-bg: #16213E;
+    --ea-input-border: #2A2D3E;
+    --ea-input-focus: #8B5CF6;
+    --ea-code-bg: #0F172A;
+    --ea-header-bg: rgba(26,26,46,0.92);
+    --ea-popup-bg: #16213E;
+    --ea-popup-shadow: 0 8px 30px rgba(0,0,0,0.4);
+    --ea-scrollbar: #3F3F50;
+    --ea-scrollbar-hover: #52525B;
+    --ea-icon-color: #A1A1AA;
+}
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+html, body {
+    height: 100%;
+    width: 100%;
+    overflow: hidden;
+    font-family: var(--ea-font-sans);
+    font-size: 14px;
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+    background: var(--ea-bg);
+    color: var(--ea-text);
+}
+
+#app { height: 100%; width: 100%; }
+
+::-webkit-scrollbar { width: 4px; height: 4px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: transparent; border-radius: 2px; }
+::-webkit-scrollbar-thumb:hover { background: var(--ea-scrollbar-hover); }
+
+.messages-area, .tool-body, .thinking-body, .floating-todo, .pending-queue, .tool-section pre, .code-block-wrapper pre, .markdown-content table {
+    scrollbar-width: thin;
+    scrollbar-color: transparent transparent;
+}
+.messages-area:hover, .tool-body:hover, .thinking-body:hover, .floating-todo:hover, .pending-queue:hover, .tool-section pre:hover, .code-block-wrapper pre:hover, .markdown-content table:hover {
+    scrollbar-color: var(--ea-scrollbar) transparent;
+}
+.messages-area::-webkit-scrollbar-thumb, .tool-body::-webkit-scrollbar-thumb, .thinking-body::-webkit-scrollbar-thumb, .floating-todo::-webkit-scrollbar-thumb, .pending-queue::-webkit-scrollbar-thumb, .tool-section pre::-webkit-scrollbar-thumb, .code-block-wrapper pre::-webkit-scrollbar-thumb, .markdown-content table::-webkit-scrollbar-thumb { background: transparent; }
+.messages-area:hover::-webkit-scrollbar-thumb, .tool-body:hover::-webkit-scrollbar-thumb, .thinking-body:hover::-webkit-scrollbar-thumb, .floating-todo:hover::-webkit-scrollbar-thumb, .pending-queue:hover::-webkit-scrollbar-thumb, .tool-section pre:hover::-webkit-scrollbar-thumb, .code-block-wrapper pre:hover::-webkit-scrollbar-thumb, .markdown-content table:hover::-webkit-scrollbar-thumb { background: var(--ea-scrollbar); }
+.messages-area:hover::-webkit-scrollbar-thumb:hover, .tool-body:hover::-webkit-scrollbar-thumb:hover, .thinking-body:hover::-webkit-scrollbar-thumb:hover, .tool-section pre:hover::-webkit-scrollbar-thumb:hover, .code-block-wrapper pre:hover::-webkit-scrollbar-thumb:hover, .markdown-content table:hover::-webkit-scrollbar-thumb:hover { background: var(--ea-scrollbar-hover); }
+
+@keyframes fadeIn { from { opacity:0; transform:translateY(4px); } to { opacity:1; transform:translateY(0); } }
+@keyframes pulse { 0%,100% { opacity:1; } 50% { opacity:.4; } }
+@keyframes blink { 0%,100% { opacity:1; } 50% { opacity:0; } }
+@keyframes spin { to { transform: rotate(360deg); } }

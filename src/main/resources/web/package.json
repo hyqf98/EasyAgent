@@ -1,0 +1,11 @@
+{
+  "name": "easyagent-web-dev",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "node dev-server.js"
+  },
+  "devDependencies": {
+    "browser-sync": "^3.0.4"
+  }
+}

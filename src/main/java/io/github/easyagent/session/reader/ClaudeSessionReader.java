@@ -1,0 +1,473 @@
+package io.github.easyagent.session.reader;
+
+import com.google.gson.reflect.TypeToken;
+import io.github.easyagent.enums.CLIType;
+import io.github.easyagent.enums.ContentBlockType;
+import io.github.easyagent.enums.SessionRole;
+import io.github.easyagent.session.entity.ContentBlock;
+import io.github.easyagent.session.entity.SessionInfo;
+import io.github.easyagent.session.entity.SessionMessage;
+import io.github.easyagent.session.entity.TokenUsage;
+import io.github.easyagent.util.GsonUtils;
+import lombok.extern.slf4j.Slf4j;
+
+import java.io.BufferedReader;
+import java.io.File;
+import java.io.IOException;
+import java.lang.reflect.Type;
+import java.nio.file.DirectoryStream;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.time.Instant;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.Comparator;
+import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
+
+/**
+ * Claude CLI 会话读取器。
+ * <p>
+ * 从本机 Claude CLI 的 JSONL 会话文件（{@code ~/.claude/projects/}）中
+ * 读取会话和消息数据，解析会话元信息和消息详情，
+ * 统一转换为 {@link SessionInfo} 和 {@link SessionMessage}。
+ * </p>
+ *
+ * @author haijun
+ * @date 2026/4/30
+ * @since 1.0.0
+ */
+@Slf4j
+public class ClaudeSessionReader implements SessionReader {
+
+    private static final String BASE_DIR = System.getProperty("user.home") + File.separator + ".claude" + File.separator + "projects";
+    private static final Type MAP_TYPE = new TypeToken<Map<String, Object>>() {}.getType();
+
+    /**
+     * 获取此读取器对应的 CLI 类型。
+     *
+     * @return {@link CLIType#CLAUDE}
+     */
+    @Override
+    public CLIType getCliType() {
+        return CLIType.CLAUDE;
+    }
+
+    /**
+     * 判断 Claude CLI 在本机是否可用。
+     *
+     * @return 数据目录是否存在
+     */
+    @Override
+    public boolean isAvailable() {
+        return Files.isDirectory(Paths.get(BASE_DIR));
+    }
+
+    /**
+     * 列出 Claude 所有可用的会话，遍历项目目录下的 JSONL 文件。
+     *
+     * @return 会话摘要信息列表，按更新时间倒序排列
+     */
+    @Override
+    public List<SessionInfo> listSessions() {
+        List<SessionInfo> sessions = new ArrayList<>();
+        Path base = Paths.get(BASE_DIR);
+        if (!Files.isDirectory(base)) {
+            return sessions;
+        }
+
+        try (DirectoryStream<Path> projectDirs = Files.newDirectoryStream(base)) {
+            for (Path projectDir : projectDirs) {
+                if (!Files.isDirectory(projectDir)) {
+                    continue;
+                }
+                String projectPath = projectDir.getFileName().toString()
+                        .replace('-', File.separatorChar)
+                        .substring(1);
+
+                try (DirectoryStream<Path> sessionFiles = Files.newDirectoryStream(projectDir, "*.jsonl")) {
+                    for (Path sessionFile : sessionFiles) {
+                        SessionInfo info = parseSessionInfo(sessionFile, projectPath);
+                        if (info != null) {
+                            sessions.add(info);
+                        }
+                    }
+                }
+            }
+        } catch (IOException e) {
+            log.error("Failed to list Claude sessions", e);
+        }
+
+        sessions.sort(Comparator.comparing(SessionInfo::updatedAt, Comparator.nullsLast(Comparator.reverseOrder())));
+        return sessions;
+    }
+
+    /**
+     * 按项目路径筛选 Claude 会话列表。
+     *
+     * @param projectPath 项目路径关键词
+     * @return 匹配的会话摘要信息列表
+     */
+    @Override
+    public List<SessionInfo> listSessions(String projectPath) {
+        return listSessions().stream()
+                .filter(s -> s.projectPath() != null && s.projectPath().contains(projectPath))
+                .collect(Collectors.toList());
+    }
+
+    /**
+     * 根据会话 ID 查询指定会话的摘要信息。
+     *
+     * @param sessionId 会话唯一标识
+     * @return 会话摘要信息，不存在时返回 {@code null}
+     */
+    @Override
+    public SessionInfo getSession(String sessionId) {
+        return listSessions().stream()
+                .filter(s -> sessionId.equals(s.sessionId()))
+                .findFirst()
+                .orElse(null);
+    }
+
+    /**
+     * 读取指定会话的完整消息列表。
+     *
+     * @param sessionId 会话唯一标识
+     * @return 消息列表，按 JSONL 文件中的行顺序排列
+     */
+    @Override
+    public List<SessionMessage> readMessages(String sessionId) {
+        Path sessionFile = findSessionFile(sessionId);
+        if (sessionFile == null) {
+            return Collections.emptyList();
+        }
+
+        List<SessionMessage> messages = new ArrayList<>();
+        try (BufferedReader reader = Files.newBufferedReader(sessionFile)) {
+            String line;
+            while ((line = reader.readLine()) != null) {
+                if (line.isBlank()) {
+                    continue;
+                }
+                try {
+                    Map<String, Object> entry = GsonUtils.fromJson(line, MAP_TYPE);
+                    if (entry == null) {
+                        continue;
+                    }
+                    String type = (String) entry.get("type");
+                    if ("user".equals(type) || "assistant".equals(type)) {
+                        SessionMessage msg = parseMessage(entry, sessionId);
+                        if (msg != null) {
+                            messages.add(msg);
+                        }
+                    }
+                } catch (Exception e) {
+                    log.debug("Failed to parse Claude session line", e);
+                }
+            }
+        } catch (IOException e) {
+            log.error("Failed to read Claude session file: {}", sessionFile, e);
+        }
+
+        return messages;
+    }
+
+    /**
+     * 删除指定会话的 JSONL 文件。
+     *
+     * @param sessionId 会话唯一标识
+     * @return {@code true} 删除成功，{@code false} 会话文件不存在或删除失败
+     */
+    @Override
+    public boolean deleteSession(String sessionId) {
+        Path sessionFile = findSessionFile(sessionId);
+        if (sessionFile == null) {
+            return false;
+        }
+        try {
+            Files.delete(sessionFile);
+            log.info("Deleted Claude session: {}", sessionId);
+            return true;
+        } catch (IOException e) {
+            log.error("Failed to delete Claude session: {}", sessionId, e);
+            return false;
+        }
+    }
+
+    /**
+     * 解析单个 JSONL 会话文件的摘要信息。
+     *
+     * @param sessionFile 会话 JSONL 文件路径
+     * @param projectPath 关联的项目路径
+     * @return 会话摘要，文件为空或解析失败时返回 {@code null}
+     */
+    @SuppressWarnings("unchecked")
+    private SessionInfo parseSessionInfo(Path sessionFile, String projectPath) {
+        String sessionId = sessionFile.getFileName().toString().replace(".jsonl", "");
+        long updatedAt = 0;
+        long createdAt = Long.MAX_VALUE;
+        int messageCount = 0;
+        String model = null;
+        String gitBranch = null;
+        String title = null;
+
+        try (BufferedReader reader = Files.newBufferedReader(sessionFile)) {
+            String line;
+            while ((line = reader.readLine()) != null) {
+                if (line.isBlank()) {
+                    continue;
+                }
+                try {
+                    Map<String, Object> entry = GsonUtils.fromJson(line, MAP_TYPE);
+                    if (entry == null) {
+                        continue;
+                    }
+                    String type = (String) entry.get("type");
+
+                    long ts = parseTimestamp(entry.get("timestamp"));
+                    if (ts > 0) {
+                        updatedAt = Math.max(updatedAt, ts);
+                        createdAt = Math.min(createdAt, ts);
+                    }
+
+                    if ("user".equals(type) || "assistant".equals(type)) {
+                        messageCount++;
+                        if ("user".equals(type) && title == null) {
+                            Map<String, Object> message = (Map<String, Object>) entry.get("message");
+                            if (message != null) {
+                                Object content = message.get("content");
+                                if (content instanceof String text) {
+                                    title = extractTitle(text);
+                                }
+                            }
+                        }
+                    }
+
+                    if (entry.containsKey("model")) {
+                        String m = (String) entry.get("model");
+                        if (m != null && !m.startsWith("<")) {
+                            model = m;
+                        }
+                    }
+                    if (entry.containsKey("gitBranch")) {
+                        gitBranch = (String) entry.get("gitBranch");
+                    }
+                } catch (Exception ignored) {
+                }
+            }
+        } catch (IOException e) {
+            return null;
+        }
+
+        if (updatedAt == 0) {
+            return null;
+        }
+
+        return SessionInfo.builder()
+                .sessionId(sessionId)
+                .cliType(getCliType())
+                .projectPath(projectPath)
+                .title(title != null ? title : "Claude Session")
+                .model(model)
+                .gitBranch(gitBranch)
+                .createdAt(createdAt > 0 && createdAt < Long.MAX_VALUE ? createdAt : null)
+                .updatedAt(updatedAt > 0 ? updatedAt : null)
+                .messageCount(messageCount)
+                .build();
+    }
+
+    /**
+     * 解析 Claude JSONL 行数据为 {@link SessionMessage}。
+     *
+     * @param entry     JSONL 行解析后的 Map
+     * @param sessionId 所属会话 ID
+     * @return 会话消息，无 message 字段时返回 {@code null}
+     */
+    @SuppressWarnings("unchecked")
+    private SessionMessage parseMessage(Map<String, Object> entry, String sessionId) {
+        Map<String, Object> message = (Map<String, Object>) entry.get("message");
+        if (message == null) {
+            return null;
+        }
+
+        String role = (String) message.get("role");
+        String uuid = (String) entry.get("uuid");
+        String parentUuid = (String) entry.get("parentUuid");
+        String model = (String) message.get("model");
+        String cwd = (String) entry.get("cwd");
+        Long timestamp = parseTimestamp(entry.get("timestamp"));
+
+        List<ContentBlock> contents = new ArrayList<>();
+        Object contentObj = message.get("content");
+        if (contentObj instanceof List<?> contentList) {
+            for (Object item : contentList) {
+                if (item instanceof Map<?, ?> map) {
+                    Map<String, Object> block = (Map<String, Object>) map;
+                    ContentBlock cb = parseContentBlock(block);
+                    if (cb != null) {
+                        contents.add(cb);
+                    }
+                } else if (item instanceof String text && !text.isBlank()) {
+                    contents.add(ContentBlock.builder()
+                            .type(ContentBlockType.TEXT)
+                            .text(text)
+                            .build());
+                }
+            }
+        } else if (contentObj instanceof String text && !text.isBlank()) {
+            contents.add(ContentBlock.builder()
+                    .type(ContentBlockType.TEXT)
+                    .text(text)
+                    .build());
+        }
+
+        TokenUsage tokenUsage = null;
+        Map<String, Object> usage = (Map<String, Object>) message.get("usage");
+        if (usage != null) {
+            tokenUsage = TokenUsage.builder()
+                    .inputTokens(toInt(usage.get("input_tokens")))
+                    .outputTokens(toInt(usage.get("output_tokens")))
+                    .cacheCreationInputTokens(toInt(usage.get("cache_creation_input_tokens")))
+                    .cacheReadInputTokens(toInt(usage.get("cache_read_input_tokens")))
+                    .build();
+        }
+
+        return SessionMessage.builder()
+                .uuid(uuid)
+                .parentUuid(parentUuid)
+                .sessionId(sessionId)
+                .role(SessionRole.fromValue(role))
+                .model(model)
+                .cwd(cwd)
+                .timestamp(timestamp)
+                .contents(contents)
+                .tokenUsage(tokenUsage)
+                .build();
+    }
+
+    /**
+     * 解析 Claude 原始内容块为统一的 {@link ContentBlock}。
+     *
+     * @param block 原始内容块数据
+     * @return 统一内容块，type 为空时返回 {@code null}
+     */
+    @SuppressWarnings("unchecked")
+    private ContentBlock parseContentBlock(Map<String, Object> block) {
+        String type = (String) block.get("type");
+        if (type == null) {
+            return null;
+        }
+
+        return switch (type) {
+            case "text" -> ContentBlock.builder()
+                    .type(ContentBlockType.TEXT)
+                    .text((String) block.get("text"))
+                    .build();
+            case "thinking" -> ContentBlock.builder()
+                    .type(ContentBlockType.THINKING)
+                    .thinking((String) block.get("thinking"))
+                    .build();
+            case "tool_use" -> ContentBlock.builder()
+                    .type(ContentBlockType.TOOL_USE)
+                    .toolUseId((String) block.get("id"))
+                    .toolName((String) block.get("name"))
+                    .toolInput((Map<String, Object>) block.get("input"))
+                    .build();
+            case "tool_result" -> ContentBlock.builder()
+                    .type(ContentBlockType.TOOL_RESULT)
+                    .toolUseId((String) block.get("tool_use_id"))
+                    .toolOutput(block.get("content") instanceof String s ? s : String.valueOf(block.get("content")))
+                    .isError(block.get("is_error") instanceof Boolean b && b)
+                    .build();
+            default -> ContentBlock.builder()
+                    .type(ContentBlockType.TEXT)
+                    .text(GsonUtils.toJson(block))
+                    .build();
+        };
+    }
+
+    /**
+     * 在所有项目目录中查找指定会话 ID 对应的 JSONL 文件。
+     *
+     * @param sessionId 会话唯一标识
+     * @return 会话文件路径，未找到时返回 {@code null}
+     */
+    private Path findSessionFile(String sessionId) {
+        Path base = Paths.get(BASE_DIR);
+        if (!Files.isDirectory(base)) {
+            return null;
+        }
+
+        try (DirectoryStream<Path> projectDirs = Files.newDirectoryStream(base)) {
+            for (Path projectDir : projectDirs) {
+                if (!Files.isDirectory(projectDir)) {
+                    continue;
+                }
+                Path sessionFile = projectDir.resolve(sessionId + ".jsonl");
+                if (Files.exists(sessionFile)) {
+                    return sessionFile;
+                }
+            }
+        } catch (IOException e) {
+            log.error("Failed to find Claude session file", e);
+        }
+        return null;
+    }
+
+    /**
+     * 从用户消息内容中提取会话标题（取第一行非空文本）。
+     *
+     * @param content 用户消息原始内容
+     * @return 提取的标题，最长 100 字符
+     */
+    private String extractTitle(String content) {
+        if (content == null || content.isBlank()) {
+            return null;
+        }
+        String[] lines = content.split("\n");
+        for (String line : lines) {
+            String trimmed = line.trim();
+            if (trimmed.startsWith("user:")) {
+                String userText = trimmed.substring(5).trim();
+                if (!userText.isBlank()) {
+                    return userText.length() > 100 ? userText.substring(0, 100) + "..." : userText;
+                }
+            }
+        }
+        return null;
+    }
+
+    /**
+     * 解析时间戳对象（支持 ISO 8601 字符串和数值类型）。
+     *
+     * @param ts 时间戳对象
+     * @return 毫秒时间戳，解析失败返回 0
+     */
+    private long parseTimestamp(Object ts) {
+        if (ts instanceof String s) {
+            try {
+                return Instant.parse(s).toEpochMilli();
+            } catch (Exception e) {
+                return 0;
+            }
+        } else if (ts instanceof Number n) {
+            return n.longValue();
+        }
+        return 0;
+    }
+
+    /**
+     * 将对象安全转换为 {@link Integer}。
+     *
+     * @param val 待转换对象
+     * @return Integer 值，无法转换时返回 {@code null}
+     */
+    private Integer toInt(Object val) {
+        if (val instanceof Number n) {
+            return n.intValue();
+        }
+        return null;
+    }
+}

@@ -1,0 +1,84 @@
+plugins {
+    id 'java'
+    id 'org.jetbrains.intellij.platform' version '2.15.0'
+}
+
+import org.gradle.api.tasks.compile.JavaCompile
+import org.gradle.process.CommandLineArgumentProvider
+
+group = 'io.github.easyagent'
+version = '1.0.0'
+
+def defaultRunIdeProjectDir = "/Users/haijun/Work/frontend/demo"
+
+java {
+    sourceCompatibility = JavaVersion.VERSION_17
+    targetCompatibility = JavaVersion.VERSION_17
+    toolchain {
+        languageVersion = JavaLanguageVersion.of(21)
+    }
+}
+
+tasks.withType(JavaCompile).configureEach {
+    options.encoding = 'UTF-8'
+}
+
+repositories {
+    mavenCentral()
+    intellijPlatform {
+        defaultRepositories()
+    }
+}
+
+dependencies {
+    intellijPlatform {
+        local("/Applications/IntelliJ IDEA.app")
+    }
+
+    compileOnly("org.projectlombok:lombok:1.18.36")
+    annotationProcessor("org.projectlombok:lombok:1.18.36")
+    testCompileOnly("org.projectlombok:lombok:1.18.36")
+    testAnnotationProcessor("org.projectlombok:lombok:1.18.36")
+
+    // TODO 后续按需引入 hutool
+    // implementation("cn.hutool:hutool-all:5.8.34")
+    implementation("org.slf4j:slf4j-api:2.0.13")
+    implementation("ch.qos.logback:logback-classic:1.5.6")
+    implementation("org.xerial:sqlite-jdbc:3.45.2.0")
+
+    testImplementation("org.junit.jupiter:junit-jupiter-api:5.10.2")
+    testImplementation("org.junit.jupiter:junit-jupiter-engine:5.10.2")
+    testImplementation("org.junit.jupiter:junit-jupiter-params:5.10.2")
+    testRuntimeOnly("org.junit.platform:junit-platform-launcher:1.10.2")
+    testImplementation("org.mockito:mockito-core:5.11.0")
+    testImplementation("org.assertj:assertj-core:3.25.3")
+}
+
+test {
+    useJUnitPlatform()
+    maxHeapSize = "512m"
+}
+
+intellijPlatform {
+    autoReload = true
+
+    pluginConfiguration {
+        id = "io.github.easyagent"
+        name = "EasyAgent"
+        version = "1.0.0"
+        description = "EasyAgent - IntelliJ IDEA Plugin powered by AI"
+        vendor {
+            name = "EasyAgent"
+        }
+        ideaVersion {
+            sinceBuild = "261"
+            untilBuild = "261.*"
+        }
+    }
+
+    buildSearchableOptions = false
+}
+
+tasks.named('runIde', org.jetbrains.intellij.platform.gradle.tasks.RunIdeTask) {
+    argumentProviders.add({ [defaultRunIdeProjectDir] } as CommandLineArgumentProvider)
+}

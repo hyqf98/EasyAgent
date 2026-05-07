@@ -1,0 +1,17 @@
+<template>
+<div class="todo-block" :class="{ collapsed: collapsed }">
+    <div class="todo-header" @click="collapsed = !collapsed">
+        <span class="chevron" :class="{ open: !collapsed }">▸</span>
+        ✅ {{ i18n.t('todo.title') }} ({{ completedCount }}/{{ items.length }})
+        <div class="todo-progress">
+            <div class="todo-progress-bar" :class="progressClass" :style="{ width: progressPercent + '%' }"></div>
+        </div>
+    </div>
+    <div class="todo-list" v-show="!collapsed">
+        <div v-for="item in items" :key="item.id" class="todo-item">
+            <span class="todo-icon" :class="statusClass(item.status)">{{ statusIcon(item.status) }}</span>
+            <span class="todo-text" :class="{ cancelled: item.status === 'CANCELLED' }">{{ item.title }}</span>
+        </div>
+    </div>
+</div>
+</template>

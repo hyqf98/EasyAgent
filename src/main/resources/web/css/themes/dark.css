@@ -1,0 +1,34 @@
+[data-theme="dark"] {
+    --ea-bg: #1A1A2E;
+    --ea-bg-secondary: #16213E;
+    --ea-bg-hover: #1E2D50;
+    --ea-bg-active: #264078;
+    --ea-border: #2A2D3E;
+    --ea-border-light: #1E2D50;
+    --ea-text: #E4E4E7;
+    --ea-text-secondary: #A1A1AA;
+    --ea-text-muted: #71717A;
+    --ea-user-bubble: #1E2D50;
+    --ea-ai-bubble: transparent;
+    --ea-thinking-bg: #2C2417;
+    --ea-thinking-border: #78350F;
+    --ea-tool-bg: #16213E;
+    --ea-tool-border: #2A2D3E;
+    --ea-error-bg: #2D1518;
+    --ea-error-border: #7F1D1D;
+    --ea-input-bg: #16213E;
+    --ea-input-border: #2A2D3E;
+    --ea-input-focus: #8B5CF6;
+    --ea-code-bg: #0F172A;
+    --ea-header-bg: rgba(26,26,46,0.92);
+    --ea-popup-bg: #16213E;
+    --ea-popup-shadow: 0 8px 30px rgba(0,0,0,0.4);
+    --ea-scrollbar: #3F3F50;
+    --ea-scrollbar-hover: #52525B;
+    --ea-icon-color: #A1A1AA;
+    --ea-markdown-link: #A78BFA;
+    --ea-markdown-code-bg: #0F172A;
+    --ea-markdown-blockquote-bg: #16213E;
+    --ea-table-header-bg: #1E2D50;
+    --ea-table-even-bg: #16213E;
+}

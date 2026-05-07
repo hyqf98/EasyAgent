@@ -1,0 +1,6 @@
+<template>
+<div v-if="reason || tokenText" class="step-info">
+    <span v-if="reason">{{ reason }}</span>
+    <span v-if="tokenText" style="margin-left: 8px;">{{ tokenText }}</span>
+</div>
+</template>
