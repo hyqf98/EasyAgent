@@ -1,8 +1,8 @@
 package io.github.easyagent.ai.opencode.entity;
 
+import com.google.gson.annotations.JsonAdapter;
+import io.github.easyagent.util.RawJsonStringAdapter;
 import lombok.Builder;
-
-import java.util.Map;
 
 /**
  * 工具执行状态。
@@ -14,7 +14,7 @@ import java.util.Map;
 @Builder
 public record ToolState(
         String status,
-        Map<String, Object> input,
+        @JsonAdapter(RawJsonStringAdapter.class) String input,
         String output,
         ToolMetadata metadata,
         String title,

@@ -15,7 +15,7 @@ window.EARegisterComponent('chat-header', 'ChatHeader', {
         messageCount: { type: Number, default: 0 },
         inChat: { type: Boolean, default: false }
     },
-    emits: ['toggle-drawer', 'new-chat', 'open-settings'],
+    emits: ['toggle-drawer', 'new-chat', 'back-home', 'open-settings'],
     computed: {
         store() { return window.EAStore; },
         i18n() { void this.store.i18nVersion; return window.EAi18n; },

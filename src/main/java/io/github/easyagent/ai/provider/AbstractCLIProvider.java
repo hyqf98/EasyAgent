@@ -1,13 +1,8 @@
 package io.github.easyagent.ai.provider;
 
 import com.intellij.execution.configurations.GeneralCommandLine;
-import com.intellij.execution.process.OSProcessHandler;
-import com.intellij.execution.process.ProcessEvent;
-import com.intellij.execution.process.ProcessListener;
-import com.intellij.openapi.util.Key;
 import com.intellij.openapi.util.text.StringUtil;
 import com.intellij.util.containers.ContainerUtil;
-import com.intellij.util.io.BaseOutputReader;
 import io.github.easyagent.ai.AIProvider;
 import io.github.easyagent.ai.StreamEventListener;
 import io.github.easyagent.ai.entity.AIResponse;
@@ -22,10 +17,10 @@ import io.github.easyagent.enums.CLIType;
 import io.github.easyagent.enums.MessageType;
 import io.github.easyagent.enums.ResponseType;
 import io.github.easyagent.enums.ToolCallStatus;
-import io.github.easyagent.util.GsonUtils;
 import lombok.extern.slf4j.Slf4j;
-import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
 
+import java.io.File;
 import java.io.BufferedReader;
 import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
@@ -38,13 +33,9 @@ import java.util.concurrent.TimeUnit;
 /**
  * CLI 类型 AI 提供者通用抽象基类。
  * <p>
- * 封装通过 IntelliJ {@link GeneralCommandLine} 和 {@link OSProcessHandler}
- * 执行本地 CLI 命令的通用流程。子类只需实现 CLI 特定的命令构建和行解析逻辑。
- * </p>
- * <p>
- * 默认使用 {@link OSProcessHandler} 管理进程（插件运行环境），
- * 单元测试环境可覆盖 {@link #useDirectProcess()} 返回 {@code true} 切换为
- * 标准 Java {@link Process} + {@link BufferedReader} 方式执行。
+ * 封装通过 IntelliJ {@link GeneralCommandLine} 创建本地进程，
+ * 使用标准 Java {@link BufferedReader} 逐行读取进程输出。
+ * 子类只需实现 CLI 特定的命令构建和行解析逻辑。
  * </p>
  * <p>
  * 支持通过 {@link RetryConfig} 配置重试策略：当 CLI 进程执行异常时自动重试，
@@ -70,11 +61,11 @@ public abstract class AbstractCLIProvider implements AIProvider {
     /** 重试配置。 */
     private final RetryConfig retryConfig;
 
-    /** 按会话 ID 存储的活跃进程处理器。 */
-    private final ConcurrentHashMap<String, OSProcessHandler> activeProcessHandlers = new ConcurrentHashMap<>();
+    /** 当前 CLI 进程工作目录。 */
+    private volatile String workingDirectory;
 
-    /** 按会话 ID 存储的活跃直接进程（单元测试环境）。 */
-    private final ConcurrentHashMap<String, Process> activeDirectProcesses = new ConcurrentHashMap<>();
+    /** 按会话 ID 存储的活跃进程。 */
+    private final ConcurrentHashMap<String, Process> activeProcesses = new ConcurrentHashMap<>();
 
     /** 按会话 ID 存储的重试中断标志。 */
     private final ConcurrentHashMap<String, Boolean> retryInterruptedFlags = new ConcurrentHashMap<>();
@@ -131,6 +122,15 @@ public abstract class AbstractCLIProvider implements AIProvider {
     }
 
     /**
+     * 设置当前 CLI 调用使用的工作目录。
+     *
+     * @param workingDirectory 工作目录绝对路径；为空时清空
+     */
+    public void setWorkingDirectory(@Nullable String workingDirectory) {
+        this.workingDirectory = workingDirectory;
+    }
+
+    /**
      * 获取提供者名称。
      *
      * @return CLI 类型名称
@@ -138,19 +138,6 @@ public abstract class AbstractCLIProvider implements AIProvider {
     @Override
     public String name() {
         return this.cliType.getName();
-    }
-
-    /**
-     * 是否使用直接进程方式执行。
-     * <p>
-     * 默认返回 {@code false}，使用 IntelliJ {@link OSProcessHandler} 管理进程。
-     * 单元测试环境覆盖此方法返回 {@code true}，使用标准 Java {@link Process}。
-     * </p>
-     *
-     * @return 是否使用直接进程方式
-     */
-    protected boolean useDirectProcess() {
-        return false;
     }
 
     /**
@@ -179,7 +166,7 @@ public abstract class AbstractCLIProvider implements AIProvider {
     /**
      * 发送提示消息并流式监听响应。
      * <p>
-     * 通过虚拟线程池异步执行 CLI 命令，根据 {@link #useDirectProcess()} 选择进程执行方式。
+     * 通过虚拟线程池异步执行 CLI 命令。
      * 当配置了 {@link RetryConfig} 时，执行失败会自动重试。
      * </p>
      *
@@ -196,13 +183,9 @@ public abstract class AbstractCLIProvider implements AIProvider {
 
     /**
      * 带重试逻辑的 CLI 执行入口。
-     * <p>
-     * 根据 {@link RetryConfig} 配置的最大重试次数进行重试，
-     * 重试间隔采用指数退避策略（1s、2s、4s...，上限 10s）。
-     * </p>
      *
      * @param prompt    用户提示内容
-     * @param sessionId 可选的会话 ID
+     * @param sessionId 会话 ID
      * @param modelId   可选的模型 ID
      * @param listener  流式事件监听器
      */
@@ -218,27 +201,77 @@ public abstract class AbstractCLIProvider implements AIProvider {
             }
             try {
                 GeneralCommandLine commandLine = this.buildCommandLine(prompt, sessionId, modelId);
-                log.debug("Executing command (attempt {}/{}): {}", attempt, maxAttempts, commandLine.getCommandLineString());
-
-                if (this.useDirectProcess()) {
-                    this.executeWithDirectProcess(commandLine, sessionId, listener);
-                } else {
-                    this.executeWithOSProcessHandler(commandLine, sessionId, listener);
-                }
+                log.info("[CLI] Executing (attempt {}/{}): {}", attempt, maxAttempts, commandLine.getCommandLineString());
+                this.executeProcess(commandLine, sessionId, listener);
                 return;
             } catch (Exception e) {
                 lastException = e;
                 if (attempt < maxAttempts && !this.retryInterruptedFlags.containsKey(sessionId)) {
-                    log.warn("CLI execution failed (attempt {}/{}), retrying: {}", attempt, maxAttempts, e.getMessage());
+                    log.warn("[CLI] Failed (attempt {}/{}): {}", attempt, maxAttempts, e.getMessage());
                     listener.onResponse(this.createRetryStatus(attempt + 1, maxAttempts, e.getMessage()));
                     this.sleepBeforeRetry(attempt);
                 } else {
-                    log.error("CLI execution failed after {} attempts", attempt, e);
+                    log.error("[CLI] Failed after {} attempts", attempt, e);
                 }
             }
         }
 
         listener.onError(lastException);
+    }
+
+    /**
+     * 执行 CLI 进程并逐行读取输出。
+     *
+     * @param commandLine 命令行
+     * @param sessionId   会话 ID
+     * @param listener    流式事件监听器
+     * @throws Exception 进程执行异常
+     */
+    private void executeProcess(GeneralCommandLine commandLine, String sessionId, StreamEventListener listener) throws Exception {
+        Process process = commandLine.createProcess();
+        this.activeProcesses.put(sessionId, process);
+        process.getOutputStream().close();
+        log.info("[CLI] Process started for session: {}", sessionId);
+        String lastOutputLine = null;
+
+        try (BufferedReader reader = new BufferedReader(
+                new InputStreamReader(process.getInputStream(), StandardCharsets.UTF_8))) {
+            String line;
+            while ((line = reader.readLine()) != null) {
+                if (StringUtil.isEmpty(line)) {
+                    continue;
+                }
+                String trimmed = line.trim();
+                log.debug("[CLI] Read line: {}", trimmed.length() > 200 ? trimmed.substring(0, 200) + "..." : trimmed);
+                lastOutputLine = trimmed;
+                this.dispatchLine(trimmed, listener);
+            }
+        }
+
+        this.activeProcesses.remove(sessionId);
+        int exitCode = process.waitFor();
+        log.info("[CLI] Process exited with code: {} for session: {}", exitCode, sessionId);
+        if (exitCode != 0) {
+            throw new RuntimeException(this.buildProcessFailureMessage(exitCode, lastOutputLine));
+        }
+        listener.onComplete();
+    }
+
+    /**
+     * 构造进程退出错误信息。
+     *
+     * @param exitCode        退出码
+     * @param lastOutputLine   最后一条输出
+     * @return 可读的错误信息
+     */
+    protected String buildProcessFailureMessage(int exitCode, @Nullable String lastOutputLine) {
+        if (lastOutputLine != null && lastOutputLine.contains("Prompt exceeds max length")) {
+            return "当前会话上下文超过 Claude 的长度限制，请新建会话或先压缩上下文后再继续。";
+        }
+        if (lastOutputLine != null && !lastOutputLine.isBlank()) {
+            return "Process exited with code: " + exitCode + ". Last output: " + lastOutputLine;
+        }
+        return "Process exited with code: " + exitCode;
     }
 
     /**
@@ -253,93 +286,6 @@ public abstract class AbstractCLIProvider implements AIProvider {
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
         }
-    }
-
-    /**
-     * 使用 IntelliJ {@link OSProcessHandler} 执行进程（插件运行环境）。
-     * <p>
-     * 当配置了超时时间时，会限制进程执行时间，超时后销毁进程。
-     * </p>
-     *
-     * @param commandLine 命令行
-     * @param listener    流式事件监听器
-     * @throws Exception 进程执行异常
-     */
-    private void executeWithOSProcessHandler(GeneralCommandLine commandLine, String sessionId, StreamEventListener listener) throws Exception {
-        OSProcessHandler processHandler = new OSProcessHandler(commandLine) {
-            @Override
-            protected BaseOutputReader.Options readerOptions() {
-                return BaseOutputReader.Options.BLOCKING;
-            }
-        };
-        this.activeProcessHandlers.put(sessionId, processHandler);
-        processHandler.addProcessListener(new ProcessListener() {
-            @Override
-            public void startNotified(@NotNull ProcessEvent event) {
-            }
-
-            @Override
-            public void onTextAvailable(@NotNull ProcessEvent event, @NotNull Key outputType) {
-                String line = event.getText();
-                if (StringUtil.isEmpty(line)) {
-                    return;
-                }
-                AbstractCLIProvider.this.dispatchLine(line.trim(), listener);
-            }
-
-            @Override
-            public void processTerminated(@NotNull ProcessEvent event) {
-                AbstractCLIProvider.this.activeProcessHandlers.remove(sessionId);
-                int exitCode = event.getExitCode();
-                log.debug("Process exited with code: {} for session: {}", exitCode, sessionId);
-                if (exitCode != 0) {
-                    listener.onError(new RuntimeException("Process exited with code: " + event.getExitCode()));
-                } else {
-                    listener.onComplete();
-                }
-            }
-
-            @Override
-            public void processWillTerminate(@NotNull ProcessEvent event, boolean willBeDestroyed) {
-            }
-        });
-        processHandler.startNotify();
-        processHandler.waitFor();
-    }
-
-    /**
-     * 使用标准 Java {@link Process} + {@link BufferedReader} 执行进程（单元测试环境）。
-     *
-     * @param commandLine 命令行
-     * @param sessionId   会话 ID
-     * @param listener    流式事件监听器
-     * @throws Exception 进程执行异常
-     */
-    private void executeWithDirectProcess(GeneralCommandLine commandLine, String sessionId, StreamEventListener listener) throws Exception {
-        Process process = commandLine.createProcess();
-        this.activeDirectProcesses.put(sessionId, process);
-        process.getOutputStream().close();
-        log.debug("Direct process started, reading stdout...");
-
-        try (BufferedReader reader = new BufferedReader(
-                new InputStreamReader(process.getInputStream(), StandardCharsets.UTF_8))) {
-            String line;
-            while ((line = reader.readLine()) != null) {
-                log.debug("Read raw line: {}", line);
-                if (StringUtil.isEmpty(line)) {
-                    continue;
-                }
-                this.dispatchLine(line.trim(), listener);
-            }
-        }
-
-        this.activeDirectProcesses.remove(sessionId);
-        int exitCode = process.waitFor();
-        log.debug("Process exited with code: {} for session: {}", exitCode, sessionId);
-        if (exitCode != 0) {
-            throw new RuntimeException("Process exited with code: " + exitCode);
-        }
-        listener.onComplete();
     }
 
     /**
@@ -359,7 +305,7 @@ public abstract class AbstractCLIProvider implements AIProvider {
                 }
             }
         } catch (Exception e) {
-            log.warn("Failed to parse line: {}", line, e);
+            log.warn("[CLI] Failed to parse line: {}", line, e);
         }
     }
 
@@ -390,6 +336,9 @@ public abstract class AbstractCLIProvider implements AIProvider {
         cmd.setExePath(this.getCommandPath());
         cmd.setCharset(StandardCharsets.UTF_8);
         cmd.setRedirectErrorStream(true);
+        if (!StringUtil.isEmptyOrSpaces(this.workingDirectory)) {
+            cmd.setWorkDirectory(new File(this.workingDirectory));
+        }
         cmd.withEnvironment("NO_COLOR", "1");
         return cmd;
     }
@@ -447,10 +396,28 @@ public abstract class AbstractCLIProvider implements AIProvider {
     protected AIResponse createToolCall(String sessionId, String toolName, String title,
                                         ToolCallStatus status,
                                         String input, String output) {
+        return this.createToolCall(sessionId, null, toolName, title, status, input, output);
+    }
+
+    /**
+     * 创建工具调用响应。
+     *
+     * @param sessionId  会话 ID
+     * @param toolCallId 工具调用 ID
+     * @param toolName   工具名称
+     * @param title      调用标题
+     * @param status     调用状态
+     * @param input      输入参数
+     * @param output     输出结果
+     * @return AIResponse
+     */
+    protected AIResponse createToolCall(String sessionId, String toolCallId, String toolName, String title,
+                                        ToolCallStatus status, String input, String output) {
         return AIResponse.builder()
                 .type(ResponseType.TOOL_USE)
                 .sessionId(sessionId)
                 .toolCall(ToolCallContent.builder()
+                        .toolCallId(toolCallId)
                         .toolName(toolName)
                         .title(title)
                         .status(status)
@@ -515,10 +482,6 @@ public abstract class AbstractCLIProvider implements AIProvider {
 
     /**
      * 停止当前正在运行的 CLI 进程。
-     * <p>
-     * 销毁活跃的 {@link OSProcessHandler} 或直接 {@link Process}，
-     * 触发监听器的 {@code processTerminated} 回调。
-     * </p>
      *
      * @since 1.0.0
      */
@@ -528,33 +491,23 @@ public abstract class AbstractCLIProvider implements AIProvider {
     }
 
     @Override
-    public void stop(String sessionId) {
+    public void stop(@Nullable String sessionId) {
         if (sessionId != null) {
             this.retryInterruptedFlags.put(sessionId, true);
-            OSProcessHandler handler = this.activeProcessHandlers.remove(sessionId);
-            if (handler != null) {
+            Process process = this.activeProcesses.remove(sessionId);
+            if (process != null) {
                 log.debug("Destroying process for session: {}", sessionId);
-                handler.destroyProcess();
-            }
-            Process direct = this.activeDirectProcesses.remove(sessionId);
-            if (direct != null) {
-                log.debug("Destroying direct process for session: {}", sessionId);
-                direct.destroyForcibly();
+                process.destroyForcibly();
             }
             return;
         }
 
         this.retryInterruptedFlags.clear();
-        this.activeProcessHandlers.forEach((sid, handler) -> {
+        this.activeProcesses.forEach((sid, process) -> {
             log.debug("Destroying process for session: {}", sid);
-            handler.destroyProcess();
-        });
-        this.activeProcessHandlers.clear();
-        this.activeDirectProcesses.forEach((sid, process) -> {
-            log.debug("Destroying direct process for session: {}", sid);
             process.destroyForcibly();
         });
-        this.activeDirectProcesses.clear();
+        this.activeProcesses.clear();
     }
 
     /**

@@ -10,6 +10,7 @@ import io.github.easyagent.ai.opencode.entity.StreamPart;
 import io.github.easyagent.ai.opencode.entity.TokenUsage;
 import io.github.easyagent.ai.opencode.entity.ToolState;
 import io.github.easyagent.ai.opencode.enums.OpenCodeEventType;
+import io.github.easyagent.ai.opencode.enums.OpenCodePartType;
 import io.github.easyagent.ai.provider.AbstractCLIProvider;
 import io.github.easyagent.ai.provider.RetryConfig;
 import io.github.easyagent.enums.CLIType;
@@ -57,7 +58,7 @@ public class OpenCodeCLIProvider extends AbstractCLIProvider {
         if (GsonUtils.isNotEmpty(modelId)) {
             cmd.addParameters("--model", modelId);
         }
-        if (GsonUtils.isNotEmpty(sessionId)) {
+        if (GsonUtils.isNotEmpty(sessionId) && !sessionId.startsWith("new-")) {
             cmd.addParameters("--session", sessionId);
         }
         cmd.addParameters("--", prompt);
@@ -83,13 +84,20 @@ public class OpenCodeCLIProvider extends AbstractCLIProvider {
     }
 
     private AIResponse convertToResponse(OpenCodeEventType type, String sessionId, StreamPart part, String rawLine) {
-        return switch (type) {
-            case STEP_START -> this.createStepStart(sessionId, part != null ? part.messageId() : null);
-            case TEXT -> this.createMessage(sessionId, MessageType.TEXT, part != null ? part.text() : null);
-            case REASONING -> this.createMessage(sessionId, MessageType.THINKING, part != null ? part.text() : null);
-            case TOOL_USE -> this.convertToolUse(sessionId, part);
-            case STEP_FINISH -> this.convertStepFinish(sessionId, part, rawLine);
-        };
+        OpenCodePartType partType = part != null ? part.type() : null;
+        if (partType == OpenCodePartType.STEP_START || type == OpenCodeEventType.STEP_START) {
+            return this.createStepStart(sessionId, part != null ? part.messageId() : null);
+        }
+        if (partType == OpenCodePartType.REASONING || type == OpenCodeEventType.REASONING) {
+            return this.createMessage(sessionId, MessageType.THINKING, part != null ? part.text() : null);
+        }
+        if (partType == OpenCodePartType.TOOL || type == OpenCodeEventType.TOOL_USE) {
+            return this.convertToolUse(sessionId, part);
+        }
+        if (partType == OpenCodePartType.STEP_FINISH || type == OpenCodeEventType.STEP_FINISH) {
+            return this.convertStepFinish(sessionId, part, rawLine);
+        }
+        return this.createMessage(sessionId, MessageType.TEXT, part != null ? part.text() : null);
     }
 
     private AIResponse convertToolUse(String sessionId, StreamPart part) {
@@ -99,11 +107,11 @@ public class OpenCodeCLIProvider extends AbstractCLIProvider {
         ToolState state = part.state();
         String toolName = part.tool();
         String title = state != null ? state.title() : null;
-        String input = state != null && state.input() != null ? state.input().toString() : null;
+        String input = state != null ? state.input() : null;
         String output = state != null ? state.output() : null;
         ToolCallStatus status = this.convertToolStatus(state);
 
-        return this.createToolCall(sessionId, toolName, title, status, input, output);
+        return this.createToolCall(sessionId, part.callId(), toolName, title, status, input, output);
     }
 
     private ToolCallStatus convertToolStatus(ToolState state) {

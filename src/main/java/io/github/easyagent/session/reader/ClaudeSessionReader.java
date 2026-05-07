@@ -83,13 +83,9 @@ public class ClaudeSessionReader implements SessionReader {
                 if (!Files.isDirectory(projectDir)) {
                     continue;
                 }
-                String projectPath = projectDir.getFileName().toString()
-                        .replace('-', File.separatorChar)
-                        .substring(1);
-
                 try (DirectoryStream<Path> sessionFiles = Files.newDirectoryStream(projectDir, "*.jsonl")) {
                     for (Path sessionFile : sessionFiles) {
-                        SessionInfo info = parseSessionInfo(sessionFile, projectPath);
+                        SessionInfo info = parseSessionInfo(sessionFile, projectDir);
                         if (info != null) {
                             sessions.add(info);
                         }
@@ -200,11 +196,11 @@ public class ClaudeSessionReader implements SessionReader {
      * 解析单个 JSONL 会话文件的摘要信息。
      *
      * @param sessionFile 会话 JSONL 文件路径
-     * @param projectPath 关联的项目路径
+     * @param projectDir  关联的项目目录
      * @return 会话摘要，文件为空或解析失败时返回 {@code null}
      */
     @SuppressWarnings("unchecked")
-    private SessionInfo parseSessionInfo(Path sessionFile, String projectPath) {
+    private SessionInfo parseSessionInfo(Path sessionFile, Path projectDir) {
         String sessionId = sessionFile.getFileName().toString().replace(".jsonl", "");
         long updatedAt = 0;
         long createdAt = Long.MAX_VALUE;
@@ -212,6 +208,7 @@ public class ClaudeSessionReader implements SessionReader {
         String model = null;
         String gitBranch = null;
         String title = null;
+        String projectPath = decodeProjectPath(projectDir);
 
         try (BufferedReader reader = Files.newBufferedReader(sessionFile)) {
             String line;
@@ -254,6 +251,12 @@ public class ClaudeSessionReader implements SessionReader {
                     if (entry.containsKey("gitBranch")) {
                         gitBranch = (String) entry.get("gitBranch");
                     }
+                    if (entry.containsKey("cwd")) {
+                        String cwd = (String) entry.get("cwd");
+                        if (cwd != null && !cwd.isBlank()) {
+                            projectPath = cwd;
+                        }
+                    }
                 } catch (Exception ignored) {
                 }
             }
@@ -276,6 +279,26 @@ public class ClaudeSessionReader implements SessionReader {
                 .updatedAt(updatedAt > 0 ? updatedAt : null)
                 .messageCount(messageCount)
                 .build();
+    }
+
+    /**
+     * 将 Claude 项目目录名解码为可读路径。
+     *
+     * @param projectDir Claude 项目目录
+     * @return 解码后的项目路径
+     */
+    private String decodeProjectPath(Path projectDir) {
+        if (projectDir == null || projectDir.getFileName() == null) {
+            return null;
+        }
+        String encoded = projectDir.getFileName().toString();
+        if (encoded.isBlank()) {
+            return null;
+        }
+        if (encoded.startsWith("-")) {
+            return File.separator + encoded.substring(1).replace('-', File.separatorChar);
+        }
+        return encoded.replace('-', File.separatorChar);
     }
 
     /**
@@ -373,7 +396,7 @@ public class ClaudeSessionReader implements SessionReader {
                     .type(ContentBlockType.TOOL_USE)
                     .toolUseId((String) block.get("id"))
                     .toolName((String) block.get("name"))
-                    .toolInput((Map<String, Object>) block.get("input"))
+                    .toolInput(block.get("input") != null ? GsonUtils.toJson(block.get("input")) : null)
                     .build();
             case "tool_result" -> ContentBlock.builder()
                     .type(ContentBlockType.TOOL_RESULT)

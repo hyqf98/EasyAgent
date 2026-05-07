@@ -22,6 +22,17 @@
     </extensions>
 
     <actions>
-
+        <action id="EasyAgent.InsertFileReferenceFromEditor"
+                class="io.github.easyagent.ui.action.InsertFileReferenceFromEditorAction"
+                text="Insert as EasyAgent Reference"
+                description="Insert the current editor file or selection into EasyAgent">
+            <add-to-group group-id="EditorPopupMenu" anchor="last"/>
+        </action>
+        <action id="EasyAgent.InsertFileReferenceFromProjectView"
+                class="io.github.easyagent.ui.action.InsertFileReferenceFromProjectViewAction"
+                text="Insert into EasyAgent"
+                description="Insert selected files into EasyAgent as references">
+            <add-to-group group-id="ProjectViewPopupMenu" anchor="last"/>
+        </action>
     </actions>
 </idea-plugin>

@@ -99,7 +99,7 @@ public class CodexCLIProvider extends AbstractCLIProvider {
                     out.add(this.createMessage(null, MessageType.TEXT, item.getText()));
                 }
             }
-            case TOOL_CALL -> out.add(this.createToolCall(null, item.getName(), null, ToolCallStatus.COMPLETED,
+            case TOOL_CALL -> out.add(this.createToolCall(null, item.getCallId(), item.getName(), null, ToolCallStatus.COMPLETED,
                     item.getArguments(), null));
         }
     }

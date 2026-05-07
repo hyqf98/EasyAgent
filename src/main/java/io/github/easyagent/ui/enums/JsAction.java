@@ -63,7 +63,22 @@ public enum JsAction implements ValueEnum<String> {
     SAVE_MODELS("saveModels"),
 
     /** 查询 CLI 可用模型列表。 */
-    QUERY_CLI_MODELS("queryCliModels");
+    QUERY_CLI_MODELS("queryCliModels"),
+
+    /** 搜索项目文件引用候选。 */
+    SEARCH_FILE_REFERENCES("searchFileReferences"),
+
+    /** 根据路径生成文件引用。 */
+    RESOLVE_FILE_REFERENCE("resolveFileReference"),
+
+    /** 保存剪贴板图片并生成图片引用。 */
+    SAVE_CLIPBOARD_IMAGE("saveClipboardImage"),
+
+    /** 打开 AI 文件编辑 diff。 */
+    OPEN_FILE_EDIT_DIFF("openFileEditDiff"),
+
+    /** 回撤 AI 文件编辑。 */
+    REVERT_FILE_EDIT("revertFileEdit");
 
     /** 动作标识值。 */
     private final String value;

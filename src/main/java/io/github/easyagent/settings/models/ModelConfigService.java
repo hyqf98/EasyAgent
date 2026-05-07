@@ -20,6 +20,7 @@ import java.nio.file.Paths;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
@@ -56,6 +57,9 @@ public class ModelConfigService {
 
     /** 内存缓存，{@link CLIType} -> List<{@link ModelInfo}>。 */
     private final Map<CLIType, List<ModelInfo>> modelCache = new ConcurrentHashMap<>();
+
+    /** 默认模型配置，{@link CLIType} -> {modelId, contextWindow}。 */
+    private final Map<CLIType, DefaultModelConfig> defaultModels = new ConcurrentHashMap<>();
 
     /** HTTP 客户端，用于远程同步。 */
     private final HttpClient httpClient = HttpClient.newBuilder()
@@ -100,6 +104,25 @@ public class ModelConfigService {
             for (ModelInfo m : all) {
                 this.modelCache.computeIfAbsent(m.cliType(), k -> new ArrayList<>()).add(m);
             }
+
+            this.defaultModels.clear();
+            if (root.has("defaultModels") && root.get("defaultModels").isJsonObject()) {
+                JsonObject dm = root.getAsJsonObject("defaultModels");
+                for (String key : dm.keySet()) {
+                    try {
+                        CLIType cliType = CLIType.valueOf(key);
+                        JsonObject val = dm.getAsJsonObject(key);
+                        String modelId = GsonUtils.getString(val, "modelId");
+                        int ctx = GsonUtils.getInt(val, "contextWindow", DEFAULT_CONTEXT_WINDOW);
+                        this.defaultModels.put(cliType, new DefaultModelConfig(
+                                modelId != null ? modelId : "",
+                                ctx
+                        ));
+                    } catch (IllegalArgumentException ignored) {
+                    }
+                }
+            }
+
             log.debug("Loaded {} models from JSON", all.size());
         } catch (Exception e) {
             log.warn("Failed to parse models JSON", e);
@@ -115,6 +138,16 @@ public class ModelConfigService {
         JsonObject root = new JsonObject();
         root.addProperty("version", 1);
         root.add("models", GsonUtils.toJsonTree(getAllModels()));
+
+        JsonObject dm = new JsonObject();
+        for (Map.Entry<CLIType, DefaultModelConfig> entry : this.defaultModels.entrySet()) {
+            JsonObject val = new JsonObject();
+            val.addProperty("modelId", entry.getValue().modelId());
+            val.addProperty("contextWindow", entry.getValue().contextWindow());
+            dm.add(entry.getKey().name(), val);
+        }
+        root.add("defaultModels", dm);
+
         return GsonUtils.toJson(root);
     }
 
@@ -181,7 +214,7 @@ public class ModelConfigService {
     public List<ModelInfo> queryOpenCodeModels() {
         List<ModelInfo> result = new ArrayList<>();
         try {
-            ProcessBuilder pb = new ProcessBuilder(CLIType.OPENCODE.getCommandPath(), "models", "--verbose");
+            ProcessBuilder pb = new ProcessBuilder(CLIType.OPENCODE.getCommandPath(), "models", "--refresh", "--verbose");
             pb.redirectErrorStream(true);
             Process process = pb.start();
 
@@ -194,15 +227,8 @@ public class ModelConfigService {
             }
             process.waitFor();
 
-            String raw = output.toString().trim();
-            String[] blocks = raw.split("\n\\{");
-            for (String block : blocks) {
-                String jsonStr = block.startsWith("{") ? block : "{" + block;
-                int braceEnd = this.findMatchingBrace(jsonStr);
-                if (braceEnd <= 0) {
-                    continue;
-                }
-                String json = jsonStr.substring(0, braceEnd + 1);
+            String raw = stripAnsi(output.toString()).trim();
+            for (String json : this.extractJsonBlocks(raw)) {
                 try {
                     ModelInfo model = this.parseOpenCodeModel(json);
                     if (model != null) {
@@ -264,6 +290,39 @@ public class ModelConfigService {
             }
         }
         return DEFAULT_CONTEXT_WINDOW;
+    }
+
+    /**
+     * 获取指定 CLI 类型的默认模型配置。
+     *
+     * @param cliType CLI 类型
+     * @return 默认模型配置，不存在返回 {@code null}
+     */
+    public DefaultModelConfig getDefaultModel(CLIType cliType) {
+        return this.defaultModels.get(cliType);
+    }
+
+    /**
+     * 获取所有默认模型配置。
+     *
+     * @return CLI 类型到默认模型配置的映射
+     */
+    public Map<CLIType, DefaultModelConfig> getAllDefaultModels() {
+        return new LinkedHashMap<>(this.defaultModels);
+    }
+
+    /**
+     * 保存指定 CLI 类型的默认模型配置。
+     *
+     * @param cliType CLI 类型
+     * @param config  默认模型配置
+     */
+    public void saveDefaultModel(CLIType cliType, DefaultModelConfig config) {
+        if (config != null) {
+            this.defaultModels.put(cliType, config);
+        } else {
+            this.defaultModels.remove(cliType);
+        }
     }
 
     /**
@@ -350,5 +409,39 @@ public class ModelConfigService {
             }
         }
         return -1;
+    }
+
+    /**
+     * 从 CLI 原始输出中提取顶层 JSON 对象块。
+     *
+     * @param raw CLI 原始输出
+     * @return JSON 对象字符串列表
+     */
+    private List<String> extractJsonBlocks(String raw) {
+        List<String> blocks = new ArrayList<>();
+        int index = 0;
+        while (index < raw.length()) {
+            int start = raw.indexOf('{', index);
+            if (start < 0) {
+                break;
+            }
+            int end = this.findMatchingBrace(raw.substring(start));
+            if (end < 0) {
+                break;
+            }
+            blocks.add(raw.substring(start, start + end + 1));
+            index = start + end + 1;
+        }
+        return blocks;
+    }
+
+    /**
+     * 去除终端 ANSI 转义序列。
+     *
+     * @param text 原始终端输出
+     * @return 清洗后的文本
+     */
+    private static String stripAnsi(String text) {
+        return text.replaceAll("\\u001B\\[[;\\d]*m", "");
     }
 }

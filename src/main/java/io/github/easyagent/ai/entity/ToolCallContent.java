@@ -10,6 +10,7 @@ import lombok.Builder;
  * 调用状态通过 {@link ToolCallStatus} 枚举表示，底层 CLI 各自适配转换。
  * </p>
  *
+ * @param toolCallId 工具调用唯一标识
  * @param toolName 工具名称，如 "bash"、"read"
  * @param title   工具调用描述标题
  * @param status  工具调用状态
@@ -21,6 +22,7 @@ import lombok.Builder;
  */
 @Builder
 public record ToolCallContent(
+        String toolCallId,
         String toolName,
         String title,
         ToolCallStatus status,

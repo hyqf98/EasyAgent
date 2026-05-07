@@ -92,12 +92,48 @@
                     <div class="model-table-header">
                         <span class="model-col-id">{{ i18n.t('settings.modelId') }}</span>
                         <span class="model-col-name">{{ i18n.t('settings.modelName') }}</span>
-                        <span class="model-col-cli">CLI</span>
                         <span class="model-col-ctx">{{ i18n.t('settings.modelContext') }}</span>
                         <span class="model-col-act"></span>
                     </div>
-                    <div class="model-table-row" v-for="(m, idx) in filteredModels" :key="m.modelId + '-' + idx">
-                        <template v-if="editingIndex === idx">
+                    <div
+                        class="model-table-row"
+                        :class="{ 'default-row': row.rowType === 'default' }"
+                        v-for="(row, rowIdx) in modelRows"
+                        :key="row.rowType === 'default' ? 'default-' + modelFilter : row.model.modelId + '-' + row.modelIndex + '-' + rowIdx"
+                    >
+                        <template v-if="row.rowType === 'default' && editingDefault">
+                            <span class="model-col-id"><input class="model-edit-input" v-model="defaultEditForm.modelId" :placeholder="i18n.t('settings.defaultModelPlaceholder')" /></span>
+                            <span class="model-col-name model-default-name">{{ i18n.t('settings.defaultModel') }}</span>
+                            <span class="model-col-ctx">
+                                <div class="ctx-input-wrapper">
+                                    <input class="model-edit-input model-edit-ctx"
+                                           :value="defaultEditForm.contextDisplay"
+                                           @input="onDefaultCtxInput($event)"
+                                           @focus="showDefaultCtxDropdown = true"
+                                           @blur="onDefaultCtxBlur"
+                                           :placeholder="i18n.t('settings.modelContextPlaceholder')" />
+                                    <div class="ctx-dropdown" v-if="showDefaultCtxDropdown">
+                                        <div class="ctx-dropdown-item" v-for="opt in ctxOptions" :key="opt.value"
+                                             @mousedown.prevent="onDefaultCtxSelect(opt.value)">{{ opt.label }}</div>
+                                    </div>
+                                </div>
+                            </span>
+                            <span class="model-col-act">
+                                <button class="icon-btn model-action-btn" @click="onSaveDefaultModel">✓</button>
+                                <button class="icon-btn model-action-btn" @click="editingDefault = false">✕</button>
+                            </span>
+                        </template>
+                        <template v-else-if="row.rowType === 'default'">
+                            <span class="model-col-id model-cell-ellipsis model-default-id" :title="row.modelId || i18n.t('settings.defaultModelNone')">
+                                {{ row.modelId || i18n.t('settings.defaultModelNone') }}
+                            </span>
+                            <span class="model-col-name model-default-name">{{ i18n.t('settings.defaultModel') }}</span>
+                            <span class="model-col-ctx">{{ row.contextWindow ? formatContextWindow(row.contextWindow) : '-' }}</span>
+                            <span class="model-col-act">
+                                <button class="icon-btn model-action-btn" @click="onEditDefaultModel" :title="i18n.t('settings.modelEdit')">✎</button>
+                            </span>
+                        </template>
+                        <template v-else-if="editingIndex === row.modelIndex">
                             <span class="model-col-id"><input class="model-edit-input" v-model="editForm.modelId" /></span>
                             <span class="model-col-name"><input class="model-edit-input" v-model="editForm.displayName" /></span>
                             <span class="model-col-ctx">
@@ -115,23 +151,22 @@
                                 </div>
                             </span>
                             <span class="model-col-act">
-                                <button class="icon-btn model-action-btn" @click="onSaveEdit(idx)">✓</button>
+                                <button class="icon-btn model-action-btn" @click="onSaveEdit(row.modelIndex)">✓</button>
                                 <button class="icon-btn model-action-btn" @click="editingIndex = -1">✕</button>
                             </span>
                         </template>
                         <template v-else>
-                            <span class="model-col-id model-cell-ellipsis" :title="m.modelId">{{ m.modelId }}</span>
-                            <span class="model-col-name model-cell-ellipsis" :title="m.displayName">{{ m.displayName }}</span>
-                            <span class="model-col-cli"><span class="model-cli-dot" :class="m.cliType.toLowerCase()"></span>{{ m.cliType }}</span>
-                            <span class="model-col-ctx">{{ formatContextWindow(m.contextWindow) }}</span>
+                            <span class="model-col-id model-cell-ellipsis" :title="row.model.modelId">{{ row.model.modelId }}</span>
+                            <span class="model-col-name model-cell-ellipsis" :title="row.model.displayName">{{ row.model.displayName }}</span>
+                            <span class="model-col-ctx">{{ formatContextWindow(row.model.contextWindow) }}</span>
                             <span class="model-col-act">
-                                <button class="icon-btn model-action-btn" @click="onEditModel(idx)" :title="i18n.t('settings.modelEdit')">✎</button>
-                                <button class="icon-btn model-action-btn model-action-del" @click="onDeleteModel(idx)" :title="i18n.t('settings.modelDelete')">×</button>
+                                <button class="icon-btn model-action-btn" @click="onEditModel(row.modelIndex)" :title="i18n.t('settings.modelEdit')">✎</button>
+                                <button class="icon-btn model-action-btn model-action-del" @click="onDeleteModel(row.modelIndex)" :title="i18n.t('settings.modelDelete')">×</button>
                             </span>
                         </template>
                     </div>
-                    <div v-if="filteredModels.length === 0" class="model-empty">{{ i18n.t('settings.modelEmpty') }}</div>
                 </div>
+                <div v-if="filteredModels.length === 0" class="model-empty">{{ i18n.t('settings.modelEmpty') }}</div>
                 <div v-if="cliModelsLoading" class="model-loading">{{ i18n.t('settings.modelsLoading') }}</div>
             </div>
         </template>

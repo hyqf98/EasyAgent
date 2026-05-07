@@ -5,6 +5,7 @@ import io.github.easyagent.ai.StreamEventListener;
 import io.github.easyagent.ai.claude.ClaudeProviderFactory;
 import io.github.easyagent.ai.codex.CodexProviderFactory;
 import io.github.easyagent.ai.opencode.OpenCodeProviderFactory;
+import io.github.easyagent.ai.provider.AbstractCLIProvider;
 import io.github.easyagent.ai.provider.RetryConfig;
 import io.github.easyagent.enums.CLIType;
 import io.github.easyagent.session.SessionService;
@@ -58,15 +59,16 @@ public class ChatManager {
      *
      * @param sessionId 会话 ID
      * @param cliType   CLI 类型
+     * @param projectPath 当前项目路径
      * @return 包含历史消息的前端 JSON 字符串
      */
-    public String loadHistory(@NotNull String sessionId, @NotNull CLIType cliType) {
+    public String loadHistory(@NotNull String sessionId, @NotNull CLIType cliType, String projectPath) {
         this.currentCLIType = cliType;
         List<SessionMessage> messages = this.sessionService.readMessages(cliType, sessionId);
         if (messages == null) {
             messages = List.of();
         }
-        return MessageConverter.toHistoryJson(sessionId, messages);
+        return MessageConverter.toHistoryJson(sessionId, messages, projectPath);
     }
 
     /**
@@ -75,14 +77,19 @@ public class ChatManager {
      * @param text      用户输入文本
      * @param sessionId 会话 ID，为 {@code null} 时创建新会话
      * @param cliType   目标 CLI 类型
+     * @param projectPath 当前项目路径
      * @param modelId   模型 ID，为 {@code null} 时使用默认模型
      * @param listener  流式事件监听器
      */
     public void sendMessage(@NotNull String text, @Nullable String sessionId,
-                            @NotNull CLIType cliType, @Nullable String modelId,
+                            @NotNull CLIType cliType, @Nullable String projectPath,
+                            @Nullable String modelId,
                             @NotNull StreamEventListener listener) {
         this.currentCLIType = cliType;
         AIProvider provider = this.getOrCreateProvider(cliType);
+        if (provider instanceof AbstractCLIProvider cliProvider) {
+            cliProvider.setWorkingDirectory(projectPath);
+        }
         provider.chat(text, sessionId, modelId, listener);
     }
 

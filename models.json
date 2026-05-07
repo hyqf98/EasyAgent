@@ -1,6 +1,11 @@
 {
   "version": 1,
   "updatedAt": "2026-05-06",
+  "defaultModels": {
+    "CLAUDE":  { "modelId": "claude-sonnet-4-20250514", "contextWindow": 200000 },
+    "OPENCODE": { "modelId": "claude-sonnet-4-20250514", "contextWindow": 200000 },
+    "CODEX":   { "modelId": "o4-mini", "contextWindow": 200000 }
+  },
   "models": [
     { "modelId": "claude-sonnet-4-20250514", "displayName": "Claude Sonnet 4", "cliType": "CLAUDE", "contextWindow": 200000, "provider": "anthropic" },
     { "modelId": "claude-opus-4-20250514", "displayName": "Claude Opus 4", "cliType": "CLAUDE", "contextWindow": 200000, "provider": "anthropic" },

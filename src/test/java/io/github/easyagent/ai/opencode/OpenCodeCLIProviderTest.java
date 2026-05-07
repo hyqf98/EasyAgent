@@ -46,12 +46,7 @@ class OpenCodeCLIProviderTest {
         };
 
         System.out.println("\n========== Sending: " + prompt + " ==========\n");
-        OpenCodeCLIProvider provider = new OpenCodeCLIProvider() {
-            @Override
-            protected boolean useDirectProcess() {
-                return true;
-            }
-        };
+        OpenCodeCLIProvider provider = new OpenCodeCLIProvider();
         provider.chat(prompt, listener);
 
         latch.await(60, TimeUnit.SECONDS);

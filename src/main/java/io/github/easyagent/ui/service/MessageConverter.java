@@ -1,17 +1,15 @@
 package io.github.easyagent.ui.service;
 
-import com.google.gson.JsonArray;
-import com.google.gson.JsonObject;
-import com.google.gson.JsonParser;
-import com.intellij.util.containers.ContainerUtil;
 import io.github.easyagent.ai.entity.AIResponse;
 import io.github.easyagent.ai.entity.MessageContent;
 import io.github.easyagent.ai.entity.ToolCallContent;
 import io.github.easyagent.enums.ResponseType;
 import io.github.easyagent.session.entity.ContentBlock;
 import io.github.easyagent.session.entity.SessionMessage;
+import io.github.easyagent.ui.service.entity.FileEditPayload;
 import io.github.easyagent.util.GsonUtils;
 import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
 
 import java.util.List;
 
@@ -47,6 +45,12 @@ public class MessageConverter {
 
     /** JSON 字段名：消息内容。 */
     private static final String FIELD_TEXT = "text";
+
+    /** JSON 字段名：工具输入字符串。 */
+    private static final String FIELD_INPUT = "input";
+
+    /** JSON 字段名：工具输出字符串。 */
+    private static final String FIELD_OUTPUT = "output";
 
     /** JSON 字段名：消息类型。 */
     private static final String FIELD_MESSAGE_TYPE = "messageType";
@@ -93,6 +97,9 @@ public class MessageConverter {
     /** JSON 字段名：工具调用状态。 */
     private static final String FIELD_STATUS = "status";
 
+    /** JSON 字段名：文件编辑元数据。 */
+    private static final String FIELD_FILE_EDIT = "fileEdit";
+
     /** JSON 字段名：步骤消息 ID。 */
     private static final String FIELD_MESSAGE_ID = "messageId";
 
@@ -120,17 +127,12 @@ public class MessageConverter {
      * @param messages  消息列表
      * @return 包含 sessionId 和 messages 数组的 JSON 字符串
      */
-    public static String toHistoryJson(@NotNull String sessionId, @NotNull List<SessionMessage> messages) {
-        JsonObject root = new JsonObject();
-        root.addProperty(FIELD_SESSION_ID, sessionId);
-
-        JsonArray msgArray = new JsonArray();
-        for (SessionMessage msg : messages) {
-            msgArray.add(convertSessionMessage(msg));
-        }
-        root.add(FIELD_MESSAGES, msgArray);
-
-        return GsonUtils.toJson(root);
+    public static String toHistoryJson(@NotNull String sessionId, @NotNull List<SessionMessage> messages,
+                                       @Nullable String projectPath) {
+        List<SessionMessagePayload> payloads = messages.stream()
+                .map(msg -> convertSessionMessage(sessionId, projectPath, msg))
+                .toList();
+        return GsonUtils.toJson(new HistoryPayload(sessionId, payloads));
     }
 
     /**
@@ -139,19 +141,17 @@ public class MessageConverter {
      * @param response AI 响应对象
      * @return 包含 type 和对应数据的 JSON 字符串
      */
-    public static String toStreamEventJson(@NotNull AIResponse response) {
-        JsonObject event = new JsonObject();
-        event.addProperty(FIELD_SESSION_ID, response.sessionId());
-
-        switch (response.type()) {
-            case MESSAGE -> convertMessageEvent(response, event);
-            case TOOL_USE -> convertToolUseEvent(response, event);
-            case STEP_START -> convertStepStartEvent(response, event);
-            case STEP_FINISH -> convertStepFinishEvent(response, event);
-            case COMPACT -> convertCompactEvent(response, event);
-            case ERROR -> convertErrorEvent(response, event);
-            case RETRY_STATUS -> convertRetryStatusEvent(response, event);
-        }
+    public static String toStreamEventJson(@NotNull AIResponse response, @NotNull String sessionId,
+                                           @Nullable String projectPath) {
+        Object event = switch (response.type()) {
+            case MESSAGE -> convertMessageEvent(sessionId, response);
+            case TOOL_USE -> convertToolUseEvent(sessionId, projectPath, response);
+            case STEP_START -> convertStepStartEvent(sessionId, response);
+            case STEP_FINISH -> convertStepFinishEvent(sessionId, response);
+            case COMPACT -> convertCompactEvent(sessionId, response);
+            case ERROR -> convertErrorEvent(sessionId, response);
+            case RETRY_STATUS -> convertRetryStatusEvent(sessionId, response);
+        };
         return GsonUtils.toJson(event);
     }
 
@@ -163,13 +163,7 @@ public class MessageConverter {
      * @return 包含 type=ERROR、message 和 sessionId 的 JSON 字符串
      */
     public static String toErrorJson(@NotNull String message, String sessionId) {
-        JsonObject event = new JsonObject();
-        event.addProperty(FIELD_TYPE, ResponseType.ERROR.name());
-        event.addProperty(FIELD_MESSAGE, message);
-        if (sessionId != null) {
-            event.addProperty(FIELD_SESSION_ID, sessionId);
-        }
-        return GsonUtils.toJson(event);
+        return GsonUtils.toJson(new ErrorEventPayload(sessionId, ResponseType.ERROR.name(), message));
     }
 
     /**
@@ -178,11 +172,9 @@ public class MessageConverter {
      * @param response AI 响应对象
      * @param event    目标 JSON 对象
      */
-    private static void convertMessageEvent(AIResponse response, JsonObject event) {
+    private static MessageEventPayload convertMessageEvent(String sessionId, AIResponse response) {
         MessageContent msg = response.message();
-        event.addProperty(FIELD_TYPE, ResponseType.MESSAGE.name());
-        event.addProperty(FIELD_MESSAGE_TYPE, msg.messageType().name());
-        event.addProperty(FIELD_TEXT, msg.text());
+        return new MessageEventPayload(sessionId, ResponseType.MESSAGE.name(), msg.messageType().name(), msg.text());
     }
 
     /**
@@ -191,14 +183,12 @@ public class MessageConverter {
      * @param response AI 响应对象
      * @param event    目标 JSON 对象
      */
-    private static void convertToolUseEvent(AIResponse response, JsonObject event) {
+    private static ToolUseEventPayload convertToolUseEvent(String sessionId, String projectPath,
+                                                           AIResponse response) {
         ToolCallContent tool = response.toolCall();
-        event.addProperty(FIELD_TYPE, ResponseType.TOOL_USE.name());
-        event.addProperty(FIELD_TOOL_NAME, tool.toolName());
-        event.addProperty(FIELD_TITLE, tool.title());
-        event.addProperty(FIELD_STATUS, tool.status().name());
-        event.addProperty(FIELD_TEXT, tool.input());
-        event.addProperty(FIELD_TOOL_OUTPUT, tool.output());
+        return new ToolUseEventPayload(sessionId, ResponseType.TOOL_USE.name(), tool.toolName(), tool.title(),
+                tool.status().name(), tool.toolCallId(), tool.input(), tool.output(),
+                addFileEdit(sessionId, projectPath, tool));
     }
 
     /**
@@ -207,9 +197,8 @@ public class MessageConverter {
      * @param response AI 响应对象
      * @param event    目标 JSON 对象
      */
-    private static void convertStepStartEvent(AIResponse response, JsonObject event) {
-        event.addProperty(FIELD_TYPE, ResponseType.STEP_START.name());
-        event.addProperty(FIELD_MESSAGE_ID, response.stepStart().messageId());
+    private static StepStartEventPayload convertStepStartEvent(String sessionId, AIResponse response) {
+        return new StepStartEventPayload(sessionId, ResponseType.STEP_START.name(), response.stepStart().messageId());
     }
 
     /**
@@ -218,13 +207,9 @@ public class MessageConverter {
      * @param response AI 响应对象
      * @param event    目标 JSON 对象
      */
-    private static void convertStepFinishEvent(AIResponse response, JsonObject event) {
-        event.addProperty(FIELD_TYPE, ResponseType.STEP_FINISH.name());
-        event.addProperty(FIELD_REASON, response.stepFinish().reason());
-        if (response.stepFinish().tokenUsage() != null) {
-            event.add(FIELD_TOKEN_USAGE, JsonParser.parseString(
-                    GsonUtils.toJson(response.stepFinish().tokenUsage())));
-        }
+    private static StepFinishEventPayload convertStepFinishEvent(String sessionId, AIResponse response) {
+        return new StepFinishEventPayload(sessionId, ResponseType.STEP_FINISH.name(), response.stepFinish().reason(),
+                response.stepFinish().tokenUsage());
     }
 
     /**
@@ -233,9 +218,8 @@ public class MessageConverter {
      * @param response AI 响应对象
      * @param event    目标 JSON 对象
      */
-    private static void convertCompactEvent(AIResponse response, JsonObject event) {
-        event.addProperty(FIELD_TYPE, ResponseType.COMPACT.name());
-        event.addProperty(FIELD_REASON, response.compact().reason());
+    private static CompactEventPayload convertCompactEvent(String sessionId, AIResponse response) {
+        return new CompactEventPayload(sessionId, ResponseType.COMPACT.name(), response.compact().reason());
     }
 
     /**
@@ -244,9 +228,8 @@ public class MessageConverter {
      * @param response AI 响应对象
      * @param event    目标 JSON 对象
      */
-    private static void convertErrorEvent(AIResponse response, JsonObject event) {
-        event.addProperty(FIELD_TYPE, ResponseType.ERROR.name());
-        event.addProperty(FIELD_MESSAGE, response.error().message());
+    private static ErrorEventPayload convertErrorEvent(String sessionId, AIResponse response) {
+        return new ErrorEventPayload(sessionId, ResponseType.ERROR.name(), response.error().message());
     }
 
     /**
@@ -255,11 +238,10 @@ public class MessageConverter {
      * @param response AI 响应对象
      * @param event    目标 JSON 对象
      */
-    private static void convertRetryStatusEvent(AIResponse response, JsonObject event) {
-        event.addProperty(FIELD_TYPE, ResponseType.RETRY_STATUS.name());
-        event.addProperty(FIELD_CURRENT_ATTEMPT, response.retryStatus().currentAttempt());
-        event.addProperty(FIELD_MAX_ATTEMPTS, response.retryStatus().maxAttempts());
-        event.addProperty(FIELD_REASON, response.retryStatus().reason());
+    private static RetryStatusEventPayload convertRetryStatusEvent(String sessionId, AIResponse response) {
+        return new RetryStatusEventPayload(sessionId, ResponseType.RETRY_STATUS.name(),
+                response.retryStatus().currentAttempt(), response.retryStatus().maxAttempts(),
+                response.retryStatus().reason());
     }
 
     /**
@@ -268,28 +250,14 @@ public class MessageConverter {
      * @param msg 会话消息
      * @return JSON 对象
      */
-    private static JsonObject convertSessionMessage(SessionMessage msg) {
-        JsonObject obj = new JsonObject();
-        obj.addProperty(FIELD_UUID, msg.uuid());
-        obj.addProperty(FIELD_ROLE, msg.role().name());
-        obj.addProperty(FIELD_MODEL, msg.model());
-        if (msg.timestamp() != null) {
-            obj.addProperty(FIELD_TIMESTAMP, msg.timestamp());
-        }
-
-        if (!ContainerUtil.isEmpty(msg.contents())) {
-            JsonArray contents = new JsonArray();
-            for (ContentBlock block : msg.contents()) {
-                contents.add(convertContentBlock(block));
-            }
-            obj.add(FIELD_CONTENTS, contents);
-        }
-
-        if (msg.tokenUsage() != null) {
-            obj.add(FIELD_TOKEN_USAGE, JsonParser.parseString(GsonUtils.toJson(msg.tokenUsage())));
-        }
-
-        return obj;
+    private static SessionMessagePayload convertSessionMessage(String sessionId, String projectPath, SessionMessage msg) {
+        List<ContentBlockPayload> contents = msg.contents() == null || msg.contents().isEmpty()
+                ? List.of()
+                : msg.contents().stream()
+                .map(block -> convertContentBlock(sessionId, projectPath, block))
+                .toList();
+        return new SessionMessagePayload(msg.uuid(), msg.role().name(), msg.model(), msg.timestamp(), contents,
+                msg.tokenUsage());
     }
 
     /**
@@ -298,34 +266,161 @@ public class MessageConverter {
      * @param block 内容块
      * @return JSON 对象
      */
-    private static JsonObject convertContentBlock(ContentBlock block) {
-        JsonObject obj = new JsonObject();
-        obj.addProperty(FIELD_TYPE, block.type().name());
+    private static ContentBlockPayload convertContentBlock(String sessionId, String projectPath, ContentBlock block) {
+        String title = block.toolName() != null && block.text() != null ? block.text() : null;
+        return new ContentBlockPayload(block.type().name(), block.text(), block.thinking(), block.toolName(),
+                block.toolUseId(), title, block.toolInput(), block.toolOutput(), block.isError(),
+                block.durationMs(), addFileEdit(sessionId, projectPath, block));
+    }
 
-        if (block.text() != null) {
-            obj.addProperty(FIELD_TEXT, block.text());
-        }
-        if (block.thinking() != null) {
-            obj.addProperty(FIELD_THINKING, block.thinking());
-        }
-        if (block.toolName() != null) {
-            obj.addProperty(FIELD_TOOL_NAME, block.toolName());
-        }
-        if (block.toolUseId() != null) {
-            obj.addProperty(FIELD_TOOL_USE_ID, block.toolUseId());
-        }
-        if (block.toolInput() != null) {
-            obj.add(FIELD_TOOL_INPUT, JsonParser.parseString(GsonUtils.toJson(block.toolInput())));
-        }
-        if (block.toolOutput() != null) {
-            obj.addProperty(FIELD_TOOL_OUTPUT, block.toolOutput());
-        }
-        if (block.isError() != null) {
-            obj.addProperty(FIELD_IS_ERROR, block.isError());
-        }
-        if (block.durationMs() != null) {
-            obj.addProperty(FIELD_DURATION_MS, block.durationMs());
-        }
-        return obj;
+    /**
+     * 为流式工具调用事件补充文件编辑元数据。
+     *
+     * @param sessionId   会话 ID
+     * @param projectPath 项目路径
+     * @param toolCall    工具调用内容
+     * @return 文件编辑元数据
+     */
+    private static FileEditPayload addFileEdit(String sessionId, String projectPath,
+                                               ToolCallContent toolCall) {
+        return ToolMetadataSupport.resolveFileEdit(sessionId, projectPath, toolCall);
+    }
+
+    /**
+     * 为历史工具调用内容块补充文件编辑元数据。
+     *
+     * @param sessionId   会话 ID
+     * @param projectPath 项目路径
+     * @param block       内容块
+     * @return 文件编辑元数据
+     */
+    private static FileEditPayload addFileEdit(String sessionId, String projectPath,
+                                               ContentBlock block) {
+        return ToolMetadataSupport.resolveFileEdit(sessionId, projectPath, block);
+    }
+
+    /**
+     * 历史消息载荷。
+     *
+     * @param sessionId 会话 ID
+     * @param messages  消息列表
+     */
+    private record HistoryPayload(String sessionId, List<SessionMessagePayload> messages) {
+    }
+
+    /**
+     * 历史消息载荷中的消息实体。
+     *
+     * @param uuid       消息 UUID
+     * @param role       消息角色
+     * @param model      模型名称
+     * @param timestamp  时间戳
+     * @param contents   内容块列表
+     * @param tokenUsage 令牌使用统计
+     */
+    private record SessionMessagePayload(String uuid, String role, String model, Long timestamp,
+                                         List<ContentBlockPayload> contents, Object tokenUsage) {
+    }
+
+    /**
+     * 历史消息内容块载荷。
+     *
+     * @param type       内容块类型
+     * @param text       文本内容
+     * @param thinking   思考内容
+     * @param toolName   工具名称
+     * @param toolUseId  工具调用 ID
+     * @param title      展示标题
+     * @param toolInput  工具输入
+     * @param toolOutput 工具输出
+     * @param isError    是否出错
+     * @param durationMs 执行耗时
+     * @param fileEdit   文件编辑元数据
+     */
+    private record ContentBlockPayload(String type, String text, String thinking, String toolName,
+                                       String toolUseId, String title, String toolInput, String toolOutput,
+                                       Boolean isError, Long durationMs, FileEditPayload fileEdit) {
+    }
+
+    /**
+     * 流式消息事件载荷。
+     *
+     * @param sessionId 会话 ID
+     * @param type      事件类型
+     * @param messageType 消息类型
+     * @param text      文本内容
+     */
+    private record MessageEventPayload(String sessionId, String type, String messageType, String text) {
+    }
+
+    /**
+     * 流式工具调用事件载荷。
+     *
+     * @param sessionId 会话 ID
+     * @param type      事件类型
+     * @param toolName  工具名称
+     * @param title     展示标题
+     * @param status    工具状态
+     * @param toolUseId 工具调用 ID
+     * @param input     工具输入
+     * @param output    工具输出
+     * @param fileEdit  文件编辑元数据
+     */
+    private record ToolUseEventPayload(String sessionId, String type, String toolName, String title, String status,
+                                       String toolUseId, String input, String output, FileEditPayload fileEdit) {
+    }
+
+    /**
+     * 步骤开始事件载荷。
+     *
+     * @param sessionId  会话 ID
+     * @param type       事件类型
+     * @param messageId  步骤消息 ID
+     */
+    private record StepStartEventPayload(String sessionId, String type, String messageId) {
+    }
+
+    /**
+     * 步骤结束事件载荷。
+     *
+     * @param sessionId  会话 ID
+     * @param type       事件类型
+     * @param reason     结束原因
+     * @param tokenUsage 令牌统计
+     */
+    private record StepFinishEventPayload(String sessionId, String type, String reason, Object tokenUsage) {
+    }
+
+    /**
+     * 压缩事件载荷。
+     *
+     * @param sessionId 会话 ID
+     * @param type      事件类型
+     * @param reason    压缩原因
+     */
+    private record CompactEventPayload(String sessionId, String type, String reason) {
+    }
+
+    /**
+     * 错误事件载荷。
+     *
+     * @param sessionId 会话 ID
+     * @param type      事件类型
+     * @param message   错误消息
+     */
+    private record ErrorEventPayload(String sessionId, String type, String message) {
+    }
+
+    /**
+     * 重试状态事件载荷。
+     *
+     * @param sessionId      会话 ID
+     * @param type           事件类型
+     * @param currentAttempt 当前重试次数
+     * @param maxAttempts    最大重试次数
+     * @param reason         重试原因
+     */
+    private record RetryStatusEventPayload(String sessionId, String type, int currentAttempt, int maxAttempts,
+                                           String reason) {
     }
 }

@@ -24,8 +24,6 @@ import java.util.List;
  * </p>
  *
  * @author haijun
- * @version 1.0.0
- * @email "mailto:haijun@email.com"
  * @date 2026/4/30
  * @since 1.0.0
  */

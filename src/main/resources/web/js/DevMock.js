@@ -240,6 +240,21 @@ window.EABridgeMock = {
                         if (window.__ea_onSessionCreated) window.__ea_onSessionCreated({ cliType: data.cliType || 'CLAUDE' });
                     }, 50);
                     break;
+                case 'deleteSessions':
+                    setTimeout(() => {
+                        const deletedIds = (data.sessionIds || '').split(',').filter(Boolean);
+                        EAMockData.sessions = EAMockData.sessions.filter((item) => deletedIds.indexOf(item.sessionId) < 0);
+                        if (window.__ea_onSessionList) {
+                            window.__ea_onSessionList({ sessions: EAMockData.sessions });
+                        }
+                        if (window.__ea_onSessionsDeleted) {
+                            window.__ea_onSessionsDeleted({
+                                deletedCount: deletedIds.length,
+                                sessionIds: deletedIds
+                            });
+                        }
+                    }, 80);
+                    break;
             }
         };
 

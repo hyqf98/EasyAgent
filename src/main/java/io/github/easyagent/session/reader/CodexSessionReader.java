@@ -2,7 +2,6 @@ package io.github.easyagent.session.reader;
 
 import com.google.gson.reflect.TypeToken;
 import io.github.easyagent.enums.CLIType;
-import org.sqlite.JDBC;
 import io.github.easyagent.enums.ContentBlockType;
 import io.github.easyagent.enums.SessionRole;
 import io.github.easyagent.session.entity.ContentBlock;
@@ -31,6 +30,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Properties;
 import java.util.stream.Collectors;
+import org.sqlite.JDBC;
 
 /**
  * Codex CLI 会话读取器。
@@ -192,34 +192,138 @@ public class CodexSessionReader implements SessionReader {
      *
      * @param payload   事件 payload 数据
      * @param sessionId 会话 ID
-     * @return SessionMessage，role 为空时返回 null
+     * @return SessionMessage，不支持的 payload 类型返回 {@code null}
      */
     @SuppressWarnings("unchecked")
     private SessionMessage parseResponseItem(Map<String, Object> payload, String sessionId) {
-        String role = (String) payload.get("role");
+        String type = stringValue(payload.get("type"));
+        return switch (type) {
+            case "message" -> parseMessagePayload(payload, sessionId);
+            case "reasoning" -> parseReasoningPayload(payload, sessionId);
+            case "function_call" -> parseFunctionCallPayload(payload, sessionId);
+            case "function_call_output" -> parseFunctionCallOutputPayload(payload, sessionId);
+            default -> null;
+        };
+    }
+
+    /**
+     * 解析 Codex message payload。
+     *
+     * @param payload  原始 payload 数据
+     * @param sessionId 会话 ID
+     * @return SessionMessage，缺少角色时返回 {@code null}
+     */
+    @SuppressWarnings("unchecked")
+    private SessionMessage parseMessagePayload(Map<String, Object> payload, String sessionId) {
+        String role = stringValue(payload.get("role"));
         if (role == null) {
             return null;
         }
 
+        List<ContentBlock> contents = parseContentBlocks(payload.get("content"));
+        SessionRole sessionRole = SessionRole.fromValue(role);
+        return SessionMessage.builder()
+                .sessionId(sessionId)
+                .role(sessionRole != null ? sessionRole : SessionRole.ASSISTANT)
+                .contents(contents)
+                .build();
+    }
+
+    /**
+     * 解析 Codex reasoning payload。
+     *
+     * @param payload  原始 payload 数据
+     * @param sessionId 会话 ID
+     * @return 仅包含思考块的助手消息
+     */
+    private SessionMessage parseReasoningPayload(Map<String, Object> payload, String sessionId) {
+        String thinking = extractSummaryText(payload.get("summary"), stringValue(payload.get("content")));
         List<ContentBlock> contents = new ArrayList<>();
-        Object contentObj = payload.get("content");
+        contents.add(ContentBlock.builder()
+                .type(ContentBlockType.THINKING)
+                .thinking(thinking)
+                .text(thinking)
+                .build());
+        return SessionMessage.builder()
+                .sessionId(sessionId)
+                .role(SessionRole.ASSISTANT)
+                .contents(contents)
+                .build();
+    }
+
+    /**
+     * 解析 Codex function_call payload。
+     *
+     * @param payload  原始 payload 数据
+     * @param sessionId 会话 ID
+     * @return 仅包含工具调用块的助手消息
+     */
+    private SessionMessage parseFunctionCallPayload(Map<String, Object> payload, String sessionId) {
+        List<ContentBlock> contents = new ArrayList<>();
+        contents.add(ContentBlock.builder()
+                .type(ContentBlockType.TOOL_USE)
+                .toolUseId(stringValue(payload.get("call_id")))
+                .toolName(stringValue(payload.get("name")))
+                .toolInput(stringifyValue(payload.get("arguments")))
+                .build());
+        return SessionMessage.builder()
+                .sessionId(sessionId)
+                .role(SessionRole.ASSISTANT)
+                .contents(contents)
+                .build();
+    }
+
+    /**
+     * 解析 Codex function_call_output payload。
+     *
+     * @param payload  原始 payload 数据
+     * @param sessionId 会话 ID
+     * @return 仅包含工具结果块的助手消息
+     */
+    private SessionMessage parseFunctionCallOutputPayload(Map<String, Object> payload, String sessionId) {
+        List<ContentBlock> contents = new ArrayList<>();
+        contents.add(ContentBlock.builder()
+                .type(ContentBlockType.TOOL_RESULT)
+                .toolUseId(stringValue(payload.get("call_id")))
+                .toolOutput(stringifyValue(payload.get("output")))
+                .build());
+        return SessionMessage.builder()
+                .sessionId(sessionId)
+                .role(SessionRole.ASSISTANT)
+                .contents(contents)
+                .build();
+    }
+
+    /**
+     * 解析 Codex 内容块列表。
+     *
+     * @param contentObj 原始内容
+     * @return 统一内容块列表
+     */
+    @SuppressWarnings("unchecked")
+    private List<ContentBlock> parseContentBlocks(Object contentObj) {
+        List<ContentBlock> contents = new ArrayList<>();
         if (contentObj instanceof List<?> contentList) {
             for (Object item : contentList) {
                 if (item instanceof Map<?, ?> map) {
-                    Map<String, Object> block = (Map<String, Object>) map;
-                    ContentBlock cb = parseCodexContentBlock(block);
+                    ContentBlock cb = parseCodexContentBlock((Map<String, Object>) map);
                     if (cb != null) {
                         contents.add(cb);
                     }
+                } else if (item instanceof String text && !text.isBlank()) {
+                    contents.add(ContentBlock.builder()
+                            .type(ContentBlockType.TEXT)
+                            .text(text)
+                            .build());
                 }
             }
+        } else if (contentObj instanceof String text && !text.isBlank()) {
+            contents.add(ContentBlock.builder()
+                    .type(ContentBlockType.TEXT)
+                    .text(text)
+                    .build());
         }
-
-        return SessionMessage.builder()
-                .sessionId(sessionId)
-                .role(SessionRole.fromValue(role))
-                .contents(contents)
-                .build();
+        return contents;
     }
 
     /**
@@ -230,57 +334,43 @@ public class CodexSessionReader implements SessionReader {
      */
     @SuppressWarnings("unchecked")
     private ContentBlock parseCodexContentBlock(Map<String, Object> block) {
-        String type = (String) block.get("type");
+        String type = stringValue(block.get("type"));
         if (type == null) {
             return null;
         }
 
         return switch (type) {
-            case "input_text", "output_text" -> ContentBlock.builder()
+            case "input_text", "output_text", "text" -> ContentBlock.builder()
                     .type(ContentBlockType.TEXT)
-                    .text((String) block.get("text"))
+                    .text(stringValue(block.get("text")))
                     .build();
-            case "tool_call" -> {
-                Map<String, Object> function = (Map<String, Object>) block.get("function");
-                if (function != null) {
-                    yield ContentBlock.builder()
-                            .type(ContentBlockType.TOOL_USE)
-                            .toolName((String) function.get("name"))
-                            .toolInput(parseJsonToMap((String) function.get("arguments")))
-                            .build();
-                }
-                yield null;
-            }
-            case "tool_result" -> ContentBlock.builder()
-                    .type(ContentBlockType.TOOL_RESULT)
-                    .toolOutput(block.get("result") instanceof String s ? s : String.valueOf(block.get("result")))
-                    .build();
-            case "reasoning" -> ContentBlock.builder()
+            case "thinking", "reasoning" -> ContentBlock.builder()
                     .type(ContentBlockType.THINKING)
-                    .thinking((String) block.get("summary"))
+                    .thinking(extractSummaryText(block.get("summary"), stringValue(block.get("text"))))
+                    .text(extractSummaryText(block.get("summary"), stringValue(block.get("text"))))
+                    .build();
+            case "tool_call", "function_call" -> {
+                Map<String, Object> function = (Map<String, Object>) block.get("function");
+                String toolName = function != null ? stringValue(function.get("name")) : stringValue(block.get("name"));
+                Object arguments = function != null ? function.get("arguments") : block.get("arguments");
+                yield ContentBlock.builder()
+                        .type(ContentBlockType.TOOL_USE)
+                        .toolUseId(stringValue(block.get("id")) != null ? stringValue(block.get("id")) : stringValue(block.get("call_id")))
+                        .toolName(toolName)
+                        .toolInput(stringifyValue(arguments))
+                        .build();
+            }
+            case "tool_result", "function_call_output" -> ContentBlock.builder()
+                    .type(ContentBlockType.TOOL_RESULT)
+                    .toolUseId(stringValue(block.get("tool_call_id")) != null ? stringValue(block.get("tool_call_id")) : stringValue(block.get("call_id")))
+                    .toolOutput(stringifyValue(block.get("result") != null ? block.get("result") : block.get("output")))
+                    .isError(block.get("is_error") instanceof Boolean b && b)
                     .build();
             default -> ContentBlock.builder()
                     .type(ContentBlockType.TEXT)
                     .text(GsonUtils.toJson(block))
                     .build();
         };
-    }
-
-    /**
-     * 将 JSON 字符串解析为 Map。
-     *
-     * @param json JSON 字符串
-     * @return 解析后的 Map，解析失败或输入为空时返回 null
-     */
-    private Map<String, Object> parseJsonToMap(String json) {
-        if (json == null || json.isBlank()) {
-            return null;
-        }
-        try {
-            return GsonUtils.fromJson(json, MAP_TYPE);
-        } catch (Exception e) {
-            return null;
-        }
     }
 
     /**
@@ -307,6 +397,74 @@ public class CodexSessionReader implements SessionReader {
             }
         }
         return null;
+    }
+
+    /**
+     * 提取 reasoning 的可展示文本。
+     *
+     * @param summaryObj reasoning summary 原始数据
+     * @param fallback   备用文本
+     * @return 可展示文本
+     */
+    @SuppressWarnings("unchecked")
+    private String extractSummaryText(Object summaryObj, String fallback) {
+        if (summaryObj instanceof List<?> list && !list.isEmpty()) {
+            StringBuilder builder = new StringBuilder();
+            for (Object item : list) {
+                if (item instanceof Map<?, ?> map) {
+                    Map<String, Object> summary = (Map<String, Object>) map;
+                    String text = stringValue(summary.get("text"));
+                    if (text == null) {
+                        text = stringValue(summary.get("summary"));
+                    }
+                    if (text != null && !text.isBlank()) {
+                        if (builder.length() > 0) {
+                            builder.append('\n');
+                        }
+                        builder.append(text.trim());
+                    }
+                } else if (item instanceof String text && !text.isBlank()) {
+                    if (builder.length() > 0) {
+                        builder.append('\n');
+                    }
+                    builder.append(text.trim());
+                }
+            }
+            if (builder.length() > 0) {
+                return builder.toString();
+            }
+        }
+        if (fallback != null && !fallback.isBlank()) {
+            return fallback;
+        }
+        return "Thinking...";
+    }
+
+    /**
+     * 将对象安全转换为字符串。
+     *
+     * @param value 待转换对象
+     * @return 字符串值
+     */
+    private String stringifyValue(Object value) {
+        if (value == null) {
+            return null;
+        }
+        if (value instanceof String s) {
+            return s;
+        }
+        return GsonUtils.toJson(value);
+    }
+
+    /**
+     * 将对象安全转换为字符串并去空。
+     *
+     * @param value 待转换对象
+     * @return 字符串值，空值时返回 null
+     */
+    private String stringValue(Object value) {
+        String text = stringifyValue(value);
+        return text == null || text.isBlank() ? null : text;
     }
 
     /**

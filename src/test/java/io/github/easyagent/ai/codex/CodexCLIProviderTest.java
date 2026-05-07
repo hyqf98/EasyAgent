@@ -46,12 +46,7 @@ class CodexCLIProviderTest {
         };
 
         System.out.println("\n========== Sending: " + prompt + " ==========\n");
-        CodexCLIProvider provider = new CodexCLIProvider() {
-            @Override
-            protected boolean useDirectProcess() {
-                return true;
-            }
-        };
+        CodexCLIProvider provider = new CodexCLIProvider();
         provider.chat(prompt, listener);
 
         latch.await(120, TimeUnit.SECONDS);

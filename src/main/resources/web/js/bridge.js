@@ -35,9 +35,9 @@ window.EABridge = {
             }
         };
 
-        window.__ea_onStreamComplete = () => {
+        window.__ea_onStreamComplete = (data) => {
             if (window.EAStore) {
-                EAStore.setStreaming(false);
+                EAStore.setStreaming(false, data && data.sessionId ? data.sessionId : null);
             }
         };
 
@@ -65,7 +65,7 @@ window.EABridge = {
 
         window.__ea_onStateRestored = (data) => {
             if (window.EAStore) {
-                EAStore.restoreAllPendingQueues(data.pendingQueues || {});
+                EAStore.restoreAllPendingQueues(data.pendingQueues || []);
                 if (data.retryMaxCount !== undefined) {
                     EAStore.retryMaxCount = data.retryMaxCount;
                     EAStore.retryTimeoutMs = data.retryTimeoutMs || 0;
@@ -82,10 +82,12 @@ window.EABridge = {
         };
 
         window.__ea_onModels = (data) => {
-            if (window.EAStore && Array.isArray(data)) {
+            if (window.EAStore) {
+                var models = Array.isArray(data) ? data : (data.models || []);
+                var defaults = (data && data.defaultModels) ? data.defaultModels : null;
                 var map = {};
                 var cliMap = {};
-                data.forEach(function (m) {
+                models.forEach(function (m) {
                     if (m.modelId && m.contextWindow) {
                         map[m.modelId] = m.contextWindow;
                     }
@@ -95,13 +97,54 @@ window.EABridge = {
                     }
                 });
                 EAStore.modelContextMap = map;
-                EAStore.modelsList = data;
+                EAStore.modelsList = models;
+                if (defaults) {
+                    EAStore.defaultModels = defaults;
+                }
             }
-            window.dispatchEvent(new CustomEvent('ea-models-loaded', { detail: data }));
+            window.dispatchEvent(new CustomEvent('ea-models-loaded', { detail: Array.isArray(data) ? data : (data.models || []) }));
         };
 
         window.__ea_onCliModels = (data) => {
+            if (window.EAStore) {
+                var cliModels = Array.isArray(data) ? data : (data && data.models ? data.models : []);
+                var merged = (EAStore.modelsList || []).slice();
+                var existingIds = {};
+                merged.forEach(function (m) {
+                    if (m && m.modelId) {
+                        existingIds[m.modelId] = true;
+                    }
+                });
+                cliModels.forEach(function (model) {
+                    if (model && model.modelId && !existingIds[model.modelId]) {
+                        merged.push(model);
+                        existingIds[model.modelId] = true;
+                    }
+                    if (model && model.modelId && model.contextWindow) {
+                        EAStore.modelContextMap[model.modelId] = model.contextWindow;
+                    }
+                });
+                EAStore.modelsList = merged;
+            }
             window.dispatchEvent(new CustomEvent('ea-cli-models-loaded', { detail: data }));
+        };
+
+        window.__ea_onInsertReferences = (data) => {
+            window.dispatchEvent(new CustomEvent('ea-insert-file-references', {
+                detail: { references: data || [] }
+            }));
+        };
+
+        window.__ea_onFileReferenceCandidates = (data) => {
+            window.dispatchEvent(new CustomEvent('ea-file-reference-candidates', {
+                detail: data || {}
+            }));
+        };
+
+        window.__ea_onSessionsDeleted = (data) => {
+            window.dispatchEvent(new CustomEvent('ea-sessions-deleted', {
+                detail: data || {}
+            }));
         };
 
         if (window.cefQuery) {
@@ -170,10 +213,11 @@ window.EABridge = {
      * @param {string} text - 用户输入的文本内容
      * @param {string} [modelId] - 可选的模型 ID
      */
-    sendMessage(text, modelId) {
+    sendMessage(text, modelId, fileReferences) {
         var sid = window.EAStore ? EAStore.sessionId : null;
         var data = { text: text, cliType: window.EAStore ? EAStore.cliType : 'CLAUDE', sessionId: sid };
         if (modelId) data.modelId = modelId;
+        if (fileReferences && fileReferences.length > 0) data.fileReferences = fileReferences;
         this.send('sendMessage', data);
     },
 
@@ -258,5 +302,60 @@ window.EABridge = {
       */
      queryCliModels(cliType) {
          this.send('queryCliModels', { cliType: cliType });
+     },
+
+     /**
+      * 搜索项目内文件引用候选。
+      *
+      * @param {string} query - 模糊搜索关键字
+      * @param {number} limit - 最大返回数量
+      * @param {string} requestId - 当前请求 ID
+      */
+     searchFileReferences(query, limit, requestId) {
+         this.send('searchFileReferences', {
+             query: query || '',
+             limit: limit || 12,
+             requestId: requestId || ''
+         });
+     },
+
+     /**
+      * 根据路径解析一个完整的文件引用。
+      *
+      * @param {string} path - 文件绝对路径
+      */
+     resolveFileReference(path) {
+         this.send('resolveFileReference', { path: path });
+     },
+
+     /**
+      * 保存剪贴板图片到项目临时目录，并作为引用回填到输入框。
+      *
+      * @param {string} dataUrl - 图片 data URL
+      * @param {string} fileName - 建议文件名
+      */
+     saveClipboardImage(dataUrl, fileName) {
+         this.send('saveClipboardImage', {
+             dataUrl: dataUrl,
+             fileName: fileName
+         });
+     },
+
+     /**
+      * 打开指定 AI 文件编辑的 diff。
+      *
+      * @param {string} editId - 编辑 ID
+      */
+     openFileEditDiff(editId) {
+         this.send('openFileEditDiff', { editId: editId });
+     },
+
+     /**
+      * 回撤指定 AI 文件编辑。
+      *
+      * @param {string} editId - 编辑 ID
+      */
+     revertFileEdit(editId) {
+         this.send('revertFileEdit', { editId: editId });
      }
  };

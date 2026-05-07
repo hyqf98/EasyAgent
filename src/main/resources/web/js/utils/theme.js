@@ -12,10 +12,14 @@ window.EATheme = {
     isDark: false,
 
     /**
-     * 初始化主题。默认浅色，等待 IDE 推送实际主题。
+     * 初始化主题。优先使用系统深浅色，等待 IDE 推送最终主题。
      */
     init() {
-        this.apply(false);
+        var prefersDark = false;
+        if (window.matchMedia) {
+            prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+        }
+        this.apply(prefersDark);
     },
 
     /**
@@ -26,6 +30,7 @@ window.EATheme = {
     apply(isDark) {
         this.isDark = isDark;
         document.documentElement.setAttribute('data-theme', isDark ? 'dark' : 'light');
+        document.documentElement.style.colorScheme = isDark ? 'dark' : 'light';
         if (window.EAStore) {
             window.EAStore.themeMode = isDark ? 'dark' : 'light';
         }

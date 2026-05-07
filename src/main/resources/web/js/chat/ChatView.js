@@ -34,9 +34,11 @@ window.EARegisterComponent('chat-view', 'ChatView', {
             showScrollBottom: false,
             pendingQueue: [],
             pendingIdCounter: 0,
-            editMode: false,
             selectedSessions: [],
-            previousSessionId: null
+            previousSessionId: null,
+            pendingDeleteRedirect: false,
+            toastMessage: '',
+            toastTimer: null
         };
     },
     computed: {
@@ -58,30 +60,31 @@ window.EARegisterComponent('chat-view', 'ChatView', {
         hasMoreSessions() {
             return this.sessions.length < this.allSessions.length;
         },
-        hasActiveAssistantContent() {
-            void this.store.messagesVersion;
-            var last = this.store.messages[this.store.messages.length - 1];
-            return last && last.role === EA_ROLE_ASSISTANT && last.contents.length > 0;
+        hasSelectedSessions() {
+            return this.selectedSessions.length > 0;
+        },
+        currentSessionId() {
+            return this.store.sessionId;
+        },
+        allSessionsSelected() {
+            return this.sessions.length > 0 && this.selectedSessions.length === this.sessions.length;
         },
         canRetry() {
             if (this.store.isStreaming) return false;
             void this.store.messagesVersion;
             var last = this.store.messages[this.store.messages.length - 1];
             if (!last) return false;
-            if (last.role === EA_ROLE_ERROR) return true;
-            if (last.role === EA_ROLE_ASSISTANT && last.contents.length === 0) return true;
-            return false;
+            return last.role === EA_ROLE_ASSISTANT && last.streamState === 'failed';
         },
-        lastUserMessage() {
+        lastUserTurn() {
             void this.store.messagesVersion;
             var messages = this.store.messages;
             for (var i = messages.length - 1; i >= 0; i--) {
                 if (messages[i].role === EA_ROLE_USER) {
-                    var contents = messages[i].contents;
-                    return contents.map(function (c) { return c.text || ''; }).join('');
+                    return messages[i];
                 }
             }
-            return '';
+            return null;
         },
         tokenUsageInfo() {
             void this.store.messagesVersion;
@@ -98,6 +101,13 @@ window.EARegisterComponent('chat-view', 'ChatView', {
                         window = map[key];
                         break;
                     }
+                }
+            }
+            if (window === EA_DEFAULT_CONTEXT_WINDOW) {
+                var dm = this.store.defaultModels || {};
+                var cliDefault = dm[this.store.cliType];
+                if (cliDefault && cliDefault.contextWindow > 0) {
+                    window = cliDefault.contextWindow;
                 }
             }
             var inputTokens = lastUsage.input || lastUsage.total || 0;
@@ -133,14 +143,42 @@ window.EARegisterComponent('chat-view', 'ChatView', {
             this.allSessions = detail.sessions || [];
             this.sessionPage = 1;
             this.sessions = this.allSessions.slice(0, this.sessionPageSize);
+            var sessionIdMap = {};
+            this.allSessions.forEach(function (s) {
+                sessionIdMap[s.sessionId] = true;
+            });
+            this.selectedSessions = this.selectedSessions.filter(function (sid) {
+                return !!sessionIdMap[sid];
+            });
+        }.bind(this);
+        this._onSessionsDeleted = function (e) {
+            var detail = e.detail || {};
+            if (detail.deletedCount > 0) {
+                var deletedCurrent = this.store.sessionId && detail.sessionIds && detail.sessionIds.indexOf(this.store.sessionId) >= 0;
+                if (deletedCurrent) {
+                    this.openFreshChatForCurrentCli();
+                }
+                this.showToast(this.buildDeletedToast(detail.deletedCount, deletedCurrent));
+            }
+            if (this.pendingDeleteRedirect) {
+                this.pendingDeleteRedirect = false;
+            }
         }.bind(this);
         window.addEventListener('ea-session-list', this._onSessionList);
+        window.addEventListener('ea-sessions-deleted', this._onSessionsDeleted);
     },
-    beforeUnmount() {
-        if (this._onSessionList) {
-            window.removeEventListener('ea-session-list', this._onSessionList);
-        }
-    },
+        beforeUnmount() {
+            if (this._onSessionList) {
+                window.removeEventListener('ea-session-list', this._onSessionList);
+            }
+            if (this._onSessionsDeleted) {
+                window.removeEventListener('ea-sessions-deleted', this._onSessionsDeleted);
+            }
+            if (this.toastTimer) {
+                clearTimeout(this.toastTimer);
+                this.toastTimer = null;
+            }
+        },
     watch: {
         'store.messagesVersion'() {
             this.$nextTick(this.scrollToBottom);
@@ -152,10 +190,7 @@ window.EARegisterComponent('chat-view', 'ChatView', {
         'store.cliType'(newType) {
             this.store.selectedModelId = '';
             if (newType === 'OPENCODE') {
-                var cliModels = this.store.modelsList.filter(function (m) { return m.cliType === 'OPENCODE'; });
-                if (cliModels.length === 0) {
-                    EABridge.queryCliModels('OPENCODE');
-                }
+                EABridge.queryCliModels('OPENCODE');
             }
         },
         'store.isStreaming'(newVal, oldVal) {
@@ -166,32 +201,41 @@ window.EARegisterComponent('chat-view', 'ChatView', {
         }
     },
     methods: {
-        onSend(text) {
+        onSend(payload) {
+            var text = payload && payload.text ? payload.text : '';
+            var fileReferences = payload && payload.fileReferences ? payload.fileReferences : [];
+            if (!this.store.sessionId) {
+                this.store.sessionId = 'new-' + Date.now();
+            }
             if (this.store.isStreaming) {
-                this.addToPendingQueue(text);
+                this.addToPendingQueue({ text: text, fileReferences: fileReferences });
                 return;
             }
-            this.store.addUserMessage(text);
+            this.store.addUserMessage(text, fileReferences);
+            this.store.beginAssistantTurn();
             this.store.setStreaming(true);
             this.$nextTick(this.scrollToBottom);
             var modelId = this.store.selectedModelId || null;
-            EABridge.sendMessage(text, modelId);
+            EABridge.sendMessage(text, modelId, fileReferences);
         },
         onStop() {
             EABridge.stopGeneration();
             this.store.setStreaming(false);
         },
         onRetry() {
-            var text = this.lastUserMessage;
-            if (!text) return;
+            var lastUserTurn = this.lastUserTurn;
+            if (!lastUserTurn) return;
+            var text = lastUserTurn.rawText || '';
+            var fileReferences = lastUserTurn.fileReferences || [];
             var last = this.store.messages[this.store.messages.length - 1];
-            if (last && (last.role === EA_ROLE_ERROR || last.role === EA_ROLE_ASSISTANT)) {
+            if (last && last.role === EA_ROLE_ASSISTANT) {
                 this.store.messages.pop();
             }
             this.store.messagesVersion++;
+            this.store.beginAssistantTurn();
             this.store.setStreaming(true);
             var modelId = this.store.selectedModelId || null;
-            EABridge.sendMessage(text, modelId);
+            EABridge.sendMessage(text, modelId, fileReferences);
         },
         onSelectCLI(type) {
             this._saveCurrentPending();
@@ -214,12 +258,49 @@ window.EARegisterComponent('chat-view', 'ChatView', {
             this.store.sessionTitle = '';
             this.store.model = '';
             this.pendingQueue = [];
+            this.pendingDeleteRedirect = false;
             this.store.messagesVersion++;
+        },
+        openFreshChatForCurrentCli() {
+            this._saveCurrentPending();
+            this.store._saveCurrentToCache();
+            this.store.messages = [];
+            this.store.sessionTitle = '';
+            this.store.model = '';
+            this.pendingQueue = [];
+            this.store.sessionId = 'new-' + Date.now();
+            this.pendingDeleteRedirect = false;
+            this.store.messagesVersion++;
+        },
+        buildDeletedToast(deletedCount, deletedCurrent) {
+            var cliLabel = this.store.cliType || 'CLI';
+            if (deletedCurrent) {
+                return this.i18n.t('session.deletedAndReset', { n: deletedCount, cli: cliLabel });
+            }
+            return this.i18n.t('session.deleted', { n: deletedCount });
+        },
+        showToast(message) {
+            if (!message) return;
+            this.toastMessage = message;
+            if (this.toastTimer) {
+                clearTimeout(this.toastTimer);
+            }
+            this.toastTimer = setTimeout(function () {
+                this.toastMessage = '';
+                this.toastTimer = null;
+            }.bind(this), 2400);
+        },
+        onBackHome() {
+            this.showDrawer = false;
+            this.showSettings = false;
+            if (this.store.isStreaming) {
+                this.onStop();
+            }
+            this.onNewChat();
         },
         toggleDrawer() {
             this.showDrawer = !this.showDrawer;
             if (!this.showDrawer) return;
-            this.exitEditMode();
             this.loadSessionsForCurrentCLI();
         },
         onSelectSession(session) {
@@ -257,26 +338,17 @@ window.EARegisterComponent('chat-view', 'ChatView', {
         },
 
         /**
-         * 进入编辑模式，显示复选框。
-         */
-        enterEditMode() {
-            this.editMode = true;
-            this.selectedSessions = [];
-        },
-
-        /**
-         * 退出编辑模式，清空选中项。
-         */
-        exitEditMode() {
-            this.editMode = false;
-            this.selectedSessions = [];
-        },
-
-        /**
          * 全选当前已加载的会话。
          */
         selectAllSessions() {
             this.selectedSessions = this.sessions.map(function (s) { return s.sessionId; });
+        },
+
+        /**
+         * 取消当前所有勾选。
+         */
+        clearSelection() {
+            this.selectedSessions = [];
         },
 
         /**
@@ -291,6 +363,9 @@ window.EARegisterComponent('chat-view', 'ChatView', {
             } else {
                 this.selectedSessions.push(sessionId);
             }
+        },
+        isCurrentSession(session) {
+            return !!session && !!this.currentSessionId && session.sessionId === this.currentSessionId;
         },
 
         /**
@@ -313,16 +388,12 @@ window.EARegisterComponent('chat-view', 'ChatView', {
         },
 
         /**
-         * 抽屉列表项点击事件：编辑模式切换选中，非编辑模式打开会话。
+         * 抽屉列表项点击事件，打开指定会话。
          *
          * @param {Object} s - 会话对象
          */
         onDrawerItemClick(s) {
-            if (this.editMode) {
-                this.toggleSelect(s.sessionId);
-            } else {
-                this.onSelectSession(s);
-            }
+            this.onSelectSession(s);
         },
 
         /**
@@ -331,8 +402,9 @@ window.EARegisterComponent('chat-view', 'ChatView', {
         confirmDelete() {
             if (this.selectedSessions.length === 0) return;
             if (!confirm(this.i18n.t('session.deleteConfirm', { n: this.selectedSessions.length }))) return;
+            this.pendingDeleteRedirect = this.selectedSessions.indexOf(this.store.sessionId) >= 0;
             EABridge.deleteSessions(this.selectedSessions.slice());
-            this.exitEditMode();
+            this.clearSelection();
         },
 
         /**
@@ -340,9 +412,13 @@ window.EARegisterComponent('chat-view', 'ChatView', {
          *
          * @param {string} text - 待发送消息文本
          */
-        addToPendingQueue(text) {
+        addToPendingQueue(payload) {
             this.pendingIdCounter++;
-            this.pendingQueue.push({ id: 'pq-' + this.pendingIdCounter, text: text });
+            this.pendingQueue.push({
+                id: 'pq-' + this.pendingIdCounter,
+                text: payload.text,
+                fileReferences: payload.fileReferences || []
+            });
             this._persistPendingQueue();
         },
 
@@ -373,9 +449,11 @@ window.EARegisterComponent('chat-view', 'ChatView', {
         sendNextPending() {
             if (this.pendingQueue.length === 0) return;
             var next = this.pendingQueue.shift();
-            this.store.addUserMessage(next.text);
+            this.store.addUserMessage(next.text, next.fileReferences || []);
+            this.store.beginAssistantTurn();
+            this.store.setStreaming(true);
             var modelId = this.store.selectedModelId || null;
-            EABridge.sendMessage(next.text, modelId);
+            EABridge.sendMessage(next.text, modelId, next.fileReferences || []);
             this._persistPendingQueue();
         },
 
@@ -401,7 +479,7 @@ window.EARegisterComponent('chat-view', 'ChatView', {
             var sid = this.store.sessionId;
             if (!sid) return;
             var items = this.pendingQueue.map(function (item) {
-                return { id: item.id, text: item.text };
+                return { id: item.id, text: item.text, fileReferences: item.fileReferences || [] };
             });
             this.store.savePendingQueue(sid, this.pendingQueue);
             EABridge.savePendingQueue(sid, JSON.stringify(items));

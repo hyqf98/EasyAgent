@@ -70,7 +70,10 @@ window.EARegisterComponent('settings-page', 'SettingsPage', {
             cliModelsLoading: false,
             editingIndex: -1,
             editForm: { modelId: '', displayName: '', cliType: '', contextWindow: 0, contextDisplay: '', provider: '' },
-            showCtxDropdown: false
+            showCtxDropdown: false,
+            editingDefault: false,
+            defaultEditForm: { modelId: '', contextWindow: 128000, contextDisplay: '128K' },
+            showDefaultCtxDropdown: false
         };
     },
     computed: {
@@ -79,19 +82,54 @@ window.EARegisterComponent('settings-page', 'SettingsPage', {
         filteredModels() {
             return this.models.filter(function (m) { return m.cliType === this.modelFilter; }.bind(this));
         },
+        modelRows() {
+            var rows = [{
+                rowType: 'default',
+                cliType: this.modelFilter,
+                modelId: this.currentDefaultModelId || '',
+                displayName: this.i18n.t('settings.defaultModel'),
+                contextWindow: this.currentDefaultContext || 0
+            }];
+            this.filteredModels.forEach(function (model, index) {
+                rows.push({
+                    rowType: 'model',
+                    modelIndex: index,
+                    model: model
+                });
+            });
+            return rows;
+        },
         ctxOptions() {
             return EA_CTX_OPTIONS;
+        },
+        currentDefaultConfig() {
+            var dm = this.store.defaultModels || {};
+            return dm[this.modelFilter] || null;
+        },
+        currentDefaultModelId() {
+            return this.currentDefaultConfig ? this.currentDefaultConfig.modelId : '';
+        },
+        currentDefaultContext() {
+            return this.currentDefaultConfig ? this.currentDefaultConfig.contextWindow : 0;
         }
     },
     watch: {
         'store.retryTimeoutMs'(ms) {
             this.timeoutSeconds = Math.round(ms / 1000);
+        },
+        modelFilter() {
+            this.editingDefault = false;
+            this.editingIndex = -1;
+            if (this.activeTab === 'models' && this.modelFilter === 'OPENCODE') {
+                this.requestCliModels();
+            }
         }
     },
     mounted() {
         this.timeoutSeconds = Math.round(this.store.retryTimeoutMs / 1000);
+        this.models = (this.store.modelsList || []).slice();
         this._onModelsLoaded = function (e) {
-            this.models = Array.isArray(e.detail) ? e.detail : [];
+            this.models = Array.isArray(e.detail) ? e.detail.slice() : [];
         }.bind(this);
         this._onCliModelsLoaded = function (e) {
             this.cliModelsLoading = false;
@@ -137,16 +175,11 @@ window.EARegisterComponent('settings-page', 'SettingsPage', {
         },
         onOpenModels() {
             this.activeTab = 'models';
+            this.models = (this.store.modelsList || []).slice();
             EABridge.getModels();
-            this.$nextTick(function () {
-                setTimeout(function () {
-                    var opencodeModels = this.models.filter(function (m) { return m.cliType === 'OPENCODE'; });
-                    if (opencodeModels.length === 0) {
-                        this.cliModelsLoading = true;
-                        EABridge.queryCliModels('OPENCODE');
-                    }
-                }.bind(this), 500);
-            }.bind(this));
+            if (this.modelFilter === 'OPENCODE') {
+                this.requestCliModels();
+            }
         },
         onSyncAllModels() {
             this.isSyncing = true;
@@ -156,6 +189,13 @@ window.EARegisterComponent('settings-page', 'SettingsPage', {
                 this.isSyncing = false;
                 this.cliModelsLoading = false;
             }.bind(this), 15000);
+        },
+        requestCliModels() {
+            if (this.cliModelsLoading) {
+                return;
+            }
+            this.cliModelsLoading = true;
+            EABridge.queryCliModels('OPENCODE');
         },
         onEditModel(idx) {
             var m = this.filteredModels[idx];
@@ -211,8 +251,47 @@ window.EARegisterComponent('settings-page', 'SettingsPage', {
             }, 150);
         },
         formatContextWindow: formatContextWindow,
+        onEditDefaultModel() {
+            var config = this.currentDefaultConfig;
+            this.defaultEditForm = {
+                modelId: config ? config.modelId : '',
+                contextWindow: config ? config.contextWindow : 128000,
+                contextDisplay: formatContextWindow(config ? config.contextWindow : 128000)
+            };
+            this.editingDefault = true;
+            this.showDefaultCtxDropdown = false;
+        },
+        onSaveDefaultModel() {
+            var ctxVal = parseContextWindow(this.defaultEditForm.contextDisplay);
+            this.defaultEditForm.contextWindow = ctxVal;
+            if (!this.store.defaultModels) this.store.defaultModels = {};
+            this.store.defaultModels[this.modelFilter] = {
+                modelId: this.defaultEditForm.modelId,
+                contextWindow: ctxVal
+            };
+            this.editingDefault = false;
+            this.showDefaultCtxDropdown = false;
+            this._persistModels();
+        },
+        onDefaultCtxInput(e) {
+            this.defaultEditForm.contextDisplay = e.target.value;
+        },
+        onDefaultCtxSelect(val) {
+            this.defaultEditForm.contextWindow = val;
+            this.defaultEditForm.contextDisplay = formatContextWindow(val);
+            this.showDefaultCtxDropdown = false;
+        },
+        onDefaultCtxBlur() {
+            var self = this;
+            setTimeout(function () {
+                self.showDefaultCtxDropdown = false;
+                var parsed = parseContextWindow(self.defaultEditForm.contextDisplay);
+                self.defaultEditForm.contextWindow = parsed;
+                self.defaultEditForm.contextDisplay = formatContextWindow(parsed);
+            }, 150);
+        },
         _persistModels() {
-            var wrapper = { version: 1, models: this.models };
+            var wrapper = { version: 1, models: this.models, defaultModels: this.store.defaultModels || {} };
             EABridge.saveModels(JSON.stringify(wrapper));
         }
     }

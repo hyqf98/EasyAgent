@@ -2,6 +2,8 @@ package io.github.easyagent.ui.enums;
 
 import lombok.Getter;
 
+import java.awt.Color;
+
 /**
  * IDE 主题类型枚举。
  * <p>
@@ -53,5 +55,20 @@ public enum ThemeType {
             return DARK;
         }
         return LIGHT;
+    }
+
+    /**
+     * 根据 UI 背景色和 LookAndFeel 名称推断主题类型。
+     *
+     * @param color   UI 背景色
+     * @param lafName LookAndFeel 名称
+     * @return 推断出的主题类型
+     */
+    public static ThemeType fromUiColor(Color color, String lafName) {
+        if (color == null) {
+            return fromLafName(lafName);
+        }
+        int brightness = (color.getRed() * 299 + color.getGreen() * 587 + color.getBlue() * 114) / 1000;
+        return brightness < 140 ? DARK : LIGHT;
     }
 }

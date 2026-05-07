@@ -284,11 +284,11 @@ public class OpenCodeSessionReader implements SessionReader {
                     String toolOutput = null;
                     String title = null;
 
-                    Map<String, Object> toolInputMap = null;
+                    String toolInputJson = null;
                     if (state != null) {
                         Object inputObj = state.get("input");
-                        if (inputObj instanceof Map<?, ?> map) {
-                            toolInputMap = (Map<String, Object>) map;
+                        if (inputObj != null) {
+                            toolInputJson = GsonUtils.toJson(inputObj);
                         }
                         Object outputObj = state.get("output");
                         if (outputObj != null) {
@@ -300,7 +300,7 @@ public class OpenCodeSessionReader implements SessionReader {
                     block = ContentBlock.builder()
                             .type(ContentBlockType.TOOL_USE)
                             .toolName(toolName)
-                            .toolInput(toolInputMap)
+                            .toolInput(toolInputJson)
                             .toolOutput(toolOutput)
                             .text(title)
                             .build();

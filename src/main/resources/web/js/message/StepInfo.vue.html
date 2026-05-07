@@ -1,6 +1,14 @@
 <template>
-<div v-if="reason || tokenText" class="step-info">
-    <span v-if="reason">{{ reason }}</span>
-    <span v-if="tokenText" style="margin-left: 8px;">{{ tokenText }}</span>
+<div v-if="stateLabel || tokenText" class="step-info" :class="state || ''">
+    <div class="step-info-main">
+        <span v-if="state === 'generating' || state === 'retrying'" class="step-info-loading">
+            <span class="step-info-loading-dot"></span>
+            <span class="step-info-loading-dot"></span>
+            <span class="step-info-loading-dot"></span>
+        </span>
+        <span v-if="stateLabel">{{ stateLabel }}</span>
+        <span v-if="tokenText" class="step-info-token">{{ tokenText }}</span>
+    </div>
+    <button v-if="showStop" type="button" class="step-info-stop-btn" @click="$emit('stop')">{{ i18n.t('chat.stop') }}</button>
 </div>
 </template>

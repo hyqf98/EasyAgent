@@ -1,8 +1,10 @@
 package io.github.easyagent.ai.claude.entity;
 
+import com.google.gson.annotations.JsonAdapter;
 import com.google.gson.annotations.SerializedName;
 import io.github.easyagent.ai.claude.enums.ClaudeContentType;
 import io.github.easyagent.ai.entity.AbstractContentBlock;
+import io.github.easyagent.util.RawJsonStringAdapter;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Getter;
@@ -46,8 +48,9 @@ public class ClaudeContentBlock extends AbstractContentBlock<ClaudeContentType> 
     /** 思考签名，thinking 类型时有值。 */
     private String signature;
 
-    /** 工具输入参数（JSON 对象），tool_use 类型时有值。 */
-    private Object input;
+    /** 工具输入参数的 JSON 字符串，tool_use 类型时有值。 */
+    @JsonAdapter(RawJsonStringAdapter.class)
+    private String input;
 
     /** 工具结果内容，tool_result 类型时有值。 */
     private String content;

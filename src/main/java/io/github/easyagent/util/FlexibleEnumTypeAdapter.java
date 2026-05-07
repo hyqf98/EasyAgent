@@ -45,9 +45,7 @@ import java.util.Map;
  *
  * @author haijun
  * @param <E> e
- * @email "mailto:haijun@email.com"
  * @date 2026/4/30 09:48
- * @version 1.0.0
  * @since 1.0.0
  */
 @Slf4j
@@ -72,9 +70,7 @@ public class FlexibleEnumTypeAdapter<E extends Enum<E>> implements JsonDeseriali
      * 枚举值注解，用于标记整数类型的 JSON 值映射。
      *
      * @author haijun
-     * @email "mailto:haijun@email.com"
      * @date 2026/4/30 09:48
-     * @version 1.0.0
      * @since 1.0.0
      */
     @Retention(RetentionPolicy.RUNTIME)
@@ -190,9 +186,7 @@ public class FlexibleEnumTypeAdapter<E extends Enum<E>> implements JsonDeseriali
      *
      * @param <E> 枚举类型
      * @author haijun
-     * @email "mailto:haijun@email.com"
      * @date 2026/4/30 09:48
-     * @version 1.0.0
      * @since 1.0.0
      */
     @FunctionalInterface

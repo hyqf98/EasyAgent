@@ -15,6 +15,9 @@ import java.util.Comparator;
 import java.util.EnumMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 
 /**
  * CLI 会话管理服务。
@@ -200,25 +203,50 @@ public class SessionService {
      * @return 成功删除的会话数量
      */
     public int deleteSessions(List<String> sessionIds) {
+        if (sessionIds == null || sessionIds.isEmpty()) {
+            return 0;
+        }
+
         int deleted = 0;
-        for (String sessionId : sessionIds) {
-            for (SessionReader reader : this.readerList) {
-                if (!reader.isAvailable()) {
+        try (ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor()) {
+            List<Future<Integer>> futures = new ArrayList<>();
+            for (String sessionId : sessionIds) {
+                if (sessionId == null || sessionId.isBlank()) {
                     continue;
                 }
+                futures.add(executor.submit(() -> this.deleteSession(sessionId)));
+            }
+            for (Future<Integer> future : futures) {
                 try {
-                    if (reader.getSession(sessionId) != null) {
-                        if (reader.deleteSession(sessionId)) {
-                            deleted++;
-                        }
-                        break;
-                    }
+                    deleted += future.get();
                 } catch (Exception e) {
-                    log.debug("Session {} not found in {}", sessionId, reader.getCliType());
+                    log.warn("Failed to delete session batch item", e);
                 }
             }
         }
         return deleted;
+    }
+
+    /**
+     * 删除单个会话。
+     *
+     * @param sessionId 会话 ID
+     * @return 成功删除的数量
+     */
+    private int deleteSession(String sessionId) {
+        for (SessionReader reader : this.readerList) {
+            if (!reader.isAvailable()) {
+                continue;
+            }
+            try {
+                if (reader.getSession(sessionId) != null) {
+                    return reader.deleteSession(sessionId) ? 1 : 0;
+                }
+            } catch (Exception e) {
+                log.debug("Session {} not found in {}", sessionId, reader.getCliType());
+            }
+        }
+        return 0;
     }
 
     /**

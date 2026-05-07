@@ -8,9 +8,7 @@ package io.github.easyagent.ai;
  * </p>
  *
  * @author haijun
- * @email "mailto:haijun@email.com"
  * @date 2026/4/30
- * @version 1.0.0
  * @since 1.0.0
  */
 public interface AIProvider {

@@ -6,24 +6,102 @@
             <span>{{ roleLabel(message.role) }}</span>
         </div>
         <div class="bubble-content">
-            <template v-for="(block, i) in message.contents" :key="i">
-                <div v-if="isSystemInfoBlock(block)" class="system-info-bar" @click="toggleSystemInfo(block)">
-                    <span class="system-info-icon">📋</span>
-                    <span v-if="block.collapsed" class="system-info-summary">{{ block.summary }}</span>
-                    <div v-else class="system-info-expanded md-content" v-html="renderMarkdown(block.fullText || block.summary)"></div>
-                    <span class="system-info-chevron" :class="{ open: !block.collapsed }">▸</span>
-                </div>
-                <div v-if="isTextBlock(block)" class="md-content" v-html="renderMarkdown(block.text)"></div>
-                <thinking-block v-if="isThinkingBlock(block)" :text="block.text" :collapsed="block.collapsed" @toggle="toggleThinking(block)"></thinking-block>
-                <tool-call-block v-if="isToolBlock(block)" :tool-name="block.toolName" :title="block.title" :status="block.status" :input="block.input" :output="block.output" :collapsed="block.collapsed" @toggle="toggleTool(block)"></tool-call-block>
-                <todo-list-block v-if="isTodoBlock(block)" :items="block.items" :cli-type="store.cliType"></todo-list-block>
-                <error-block v-if="isErrorBlock(block)" :message="block.text"></error-block>
+            <div v-if="isUserMessage()" class="message-inline-content">
+                <template v-for="(block, i) in message.contents" :key="i">
+                    <span v-if="isTextBlock(block)" class="message-inline-text">{{ block.text }}</span>
+                    <span v-else-if="isReferenceBlock(block)" class="message-inline-ref" :class="referenceTypeClass(block.reference)" :title="block.reference.path">
+                        <span class="message-inline-ref-icon">{{ referenceIcon(block.reference) }}</span>
+                        <span class="message-inline-ref-label">{{ referenceLabel(block.reference) }}</span>
+                    </span>
+                </template>
+            </div>
+            <template v-else>
+                <template v-for="(block, i) in message.contents" :key="i">
+                    <div v-if="isSystemInfoBlock(block)" class="system-info-bar" :class="{ expanded: !block.collapsed }" @click="toggleSystemInfo(block)">
+                        <span class="system-info-icon">📋</span>
+                        <div class="system-info-content">
+                            <span v-if="block.collapsed" class="system-info-summary">{{ block.summary }}</span>
+                            <div v-else class="system-info-expanded">
+                                <div v-if="metaInfoForBlock(block)" class="cli-meta-card" :class="metaCategoryClass(metaInfoForBlock(block))">
+                                    <div class="cli-meta-head">
+                                        <span class="cli-meta-kicker">{{ metaBadge(metaInfoForBlock(block)) }}</span>
+                                        <span class="cli-meta-title">{{ metaTitle(metaInfoForBlock(block)) }}</span>
+                                    </div>
+                                    <div class="cli-meta-summary">{{ metaInfoForBlock(block).summary }}</div>
+                                    <div v-for="section in metaInfoForBlock(block).sections" :key="section.label" class="cli-meta-section">
+                                        <div class="cli-meta-section-label">{{ section.label }}</div>
+                                        <div v-if="section.items && section.items.length > 0 && section.itemMode === 'row'" class="cli-meta-item-list">
+                                            <div v-for="item in section.items" :key="metaItemName(item) + metaItemFile(item)" class="cli-meta-item">
+                                                <div class="cli-meta-item-name">{{ metaItemName(item) }}</div>
+                                                <div v-if="metaItemDetail(item)" class="cli-meta-item-detail">{{ metaItemDetail(item) }}</div>
+                                                <div v-if="metaItemFile(item)" class="cli-meta-item-file">{{ metaItemFile(item) }}</div>
+                                            </div>
+                                        </div>
+                                        <div v-else-if="section.items && section.items.length > 0" class="cli-meta-chip-list">
+                                            <span v-for="item in section.items" :key="item" class="cli-meta-chip">{{ item }}</span>
+                                        </div>
+                                        <div v-else class="cli-meta-section-value">{{ section.value }}</div>
+                                    </div>
+                                    <div class="cli-meta-raw md-content" v-html="renderMarkdown(block.fullText || block.summary)"></div>
+                                </div>
+                                <div v-else class="system-info-expanded md-content" v-html="renderMarkdown(block.fullText || block.summary)"></div>
+                            </div>
+                        </div>
+                        <span class="system-info-chevron" :class="{ open: !block.collapsed }">▸</span>
+                    </div>
+                    <div v-else-if="isCliMetaBlock(block)" class="system-info-bar cli-meta-bar" :class="{ expanded: !block.collapsed }" @click="toggleSystemInfo(block)">
+                        <span class="system-info-icon">📦</span>
+                        <div class="system-info-content">
+                            <span v-if="block.collapsed" class="system-info-summary">{{ metaInfoForBlock(block).summary }}</span>
+                            <div v-else class="system-info-expanded">
+                                <div class="cli-meta-card inline" :class="metaCategoryClass(metaInfoForBlock(block))">
+                                    <div class="cli-meta-head">
+                                        <span class="cli-meta-kicker">{{ metaBadge(metaInfoForBlock(block)) }}</span>
+                                        <span class="cli-meta-title">{{ metaTitle(metaInfoForBlock(block)) }}</span>
+                                    </div>
+                                    <div class="cli-meta-summary">{{ metaInfoForBlock(block).summary }}</div>
+                                    <div v-for="section in metaInfoForBlock(block).sections" :key="section.label" class="cli-meta-section">
+                                        <div class="cli-meta-section-label">{{ section.label }}</div>
+                                        <div v-if="section.items && section.items.length > 0 && section.itemMode === 'row'" class="cli-meta-item-list">
+                                            <div v-for="item in section.items" :key="metaItemName(item) + metaItemFile(item)" class="cli-meta-item">
+                                                <div class="cli-meta-item-name">{{ metaItemName(item) }}</div>
+                                                <div v-if="metaItemDetail(item)" class="cli-meta-item-detail">{{ metaItemDetail(item) }}</div>
+                                                <div v-if="metaItemFile(item)" class="cli-meta-item-file">{{ metaItemFile(item) }}</div>
+                                            </div>
+                                        </div>
+                                        <div v-else-if="section.items && section.items.length > 0" class="cli-meta-chip-list">
+                                            <span v-for="item in section.items" :key="item" class="cli-meta-chip">{{ item }}</span>
+                                        </div>
+                                        <div v-else class="cli-meta-section-value">{{ section.value }}</div>
+                                    </div>
+                                    <div class="cli-meta-raw md-content" v-html="renderMarkdown(block.text || '')"></div>
+                                </div>
+                            </div>
+                        </div>
+                        <span class="system-info-chevron" :class="{ open: !block.collapsed }">▸</span>
+                    </div>
+                    <div v-else-if="isTextBlock(block)" class="md-content" v-html="renderMarkdown(block.text)"></div>
+                    <thinking-block v-if="isThinkingBlock(block)" :text="block.text" :collapsed="block.collapsed" @toggle="toggleThinking(block)"></thinking-block>
+                    <tool-call-block v-if="isToolBlock(block)" :tool-name="block.toolName" :title="block.title" :status="block.status" :input="block.input" :output="block.output" :file-edit="block.fileEdit" :collapsed="block.collapsed" @toggle="toggleTool(block)"></tool-call-block>
+                    <todo-list-block v-if="isTodoBlock(block)" :items="block.items" :cli-type="store.cliType"></todo-list-block>
+                    <error-block v-if="isErrorBlock(block)" :message="block.text"></error-block>
+                </template>
             </template>
         </div>
-        <step-info v-if="message.finishReason" :reason="message.finishReason" :token-usage="message.tokenUsage"></step-info>
+        <step-info
+            v-if="shouldShowStatus()"
+            :state="message.streamState"
+            :reason="message.finishReason"
+            :retry-status="message.retryStatus"
+            :token-usage="message.tokenUsage"
+            :show-stop="canStop()"
+            @stop="$emit('stop')"
+        ></step-info>
     </div>
     <div v-if="showRetry" class="message-actions">
-        <button class="retry-btn" @click="$emit('retry')">{{ i18n.t('chat.retry') }}</button>
+        <button class="retry-icon-btn" @click="$emit('retry')" :data-tooltip="i18n.t('tooltip.retry')">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+        </button>
     </div>
 </div>
 </template>

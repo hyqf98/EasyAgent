@@ -45,7 +45,16 @@ public enum JsCallback implements ValueEnum<String> {
     MODELS("Models"),
 
     /** CLI 模型查询结果推送。 */
-    CLI_MODELS("CliModels");
+    CLI_MODELS("CliModels"),
+
+    /** 向输入框插入文件引用。 */
+    INSERT_REFERENCES("InsertReferences"),
+
+    /** 文件引用搜索结果。 */
+    FILE_REFERENCE_CANDIDATES("FileReferenceCandidates"),
+
+    /** 会话删除完成通知。 */
+    SESSIONS_DELETED("SessionsDeleted");
 
     /** 回调名称。 */
     private final String value;

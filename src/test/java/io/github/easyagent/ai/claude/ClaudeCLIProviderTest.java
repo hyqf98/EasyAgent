@@ -46,12 +46,7 @@ class ClaudeCLIProviderTest {
         };
 
         System.out.println("\n========== Sending: " + prompt + " ==========\n");
-        ClaudeCLIProvider provider = new ClaudeCLIProvider() {
-            @Override
-            protected boolean useDirectProcess() {
-                return true;
-            }
-        };
+        ClaudeCLIProvider provider = new ClaudeCLIProvider();
         provider.chat(prompt, listener);
 
         latch.await(120, TimeUnit.SECONDS);

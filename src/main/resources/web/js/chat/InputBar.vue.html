@@ -1,24 +1,66 @@
 <template>
 <div class="input-area">
     <div class="input-wrapper">
-        <textarea
-            ref="textarea"
-            v-model="text"
-            :placeholder="placeholder"
-            :disabled="disabled"
-            rows="3"
+        <div
+            ref="composer"
+            class="input-composer"
+            :class="{ empty: composerEmpty, disabled: disabled }"
+            contenteditable="true"
+            spellcheck="false"
             @keydown="handleKeydown"
+            @keyup="handleKeyup"
+            @click="handleComposerClick"
+            @mouseup="handleCaretInteraction"
+            @focus="handleComposerFocus"
             @compositionstart="handleCompositionStart"
             @compositionend="handleCompositionEnd"
-            @input="autoResize"
-        ></textarea>
-        <div class="input-bottom-bar" v-if="currentModels.length > 0">
+            @paste="handlePaste"
+            @input="handleInput"
+        ></div>
+        <div v-if="composerEmpty" class="input-composer-placeholder" aria-hidden="true">{{ placeholder }}</div>
+        <div v-if="showFileSearch" class="file-search-popover">
+            <div class="file-search-popover-head">
+                <span class="file-search-popover-kicker">@</span>
+                <div class="file-search-popover-meta">
+                    <div class="file-search-popover-title">{{ i18n.t('input.fileSearchTitle') }}</div>
+                    <div class="file-search-popover-subtitle">
+                        <span v-if="fileSearchQuery" class="file-search-query-chip">{{ fileSearchQuery }}</span>
+                        <span class="file-search-popover-hint">{{ i18n.t('input.fileSearchHint') }}</span>
+                    </div>
+                </div>
+            </div>
+            <div v-if="fileSearchLoading" class="file-search-state">{{ i18n.t('input.fileSearchLoading') }}</div>
+            <div v-else-if="fileSearchResults.length === 0" class="file-search-state empty">{{ i18n.t('input.fileSearchEmpty') }}</div>
+            <div v-else class="file-search-result-list">
+                <button
+                    v-for="(item, idx) in fileSearchResults"
+                    :key="item.path"
+                    type="button"
+                    class="file-search-result"
+                    :class="{ active: idx === activeFileIndex }"
+                    :title="item.path"
+                    @mousedown.prevent="selectFileCandidate(item)"
+                >
+                    <div class="file-search-result-top">
+                        <div class="file-search-result-main">{{ item.fileName || item.displayName }}</div>
+                        <span class="file-search-result-index">{{ idx + 1 }}</span>
+                    </div>
+                    <div class="file-search-result-path">{{ item.relativePath || item.displayName || item.path }}</div>
+                </button>
+            </div>
+            <div class="file-search-popover-foot">
+                <span class="file-search-popover-count">{{ i18n.t('input.fileSearchCount', { n: fileSearchResults.length }) }}</span>
+                <span class="file-search-popover-tip">{{ i18n.t('input.fileSearchNavigation') }}</span>
+            </div>
+        </div>
+        <div class="input-bottom-bar">
+            <button class="input-ref-btn" type="button" @click="openFileSearchShortcut">@</button>
             <div class="model-dropdown-wrapper" :class="{ open: showModelDropdown }">
                 <button class="model-dropdown-trigger" @click="showModelDropdown = !showModelDropdown">
                     <span class="model-dropdown-label">{{ currentModelLabel }}</span>
                     <svg class="model-dropdown-arrow" width="8" height="5" viewBox="0 0 8 5"><path d="M0 0l4 5 4-5z" fill="currentColor"/></svg>
                 </button>
-                <div class="model-dropdown-list" v-if="showModelDropdown">
+                <div class="model-dropdown-list" v-if="showModelDropdown && currentModels.length > 0">
                     <div class="model-dropdown-item" :class="{ active: !store.selectedModelId }" @click="selectModel('')">{{ i18n.t('chat.defaultModel') }}</div>
                     <div class="model-dropdown-item" :class="{ active: store.selectedModelId === m.modelId }" v-for="m in currentModels" :key="m.modelId" @click="selectModel(m.modelId)">{{ m.displayName || m.modelId }}</div>
                 </div>

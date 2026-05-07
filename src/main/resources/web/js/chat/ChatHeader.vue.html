@@ -4,6 +4,7 @@
         <span class="chat-header-title">{{ displayTitle }}</span>
     </div>
     <div class="chat-header-actions">
+        <button v-if="inChat" class="icon-btn" @click="$emit('back-home')" :title="i18n.t('header.home')">⌂</button>
         <button v-if="inChat" class="icon-btn" @click="$emit('toggle-drawer')" title="History">☰</button>
         <button v-if="inChat" class="icon-btn" @click="$emit('new-chat')" title="New Chat">+</button>
         <button class="icon-btn" @click="$emit('open-settings')" title="Settings">⚙</button>

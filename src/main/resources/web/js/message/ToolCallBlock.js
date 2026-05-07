@@ -14,6 +14,7 @@ window.EARegisterComponent('tool-call-block', 'ToolCallBlock', {
         status: { type: String, default: 'CALLING' },
         input: { type: String, default: '' },
         output: { type: String, default: '' },
+        fileEdit: { type: Object, default: null },
         collapsed: { type: Boolean, default: true }
     },
     emits: ['toggle'],
@@ -21,6 +22,23 @@ window.EARegisterComponent('tool-call-block', 'ToolCallBlock', {
         store() { return window.EAStore; },
         i18n() { void this.store.i18nVersion; return window.EAi18n; },
         statusClass() { return this.status.toLowerCase(); },
+        toolKindClass() {
+            var name = (this.toolName || this.title || '').toLowerCase();
+            if (name.indexOf('bash') >= 0 || name.indexOf('shell') >= 0 || name.indexOf('command') >= 0) return 'terminal';
+            if (name.indexOf('edit') >= 0 || name.indexOf('write') >= 0 || name.indexOf('file') >= 0) return 'file';
+            if (name.indexOf('search') >= 0 || name.indexOf('grep') >= 0 || name.indexOf('find') >= 0) return 'search';
+            if (name.indexOf('plugin') >= 0 || name.indexOf('mcp') >= 0) return 'plugin';
+            return 'generic';
+        },
+        toolIcon() {
+            switch (this.toolKindClass) {
+                case 'terminal': return '⌘';
+                case 'file': return '▣';
+                case 'search': return '◌';
+                case 'plugin': return '◇';
+                default: return '◧';
+            }
+        },
         statusLabel() {
             switch (this.status) {
                 case 'CALLING': return this.i18n.t('tool.status.calling');
@@ -30,5 +48,17 @@ window.EARegisterComponent('tool-call-block', 'ToolCallBlock', {
             }
         },
         displayTitle() { return this.title || this.toolName || 'Tool'; }
+    },
+    methods: {
+        openDiff() {
+            if (this.fileEdit && this.fileEdit.editId) {
+                EABridge.openFileEditDiff(this.fileEdit.editId);
+            }
+        },
+        revertEdit() {
+            if (this.fileEdit && this.fileEdit.editId) {
+                EABridge.revertFileEdit(this.fileEdit.editId);
+            }
+        }
     }
 });

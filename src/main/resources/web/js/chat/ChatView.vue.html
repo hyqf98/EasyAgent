@@ -1,5 +1,6 @@
 <template>
 <div class="chat-panel">
+    <div v-if="toastMessage" class="global-toast">{{ toastMessage }}</div>
     <chat-header
         :cli-type="store.cliType"
         :session-title="store.sessionTitle"
@@ -8,6 +9,7 @@
         :in-chat="inChat"
         @toggle-drawer="toggleDrawer"
         @new-chat="onNewChat"
+        @back-home="onBackHome"
         @open-settings="showSettings = true"
     ></chat-header>
 
@@ -58,32 +60,9 @@
                 :is-last="idx === store.messages.length - 1"
                 :show-retry="idx === store.messages.length - 1 && canRetry"
                 @retry="onRetry"
+                @stop="onStop"
             ></message-bubble>
             </template>
-            <div v-if="store.isStreaming && !hasActiveAssistantContent" class="message-row assistant">
-                <div class="message-bubble">
-                    <div class="bubble-header">
-                        <span class="role-icon ai-icon">🤖</span>
-                        <span>{{ i18n.t('role.assistant') }}</span>
-                        <button class="loading-stop-btn" @click="onStop" :title="i18n.t('input.stop')">
-                            <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><rect x="1" y="1" width="12" height="12" rx="2" fill="currentColor"/></svg>
-                        </button>
-                    </div>
-                    <div class="bubble-content">
-                        <div class="response-loading">
-                            <div class="response-loading-dot"></div>
-                            <div class="response-loading-dot"></div>
-                            <div class="response-loading-dot"></div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-            <div v-if="store.retryStatus" class="retry-status-bar">
-                <span class="retry-status-icon">⟳</span>
-                <span class="retry-status-text">{{ i18n.t('chat.retrying', { current: store.retryStatus.currentAttempt, total: store.retryStatus.maxAttempts }) }}</span>
-                <button class="retry-stop-btn" @click="onStop">{{ i18n.t('chat.retryStop') }}</button>
-            </div>
-            <div v-if="store.isStreaming && store.streamingText" class="streaming-cursor" style="padding: 4px 24px;">&nbsp;</div>
             <div v-if="showScrollBottom" class="scroll-bottom-btn" @click="scrollToBottom">
                 <span class="scroll-bottom-inner"><span class="scroll-bottom-arrow">↓</span></span>
             </div>
@@ -112,25 +91,33 @@
             <div class="drawer-header">
                 <h3>{{ i18n.t('session.title') }}</h3>
                 <div class="drawer-header-actions">
-                    <button v-if="!editMode" class="icon-btn drawer-edit-btn" @click="enterEditMode">{{ i18n.t('session.edit') }}</button>
-                    <template v-else>
+                    <template v-if="hasSelectedSessions">
                         <button class="icon-btn drawer-action-btn" @click="selectAllSessions">{{ i18n.t('session.selectAll') }}</button>
+                        <button class="icon-btn drawer-action-btn" @click="clearSelection">{{ i18n.t('session.clearSelection') }}</button>
                         <button class="icon-btn drawer-delete-btn" :disabled="selectedSessions.length === 0" @click="confirmDelete">{{ i18n.t('session.delete') }}</button>
-                        <button class="icon-btn" @click="exitEditMode">{{ i18n.t('session.cancel') }}</button>
                     </template>
                     <button class="icon-btn" @click="showDrawer = false">✕</button>
                 </div>
             </div>
             <div class="drawer-list" @scroll="onDrawerScroll" ref="drawerList">
                 <div v-if="sessions.length === 0" class="drawer-empty">{{ i18n.t('session.empty') }}</div>
-                <div v-for="s in sessions" :key="s.sessionId" class="drawer-item" :class="{ selected: editMode && selectedSessions.indexOf(s.sessionId) >= 0 }" @click="onDrawerItemClick(s)">
-                    <label v-if="editMode" class="drawer-checkbox" @click.stop>
+                <div
+                    v-for="s in sessions"
+                    :key="s.sessionId"
+                    class="drawer-item"
+                    :class="{ active: isCurrentSession(s), selected: selectedSessions.indexOf(s.sessionId) >= 0 }"
+                    @click="onDrawerItemClick(s)"
+                >
+                    <label class="drawer-checkbox" @click.stop>
                         <input type="checkbox" :checked="selectedSessions.indexOf(s.sessionId) >= 0" @change="toggleSelect(s.sessionId)" />
                         <span class="drawer-checkmark"></span>
                     </label>
                     <div class="dot" :class="(s.cliType || 'claude').toLowerCase()"></div>
                     <div class="drawer-item-info">
-                        <div class="drawer-item-title">{{ s.title || s.sessionId }}</div>
+                        <div class="drawer-item-title-row">
+                            <div class="drawer-item-title">{{ s.title || s.sessionId }}</div>
+                            <span v-if="isCurrentSession(s)" class="drawer-item-current">{{ i18n.t('session.current') }}</span>
+                        </div>
                         <div class="drawer-item-meta">
                             <span v-if="s.model" class="drawer-item-model">{{ s.model }}</span>
                             {{ formatTime(s.updatedAt || s.createdAt) }}

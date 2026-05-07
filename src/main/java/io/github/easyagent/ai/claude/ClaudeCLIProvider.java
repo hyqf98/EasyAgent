@@ -56,7 +56,7 @@ public class ClaudeCLIProvider extends AbstractCLIProvider {
         if (GsonUtils.isNotEmpty(modelId)) {
             cmd.addParameters("--model", modelId);
         }
-        if (GsonUtils.isNotEmpty(sessionId)) {
+        if (GsonUtils.isNotEmpty(sessionId) && !sessionId.startsWith("new-")) {
             cmd.addParameters("--resume", sessionId);
         }
         cmd.addParameters("--", prompt);
@@ -153,9 +153,8 @@ public class ClaudeCLIProvider extends AbstractCLIProvider {
                     }
                 }
                 case TOOL_USE -> {
-                    String input = block.getInput() != null ? GsonUtils.toJson(block.getInput()) : null;
-                    out.add(this.createToolCall(sessionId, block.getName(), null, ToolCallStatus.CALLING,
-                            input, null));
+                    out.add(this.createToolCall(sessionId, block.getId(), block.getName(), null, ToolCallStatus.CALLING,
+                            block.getInput(), null));
                 }
                 default -> {
                 }
@@ -176,7 +175,7 @@ public class ClaudeCLIProvider extends AbstractCLIProvider {
             if (block.getType() == ClaudeContentType.TOOL_RESULT) {
                 boolean isError = block.getIsError() != null && block.getIsError();
                 ToolCallStatus status = isError ? ToolCallStatus.FAILED : ToolCallStatus.COMPLETED;
-                out.add(this.createToolCall(sessionId, null, null, status, null, block.getContent()));
+                out.add(this.createToolCall(sessionId, block.getToolUseId(), null, null, status, null, block.getContent()));
             }
         }
     }
