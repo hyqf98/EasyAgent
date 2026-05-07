@@ -26,6 +26,9 @@ import io.github.easyagent.ui.service.FileReferenceService;
 import io.github.easyagent.ui.service.MessageConverter;
 import io.github.easyagent.ui.service.entity.FileReferenceCandidatePayload;
 import io.github.easyagent.ui.service.entity.FileReferencePayload;
+import io.github.easyagent.ui.service.entity.SlashCommandExecutionPayload;
+import io.github.easyagent.ui.service.entity.SlashCommandsPayload;
+import io.github.easyagent.ui.service.command.SlashCommandService;
 import io.github.easyagent.util.GsonUtils;
 import lombok.extern.slf4j.Slf4j;
 import org.cef.browser.CefBrowser;
@@ -79,6 +82,8 @@ public class JCEFMessageBridge {
 
     private final FileEditService fileEditService;
 
+    private final SlashCommandService slashCommandService;
+
     /** JS 请求处理器映射。 */
     private final Map<JsAction, QueryHandler<? extends JsRequest>> queryHandlers = new EnumMap<>(JsAction.class);
 
@@ -108,6 +113,7 @@ public class JCEFMessageBridge {
         this.fileReferenceService = project != null ? project.getService(FileReferenceService.class) : null;
         this.chatUiBridgeService = project != null ? project.getService(ChatUiBridgeService.class) : null;
         this.fileEditService = new FileEditService(project, project != null ? project.getBasePath() : null);
+        this.slashCommandService = new SlashCommandService();
         if (this.chatUiBridgeService != null) {
             this.chatUiBridgeService.registerBridge(this);
         }
@@ -168,6 +174,10 @@ public class JCEFMessageBridge {
                 request -> this.handleOpenFileEditDiff(request.editId()));
         this.registerHandler(JsAction.REVERT_FILE_EDIT, RevertFileEditRequest.class,
                 request -> this.handleRevertFileEdit(request.editId()));
+        this.registerHandler(JsAction.GET_SLASH_COMMANDS, GetSlashCommandsRequest.class,
+                this::handleGetSlashCommands);
+        this.registerHandler(JsAction.EXECUTE_SLASH_COMMAND, ExecuteSlashCommandRequest.class,
+                this::handleExecuteSlashCommand);
     }
 
     /**
@@ -687,6 +697,68 @@ public class JCEFMessageBridge {
     }
 
     /**
+     * 查询指定 CLI 的可用斜杠命令列表。
+     *
+     * @param request 查询请求
+     */
+    private void handleGetSlashCommands(GetSlashCommandsRequest request) {
+        String cliTypeValue = request.cliType();
+        if (cliTypeValue == null || cliTypeValue.isBlank()) {
+            return;
+        }
+        this.asyncExecutor.submit(() -> {
+            try {
+                CLIType cliType = CLIType.valueOf(cliTypeValue);
+                this.invokeJSCallback(JsCallback.SLASH_COMMANDS, SlashCommandsPayload.builder()
+                        .requestId(request.requestId())
+                        .cliType(cliType.name())
+                        .commands(this.slashCommandService.listCommands(cliType, this.currentProjectPath))
+                        .build());
+            } catch (Exception e) {
+                log.warn("Failed to load slash commands for {}", cliTypeValue, e);
+                this.invokeJSCallback(JsCallback.SLASH_COMMANDS, SlashCommandsPayload.builder()
+                        .requestId(request.requestId())
+                        .cliType(cliTypeValue)
+                        .commands(List.of())
+                        .build());
+            }
+        });
+    }
+
+    /**
+     * 执行一个斜杠命令并将执行计划回推给前端。
+     *
+     * @param request 执行请求
+     */
+    private void handleExecuteSlashCommand(ExecuteSlashCommandRequest request) {
+        String cliTypeValue = request.cliType();
+        String rawText = request.rawText();
+        if (cliTypeValue == null || cliTypeValue.isBlank() || rawText == null || rawText.isBlank()) {
+            return;
+        }
+        this.asyncExecutor.submit(() -> {
+            try {
+                CLIType cliType = CLIType.valueOf(cliTypeValue);
+                SlashCommandExecutionPayload payload = this.slashCommandService.executeCommand(
+                        cliType, rawText, this.currentProjectPath, request.requestId());
+                this.invokeJSCallback(JsCallback.SLASH_COMMAND_EXECUTED, payload);
+            } catch (Exception e) {
+                log.warn("Failed to execute slash command: {}", rawText, e);
+                this.invokeJSCallback(JsCallback.SLASH_COMMAND_EXECUTED, SlashCommandExecutionPayload.builder()
+                        .requestId(request.requestId())
+                        .cliType(cliTypeValue)
+                        .commandName("")
+                        .executionType("PASS_THROUGH")
+                        .prompt(rawText)
+                        .openFreshSession(false)
+                        .refreshHistory(false)
+                        .toastMessage(null)
+                        .build());
+            }
+        });
+    }
+
+    /**
      * 调用前端 JS 全局回调函数。
      * <p>
      * 生成格式：{@code window.__ea_on{callbackName} && window.__ea_on{callbackName}({data})}
@@ -985,6 +1057,28 @@ public class JCEFMessageBridge {
      * @param editId 编辑 ID
      */
     private record RevertFileEditRequest(String action, String editId) implements JsRequest {
+    }
+
+    /**
+     * 获取斜杠命令列表请求。
+     *
+     * @param action    动作名称
+     * @param cliType   CLI 类型
+     * @param requestId 请求 ID
+     */
+    private record GetSlashCommandsRequest(String action, String cliType, String requestId) implements JsRequest {
+    }
+
+    /**
+     * 执行斜杠命令请求。
+     *
+     * @param action    动作名称
+     * @param cliType   CLI 类型
+     * @param rawText   原始命令文本
+     * @param requestId 请求 ID
+     */
+    private record ExecuteSlashCommandRequest(String action, String cliType,
+                                              String rawText, String requestId) implements JsRequest {
     }
 
     /**

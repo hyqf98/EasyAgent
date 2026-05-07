@@ -8,6 +8,7 @@
  * @component input-bar
  */
 var EA_FILE_SEARCH_REQUEST_COUNTER = 0;
+var EA_SLASH_COMMAND_REQUEST_COUNTER = 0;
 var EA_IMAGE_REFERENCE_COUNTER = 0;
 var EA_REFERENCE_INSTANCE_COUNTER = 0;
 var EA_INLINE_REFERENCE_PREFIX = '[[EA_REF_';
@@ -89,6 +90,13 @@ window.EARegisterComponent('input-bar', 'InputBar', {
             activeFileIndex: 0,
             activeMentionRange: null,
             pendingFileSearchRequestId: '',
+            availableCommands: [],
+            showCommandSearch: false,
+            commandSearchQuery: '',
+            commandSearchResults: [],
+            activeCommandIndex: 0,
+            activeSlashRange: null,
+            pendingSlashCommandRequestId: '',
             fileSearchTimer: null,
             lastSelectionRange: null,
             pendingInsertRange: null
@@ -123,6 +131,9 @@ window.EARegisterComponent('input-bar', 'InputBar', {
             if (this.showFileSearch && !e.target.closest('.input-wrapper')) {
                 this.closeFileSearch();
             }
+            if (this.showCommandSearch && !e.target.closest('.input-wrapper')) {
+                this.closeCommandSearch();
+            }
         }.bind(this);
         this._onInsertReferences = function (e) {
             var refs = (e.detail && e.detail.references) || [];
@@ -141,9 +152,23 @@ window.EARegisterComponent('input-bar', 'InputBar', {
             this.fileSearchResults = detail.results || [];
             this.activeFileIndex = 0;
         }.bind(this);
+        this._onSlashCommands = function (e) {
+            var detail = e.detail || {};
+            if (detail.requestId && detail.requestId !== this.pendingSlashCommandRequestId) {
+                return;
+            }
+            if (detail.cliType && detail.cliType !== this.store.cliType) {
+                return;
+            }
+            this.availableCommands = detail.commands || [];
+            this.commandSearchResults = this.filterCommandCandidates(this.commandSearchQuery);
+            this.activeCommandIndex = 0;
+        }.bind(this);
         document.addEventListener('click', this._onClickOutside);
         window.addEventListener('ea-insert-file-references', this._onInsertReferences);
         window.addEventListener('ea-file-reference-candidates', this._onFileReferenceCandidates);
+        window.addEventListener('ea-slash-commands', this._onSlashCommands);
+        this.requestSlashCommands();
         this.refreshComposerState();
     },
     beforeUnmount() {
@@ -156,15 +181,34 @@ window.EARegisterComponent('input-bar', 'InputBar', {
         if (this._onFileReferenceCandidates) {
             window.removeEventListener('ea-file-reference-candidates', this._onFileReferenceCandidates);
         }
+        if (this._onSlashCommands) {
+            window.removeEventListener('ea-slash-commands', this._onSlashCommands);
+        }
         if (this.fileSearchTimer) {
             clearTimeout(this.fileSearchTimer);
             this.fileSearchTimer = null;
+        }
+    },
+    watch: {
+        'store.cliType'() {
+            this.availableCommands = [];
+            this.closeCommandSearch();
+            this.requestSlashCommands();
         }
     },
     methods: {
         selectModel(modelId) {
             this.store.selectedModelId = modelId;
             this.showModelDropdown = false;
+        },
+        requestSlashCommands() {
+            var cliType = this.store.cliType;
+            if (!cliType) {
+                return;
+            }
+            var requestId = 'sc-' + (++EA_SLASH_COMMAND_REQUEST_COUNTER);
+            this.pendingSlashCommandRequestId = requestId;
+            EABridge.getSlashCommands(cliType, requestId);
         },
         focusComposer() {
             var composer = this.$refs.composer;
@@ -471,6 +515,121 @@ window.EARegisterComponent('input-bar', 'InputBar', {
             visit(composer);
             return total;
         },
+        normalizeCommandText(value) {
+            return (value || '').trim().toLowerCase();
+        },
+        parseActiveSlashCommand(beforeCaret) {
+            if (!beforeCaret) {
+                return null;
+            }
+            var match = beforeCaret.match(/(?:^|[\s\n])\/([^\s/@]*)$/);
+            if (!match) {
+                return null;
+            }
+            var token = '/' + (match[1] || '');
+            var start = beforeCaret.length - token.length;
+            return {
+                query: match[1] || '',
+                range: {
+                    start: start,
+                    end: beforeCaret.length
+                }
+            };
+        },
+        commandMatchesQuery(command, query) {
+            if (!command) {
+                return false;
+            }
+            var normalizedQuery = this.normalizeCommandText(query);
+            if (!normalizedQuery) {
+                return true;
+            }
+            var name = this.normalizeCommandText(command.name || '');
+            if (name.indexOf(normalizedQuery) >= 0) {
+                return true;
+            }
+            var aliases = command.aliases || [];
+            for (var i = 0; i < aliases.length; i++) {
+                if (this.normalizeCommandText(aliases[i]).indexOf(normalizedQuery) >= 0) {
+                    return true;
+                }
+            }
+            return this.normalizeCommandText(command.description || '').indexOf(normalizedQuery) >= 0;
+        },
+        filterCommandCandidates(query) {
+            var list = this.availableCommands || [];
+            var results = [];
+            for (var i = 0; i < list.length; i++) {
+                if (this.commandMatchesQuery(list[i], query)) {
+                    results.push(list[i]);
+                }
+            }
+            results.sort(function (a, b) {
+                return (a.name || '').localeCompare(b.name || '');
+            });
+            return results;
+        },
+        closeCommandSearch() {
+            this.showCommandSearch = false;
+            this.commandSearchQuery = '';
+            this.commandSearchResults = [];
+            this.activeCommandIndex = 0;
+            this.activeSlashRange = null;
+        },
+        moveActiveCommand(delta) {
+            if (this.commandSearchResults.length === 0) return;
+            var next = this.activeCommandIndex + delta;
+            if (next < 0) next = this.commandSearchResults.length - 1;
+            if (next >= this.commandSearchResults.length) next = 0;
+            this.activeCommandIndex = next;
+        },
+        selectCommandCandidate(candidate) {
+            if (!candidate || !candidate.name || !this.activeSlashRange) return;
+            this.replaceSerializedRange(this.activeSlashRange.start, this.activeSlashRange.end, '/' + candidate.name + ' ');
+            this.pendingInsertRange = this.getCurrentSelectionRange()
+                || this.lastSelectionRange
+                || this.createRangeAtComposerEnd();
+            this.closeCommandSearch();
+            this.$nextTick(function () {
+                this.focusComposer();
+            }.bind(this));
+        },
+        resolveSubmittedSlashCommand(text) {
+            var raw = text || '';
+            if (!raw.startsWith('/')) {
+                return null;
+            }
+            var firstLine = raw.split('\n')[0];
+            var match = firstLine.match(/^\/([^\s]+)(?:\s+([\s\S]*))?$/);
+            if (!match) {
+                return null;
+            }
+            var name = match[1] || '';
+            var list = this.availableCommands || [];
+            var command = null;
+            for (var i = 0; i < list.length; i++) {
+                var item = list[i];
+                if (!item) continue;
+                if (this.normalizeCommandText(item.name) === this.normalizeCommandText(name)) {
+                    command = item;
+                    break;
+                }
+                var aliases = item.aliases || [];
+                for (var j = 0; j < aliases.length; j++) {
+                    if (this.normalizeCommandText(aliases[j]) === this.normalizeCommandText(name)) {
+                        command = item;
+                        break;
+                    }
+                }
+                if (command) break;
+            }
+            return {
+                name: name,
+                rawText: raw,
+                command: command,
+                executionType: command ? command.actionType : 'PASS_THROUGH'
+            };
+        },
         replaceSerializedRange(start, end, replacement) {
             var composer = this.$refs.composer;
             if (!composer) {
@@ -573,6 +732,36 @@ window.EARegisterComponent('input-bar', 'InputBar', {
                     return;
                 }
             }
+            if (this.showCommandSearch) {
+                if (e.key === 'ArrowDown') {
+                    e.preventDefault();
+                    this.moveActiveCommand(1);
+                    return;
+                }
+                if (e.key === 'ArrowUp') {
+                    e.preventDefault();
+                    this.moveActiveCommand(-1);
+                    return;
+                }
+                if (e.key === 'Escape') {
+                    e.preventDefault();
+                    this.closeCommandSearch();
+                    return;
+                }
+                if ((e.key === 'Enter' || e.key === 'Tab') && this.commandSearchResults.length > 0) {
+                    e.preventDefault();
+                    this.selectCommandCandidate(this.commandSearchResults[this.activeCommandIndex]);
+                    return;
+                }
+                if (e.key === 'Tab') {
+                    e.preventDefault();
+                    this.closeCommandSearch();
+                    return;
+                }
+                if (e.key === 'Enter') {
+                    this.closeCommandSearch();
+                }
+            }
             if (e.key === 'Backspace') {
                 var prevChip = this.findAdjacentReference('backward');
                 if (prevChip) {
@@ -613,6 +802,18 @@ window.EARegisterComponent('input-bar', 'InputBar', {
                         break;
                 }
             }
+            if (e && this.showCommandSearch) {
+                switch (e.key) {
+                    case 'ArrowDown':
+                    case 'ArrowUp':
+                    case 'Enter':
+                    case 'Tab':
+                    case 'Escape':
+                        return;
+                    default:
+                        break;
+                }
+            }
             this.handleCaretInteraction();
         },
         handleComposerFocus() {
@@ -622,6 +823,7 @@ window.EARegisterComponent('input-bar', 'InputBar', {
         handleCaretInteraction() {
             this.captureSelection();
             this.syncFileSearchState();
+            this.syncCommandSearchState();
         },
         handlePaste(e) {
             var clipboard = e && e.clipboardData;
@@ -650,6 +852,7 @@ window.EARegisterComponent('input-bar', 'InputBar', {
                 e.preventDefault();
                 this.insertTextAtSelection(text);
                 this.syncFileSearchState();
+                this.syncCommandSearchState();
             }
         },
         handleCompositionStart() {
@@ -663,6 +866,7 @@ window.EARegisterComponent('input-bar', 'InputBar', {
             this.captureSelection();
             this.refreshComposerState();
             this.syncFileSearchState();
+            this.syncCommandSearchState();
         },
         saveClipboardImage(file) {
             var reader = new FileReader();
@@ -690,6 +894,23 @@ window.EARegisterComponent('input-bar', 'InputBar', {
             this.fileSearchQuery = mention.query;
             this.showFileSearch = true;
             this.requestFileCandidates(mention.query);
+        },
+        syncCommandSearchState() {
+            var context = this.getMentionContext();
+            if (!context) {
+                this.closeCommandSearch();
+                return;
+            }
+            var slash = this.parseActiveSlashCommand(context.beforeCaret);
+            if (!slash) {
+                this.closeCommandSearch();
+                return;
+            }
+            this.activeSlashRange = slash.range;
+            this.commandSearchQuery = slash.query;
+            this.showCommandSearch = true;
+            this.commandSearchResults = this.filterCommandCandidates(slash.query);
+            this.activeCommandIndex = 0;
         },
         parseActiveMention(beforeCaret) {
             var match = beforeCaret.match(/@([^\s@]*)$/);
@@ -811,13 +1032,16 @@ window.EARegisterComponent('input-bar', 'InputBar', {
             });
             if ((!plainText || !plainText.trim()) && this.fileReferences.length === 0) return;
             if (this.disabled) return;
+            var slashCommand = this.resolveSubmittedSlashCommand(text);
 
             this.$emit('send', {
                 text: text,
-                fileReferences: this.fileReferences.slice()
+                fileReferences: this.fileReferences.slice(),
+                slashCommand: slashCommand
             });
             this.resetComposer();
             this.closeFileSearch();
+            this.closeCommandSearch();
         }
     }
 });

@@ -810,11 +810,12 @@ window.EAStore = Vue.reactive({
      *
      * @param {string} text - 用户输入文本
      */
-    addUserMessage(text, fileReferences) {
+    addUserMessage(text, fileReferences, slashCommand) {
         this.messages.push({
             role: EA_ROLE_USER,
             rawText: text,
             fileReferences: fileReferences || [],
+            slashCommand: slashCommand || null,
             contents: buildUserMessageContents(text, fileReferences)
         });
         var lastAssistant = this.getLastAssistantMessage();

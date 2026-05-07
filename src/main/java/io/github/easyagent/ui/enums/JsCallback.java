@@ -54,7 +54,13 @@ public enum JsCallback implements ValueEnum<String> {
     FILE_REFERENCE_CANDIDATES("FileReferenceCandidates"),
 
     /** 会话删除完成通知。 */
-    SESSIONS_DELETED("SessionsDeleted");
+    SESSIONS_DELETED("SessionsDeleted"),
+
+    /** 斜杠命令列表推送。 */
+    SLASH_COMMANDS("SlashCommands"),
+
+    /** 斜杠命令执行结果推送。 */
+    SLASH_COMMAND_EXECUTED("SlashCommandExecuted");
 
     /** 回调名称。 */
     private final String value;

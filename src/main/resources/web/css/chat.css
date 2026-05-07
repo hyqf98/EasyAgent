@@ -526,7 +526,8 @@
     border-color: var(--ea-input-focus);
     background: var(--ea-bg-hover);
 }
-.file-search-popover {
+.file-search-popover,
+.command-search-popover {
     position: absolute;
     left: 0;
     right: 0;
@@ -547,6 +548,12 @@
     border-color: color-mix(in srgb, var(--ea-input-focus) 34%, transparent);
     box-shadow: 0 22px 60px rgba(0, 0, 0, 0.42), 0 0 0 1px rgba(255,255,255,0.04) inset;
 }
+.command-search-popover {
+    border-color: color-mix(in srgb, #10B981 24%, transparent);
+}
+[data-theme="dark"] .command-search-popover {
+    border-color: color-mix(in srgb, #34D399 26%, transparent);
+}
 .file-search-popover-head {
     display: flex;
     align-items: center;
@@ -565,6 +572,10 @@
     font-weight: 700;
     font-size: 14px;
     box-shadow: 0 8px 18px rgba(139,92,246,0.12);
+}
+.file-search-popover-kicker.command {
+    color: #10B981;
+    box-shadow: 0 8px 18px rgba(16,185,129,0.12);
 }
 .file-search-popover-meta {
     min-width: 0;
@@ -649,6 +660,23 @@
     background: linear-gradient(135deg, color-mix(in srgb, var(--ea-input-focus) 12%, transparent), rgba(59,130,246,0.08));
     box-shadow: 0 10px 24px rgba(17, 24, 39, 0.10);
 }
+.command-search-result .file-search-result-main {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+.command-source-badge {
+    display: inline-flex;
+    align-items: center;
+    padding: 2px 7px;
+    border-radius: 999px;
+    background: color-mix(in srgb, #10B981 14%, transparent);
+    color: #10B981;
+    font-size: 9px;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    flex-shrink: 0;
+}
 .file-search-result-top {
     display: flex;
     align-items: center;
@@ -722,6 +750,7 @@
     max-height: 120px;
     padding: 8px 10px 0;
     overflow-y: auto;
+    scrollbar-gutter: stable;
     white-space: pre-wrap;
     word-break: break-word;
     overflow-wrap: anywhere;

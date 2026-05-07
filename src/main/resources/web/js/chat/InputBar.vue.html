@@ -53,6 +53,40 @@
                 <span class="file-search-popover-tip">{{ i18n.t('input.fileSearchNavigation') }}</span>
             </div>
         </div>
+        <div v-if="showCommandSearch" class="command-search-popover">
+            <div class="file-search-popover-head">
+                <span class="file-search-popover-kicker command">/</span>
+                <div class="file-search-popover-meta">
+                    <div class="file-search-popover-title">{{ i18n.t('input.commandSearchTitle') }}</div>
+                    <div class="file-search-popover-subtitle">
+                        <span v-if="commandSearchQuery" class="file-search-query-chip">/{{ commandSearchQuery }}</span>
+                        <span class="file-search-popover-hint">{{ i18n.t('input.commandSearchHint') }}</span>
+                    </div>
+                </div>
+            </div>
+            <div v-if="commandSearchResults.length === 0" class="file-search-state empty">{{ i18n.t('input.commandSearchEmpty') }}</div>
+            <div v-else class="file-search-result-list">
+                <button
+                    v-for="(item, idx) in commandSearchResults"
+                    :key="item.cliType + ':' + item.name"
+                    type="button"
+                    class="file-search-result command-search-result"
+                    :class="{ active: idx === activeCommandIndex }"
+                    :title="item.description || item.commandText"
+                    @mousedown.prevent="selectCommandCandidate(item)"
+                >
+                    <div class="file-search-result-top">
+                        <div class="file-search-result-main">{{ item.commandText || '/' + item.name }}</div>
+                        <span class="command-source-badge">{{ item.sourceType }}</span>
+                    </div>
+                    <div class="file-search-result-path">{{ item.description || item.group || item.commandText }}</div>
+                </button>
+            </div>
+            <div class="file-search-popover-foot">
+                <span class="file-search-popover-count">{{ i18n.t('input.commandSearchCount', { n: commandSearchResults.length }) }}</span>
+                <span class="file-search-popover-tip">{{ i18n.t('input.commandSearchNavigation') }}</span>
+            </div>
+        </div>
         <div class="input-bottom-bar">
             <button class="input-ref-btn" type="button" @click="openFileSearchShortcut">@</button>
             <div class="model-dropdown-wrapper" :class="{ open: showModelDropdown }">

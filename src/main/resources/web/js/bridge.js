@@ -147,6 +147,18 @@ window.EABridge = {
             }));
         };
 
+        window.__ea_onSlashCommands = (data) => {
+            window.dispatchEvent(new CustomEvent('ea-slash-commands', {
+                detail: data || {}
+            }));
+        };
+
+        window.__ea_onSlashCommandExecuted = (data) => {
+            window.dispatchEvent(new CustomEvent('ea-slash-command-executed', {
+                detail: data || {}
+            }));
+        };
+
         if (window.cefQuery) {
             this.send('pageReady');
         }
@@ -357,5 +369,33 @@ window.EABridge = {
       */
      revertFileEdit(editId) {
          this.send('revertFileEdit', { editId: editId });
+     },
+
+     /**
+      * 获取当前 CLI 的斜杠命令列表。
+      *
+      * @param {string} cliType - CLI 类型名称
+      * @param {string} requestId - 请求 ID
+      */
+     getSlashCommands(cliType, requestId) {
+         this.send('getSlashCommands', {
+             cliType: cliType,
+             requestId: requestId || ''
+         });
+     },
+
+     /**
+      * 执行一个斜杠命令。
+      *
+      * @param {string} cliType - CLI 类型名称
+      * @param {string} rawText - 原始命令文本
+      * @param {string} requestId - 请求 ID
+      */
+     executeSlashCommand(cliType, rawText, requestId) {
+         this.send('executeSlashCommand', {
+             cliType: cliType,
+             rawText: rawText,
+             requestId: requestId || ''
+         });
      }
  };

@@ -37,6 +37,7 @@ window.EARegisterComponent('chat-view', 'ChatView', {
             selectedSessions: [],
             previousSessionId: null,
             pendingDeleteRedirect: false,
+            pendingSlashExecutions: {},
             toastMessage: '',
             toastTimer: null
         };
@@ -164,8 +165,32 @@ window.EARegisterComponent('chat-view', 'ChatView', {
                 this.pendingDeleteRedirect = false;
             }
         }.bind(this);
+        this._onSlashCommandExecuted = function (e) {
+            var detail = e.detail || {};
+            var requestId = detail.requestId || '';
+            var pending = requestId ? this.pendingSlashExecutions[requestId] : null;
+            if (requestId && !pending) {
+                return;
+            }
+            if (requestId) {
+                delete this.pendingSlashExecutions[requestId];
+            }
+            if (detail.toastMessage) {
+                this.showToast(detail.toastMessage);
+            }
+            if (detail.openFreshSession) {
+                this.openFreshChatForCurrentCli();
+                return;
+            }
+            if (!detail.prompt) {
+                return;
+            }
+            var payload = pending || { text: detail.commandName || '', fileReferences: [] };
+            this._sendCommandPrompt(detail.prompt, payload.text, payload.fileReferences || []);
+        }.bind(this);
         window.addEventListener('ea-session-list', this._onSessionList);
         window.addEventListener('ea-sessions-deleted', this._onSessionsDeleted);
+        window.addEventListener('ea-slash-command-executed', this._onSlashCommandExecuted);
     },
         beforeUnmount() {
             if (this._onSessionList) {
@@ -173,6 +198,9 @@ window.EARegisterComponent('chat-view', 'ChatView', {
             }
             if (this._onSessionsDeleted) {
                 window.removeEventListener('ea-sessions-deleted', this._onSessionsDeleted);
+            }
+            if (this._onSlashCommandExecuted) {
+                window.removeEventListener('ea-slash-command-executed', this._onSlashCommandExecuted);
             }
             if (this.toastTimer) {
                 clearTimeout(this.toastTimer);
@@ -204,19 +232,46 @@ window.EARegisterComponent('chat-view', 'ChatView', {
         onSend(payload) {
             var text = payload && payload.text ? payload.text : '';
             var fileReferences = payload && payload.fileReferences ? payload.fileReferences : [];
-            if (!this.store.sessionId) {
+            var slashCommand = payload && payload.slashCommand ? payload.slashCommand : null;
+            if (!this.store.sessionId && (!slashCommand || slashCommand.executionType !== 'OPEN_NEW_SESSION')) {
                 this.store.sessionId = 'new-' + Date.now();
             }
             if (this.store.isStreaming) {
-                this.addToPendingQueue({ text: text, fileReferences: fileReferences });
+                this.addToPendingQueue({ text: text, fileReferences: fileReferences, slashCommand: slashCommand });
                 return;
             }
+            if (slashCommand) {
+                this.executeSlashCommand({ text: text, fileReferences: fileReferences, slashCommand: slashCommand });
+                return;
+            }
+            this.sendPlainMessage(text, fileReferences);
+        },
+        sendPlainMessage(text, fileReferences) {
             this.store.addUserMessage(text, fileReferences);
             this.store.beginAssistantTurn();
             this.store.setStreaming(true);
             this.$nextTick(this.scrollToBottom);
             var modelId = this.store.selectedModelId || null;
             EABridge.sendMessage(text, modelId, fileReferences);
+        },
+        _sendCommandPrompt(prompt, displayText, fileReferences) {
+            this.store.addUserMessage(displayText, fileReferences);
+            this.store.beginAssistantTurn();
+            this.store.setStreaming(true);
+            this.$nextTick(this.scrollToBottom);
+            var modelId = this.store.selectedModelId || null;
+            EABridge.sendMessage(prompt, modelId, fileReferences);
+        },
+        executeSlashCommand(payload) {
+            if (!payload || !payload.slashCommand) {
+                return;
+            }
+            var requestId = 'cmd-' + (++this.pendingIdCounter);
+            this.pendingSlashExecutions[requestId] = {
+                text: payload.text || '',
+                fileReferences: payload.fileReferences || []
+            };
+            EABridge.executeSlashCommand(this.store.cliType, payload.text || '', requestId);
         },
         onStop() {
             EABridge.stopGeneration();
@@ -417,7 +472,8 @@ window.EARegisterComponent('chat-view', 'ChatView', {
             this.pendingQueue.push({
                 id: 'pq-' + this.pendingIdCounter,
                 text: payload.text,
-                fileReferences: payload.fileReferences || []
+                fileReferences: payload.fileReferences || [],
+                slashCommand: payload.slashCommand || null
             });
             this._persistPendingQueue();
         },
@@ -439,7 +495,10 @@ window.EARegisterComponent('chat-view', 'ChatView', {
          */
         updatePending(payload) {
             var item = this.pendingQueue.find(function (i) { return i.id === payload.id; });
-            if (item) item.text = payload.text;
+            if (item) {
+                item.text = payload.text;
+                item.slashCommand = null;
+            }
             this._persistPendingQueue();
         },
 
@@ -449,11 +508,12 @@ window.EARegisterComponent('chat-view', 'ChatView', {
         sendNextPending() {
             if (this.pendingQueue.length === 0) return;
             var next = this.pendingQueue.shift();
-            this.store.addUserMessage(next.text, next.fileReferences || []);
-            this.store.beginAssistantTurn();
-            this.store.setStreaming(true);
-            var modelId = this.store.selectedModelId || null;
-            EABridge.sendMessage(next.text, modelId, next.fileReferences || []);
+            if (next.slashCommand) {
+                this.executeSlashCommand(next);
+                this._persistPendingQueue();
+                return;
+            }
+            this.sendPlainMessage(next.text, next.fileReferences || []);
             this._persistPendingQueue();
         },
 
@@ -479,7 +539,12 @@ window.EARegisterComponent('chat-view', 'ChatView', {
             var sid = this.store.sessionId;
             if (!sid) return;
             var items = this.pendingQueue.map(function (item) {
-                return { id: item.id, text: item.text, fileReferences: item.fileReferences || [] };
+                return {
+                    id: item.id,
+                    text: item.text,
+                    fileReferences: item.fileReferences || [],
+                    slashCommand: item.slashCommand || null
+                };
             });
             this.store.savePendingQueue(sid, this.pendingQueue);
             EABridge.savePendingQueue(sid, JSON.stringify(items));

@@ -78,7 +78,13 @@ public enum JsAction implements ValueEnum<String> {
     OPEN_FILE_EDIT_DIFF("openFileEditDiff"),
 
     /** 回撤 AI 文件编辑。 */
-    REVERT_FILE_EDIT("revertFileEdit");
+    REVERT_FILE_EDIT("revertFileEdit"),
+
+    /** 获取当前 CLI 可用的斜杠命令列表。 */
+    GET_SLASH_COMMANDS("getSlashCommands"),
+
+    /** 执行一个斜杠命令。 */
+    EXECUTE_SLASH_COMMAND("executeSlashCommand");
 
     /** 动作标识值。 */
     private final String value;
