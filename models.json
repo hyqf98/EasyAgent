@@ -1,20 +1,15 @@
 {
   "version": 1,
-  "updatedAt": "2026-05-06",
+  "updatedAt": "2026-05-08",
   "defaultModels": {
-    "CLAUDE":  { "modelId": "claude-sonnet-4-20250514", "contextWindow": 200000 },
-    "OPENCODE": { "modelId": "claude-sonnet-4-20250514", "contextWindow": 200000 },
-    "CODEX":   { "modelId": "o4-mini", "contextWindow": 200000 }
+    "CLAUDE":  { "modelId": "claude-opus-4-1-20250805", "contextWindow": 200000 },
+    "OPENCODE": { "modelId": "claude-opus-4-1-20250805", "contextWindow": 200000 },
+    "CODEX":   { "modelId": "gpt-5.5", "contextWindow": 1050000 }
   },
   "models": [
+    { "modelId": "claude-opus-4-1-20250805", "displayName": "Claude Opus 4.1", "cliType": "CLAUDE", "contextWindow": 200000, "provider": "anthropic" },
     { "modelId": "claude-sonnet-4-20250514", "displayName": "Claude Sonnet 4", "cliType": "CLAUDE", "contextWindow": 200000, "provider": "anthropic" },
-    { "modelId": "claude-opus-4-20250514", "displayName": "Claude Opus 4", "cliType": "CLAUDE", "contextWindow": 200000, "provider": "anthropic" },
-    { "modelId": "claude-3-7-sonnet-20250219", "displayName": "Claude 3.7 Sonnet", "cliType": "CLAUDE", "contextWindow": 200000, "provider": "anthropic" },
-    { "modelId": "claude-3-5-haiku-20241022", "displayName": "Claude 3.5 Haiku", "cliType": "CLAUDE", "contextWindow": 200000, "provider": "anthropic" },
-    { "modelId": "o4-mini", "displayName": "OpenAI o4-mini", "cliType": "CODEX", "contextWindow": 200000, "provider": "openai" },
-    { "modelId": "o3", "displayName": "OpenAI o3", "cliType": "CODEX", "contextWindow": 200000, "provider": "openai" },
-    { "modelId": "gpt-4.1", "displayName": "GPT-4.1", "cliType": "CODEX", "contextWindow": 1047576, "provider": "openai" },
-    { "modelId": "gpt-4.1-mini", "displayName": "GPT-4.1 Mini", "cliType": "CODEX", "contextWindow": 1047576, "provider": "openai" },
-    { "modelId": "gpt-4.1-nano", "displayName": "GPT-4.1 Nano", "cliType": "CODEX", "contextWindow": 1047576, "provider": "openai" }
+    { "modelId": "gpt-5.5", "displayName": "GPT-5.5", "cliType": "CODEX", "contextWindow": 1050000, "provider": "openai" },
+    { "modelId": "gpt-5.4", "displayName": "GPT-5.4", "cliType": "CODEX", "contextWindow": 1050000, "provider": "openai" }
   ]
 }
