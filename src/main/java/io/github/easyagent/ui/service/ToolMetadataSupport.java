@@ -1,16 +1,21 @@
 package io.github.easyagent.ui.service;
 
+import com.google.gson.JsonElement;
+import com.google.gson.JsonObject;
+import com.google.gson.JsonParser;
 import io.github.easyagent.ai.entity.ToolCallContent;
 import io.github.easyagent.session.entity.ContentBlock;
+import io.github.easyagent.session.entity.HistoricalFileEditData;
 import io.github.easyagent.ui.service.entity.FileEditPayload;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 /**
  * 工具调用元数据解析工具。
@@ -27,15 +32,16 @@ public final class ToolMetadataSupport {
 
     /** 常见文件路径字段名。 */
     private static final List<String> PATH_KEYS = List.of(
-            "file_path", "path", "filepath", "filePath", "filename", "target_file", "targetFile");
+            "file_path", "path", "filepath", "filePath", "filename", "target_file", "targetFile",
+            "file", "targetPath", "target_path", "old_path", "new_path");
 
     /** 支持视为文件编辑的工具名关键词。 */
     private static final List<String> FILE_EDIT_TOOL_KEYWORDS = List.of(
-            "edit", "write", "create", "patch", "replace", "multi_edit", "multiedit");
+            "edit", "write", "create", "patch", "replace", "multi_edit", "multiedit", "delete", "remove", "update");
 
     /** 常见路径字段的匹配模式。 */
     private static final Pattern PATH_PATTERN = Pattern.compile(
-            "\"(?:file_path|path|filepath|filePath|filename|target_file|targetFile)\"\\s*:\\s*\"([^\"]+)\"");
+            "\"(?:file_path|path|filepath|filePath|filename|target_file|targetFile|file|targetPath|target_path|old_path|new_path)\"\\s*:\\s*\"([^\"]+)\"");
 
     private ToolMetadataSupport() {
     }
@@ -68,6 +74,42 @@ public final class ToolMetadataSupport {
             return null;
         }
         return buildFileEdit(sessionId, projectPath, block.toolUseId(), block.toolName(), block.toolInput());
+    }
+
+    /**
+     * 从工具输入中解析历史文件编辑原始数据。
+     *
+     * @param toolName  工具名称
+     * @param inputJson 工具输入 JSON
+     * @return 历史文件编辑原始数据；不是文件编辑工具时返回 {@code null}
+     */
+    public static HistoricalFileEditData resolveHistoricalFileEdit(String toolName, String inputJson) {
+        String normalizedToolName = normalize(toolName);
+        if (!isFileEditTool(normalizedToolName)) {
+            return null;
+        }
+        if (inputJson == null || inputJson.isBlank()) {
+            return null;
+        }
+        try {
+            JsonElement root = JsonParser.parseString(inputJson);
+            String originalFile = findHistoricalString(root, "originalFile", "original_file", "beforeContent",
+                    "before_content", "contentBefore", "content_before");
+            String oldString = findHistoricalString(root, "oldString", "old_string", "from", "before", "previous");
+            String newString = findHistoricalString(root, "newString", "new_string", "to", "after", "replacement");
+            Boolean replaceAll = findHistoricalBoolean(root, "replaceAll", "replace_all", "all");
+            if (originalFile == null && oldString == null && newString == null) {
+                return null;
+            }
+            return HistoricalFileEditData.builder()
+                    .originalFile(originalFile)
+                    .oldString(oldString)
+                    .newString(newString)
+                    .replaceAll(replaceAll)
+                    .build();
+        } catch (Exception ignored) {
+            return null;
+        }
     }
 
     /**
@@ -141,9 +183,149 @@ public final class ToolMetadataSupport {
         if (inputJson == null || inputJson.isBlank()) {
             return null;
         }
+        String jsonPath = extractPathFromJson(inputJson);
+        if (jsonPath != null && !jsonPath.isBlank()) {
+            return jsonPath;
+        }
         Matcher matcher = PATH_PATTERN.matcher(inputJson);
         if (matcher.find()) {
             return matcher.group(1);
+        }
+        return null;
+    }
+
+    /**
+     * 在 JSON 节点中递归查找历史编辑字符串字段。
+     *
+     * @param element JSON 节点
+     * @param keys    候选字段名
+     * @return 字符串值；未找到时返回 {@code null}
+     */
+    private static String findHistoricalString(JsonElement element, String... keys) {
+        if (element == null || element.isJsonNull()) {
+            return null;
+        }
+        if (element.isJsonObject()) {
+            JsonObject object = element.getAsJsonObject();
+            for (String key : keys) {
+                JsonElement value = object.get(key);
+                if (value != null && value.isJsonPrimitive() && value.getAsJsonPrimitive().isString()) {
+                    return value.getAsString();
+                }
+            }
+            for (Map.Entry<String, JsonElement> entry : object.entrySet()) {
+                String nested = findHistoricalString(entry.getValue(), keys);
+                if (nested != null && !nested.isBlank()) {
+                    return nested;
+                }
+            }
+            return null;
+        }
+        if (element.isJsonArray()) {
+            for (JsonElement item : element.getAsJsonArray()) {
+                String nested = findHistoricalString(item, keys);
+                if (nested != null && !nested.isBlank()) {
+                    return nested;
+                }
+            }
+        }
+        return null;
+    }
+
+    /**
+     * 在 JSON 节点中递归查找布尔字段。
+     *
+     * @param element JSON 节点
+     * @param keys    候选字段名
+     * @return 布尔值；未找到时返回 {@code null}
+     */
+    private static Boolean findHistoricalBoolean(JsonElement element, String... keys) {
+        if (element == null || element.isJsonNull()) {
+            return null;
+        }
+        if (element.isJsonObject()) {
+            JsonObject object = element.getAsJsonObject();
+            for (String key : keys) {
+                JsonElement value = object.get(key);
+                if (value != null && value.isJsonPrimitive()) {
+                    if (value.getAsJsonPrimitive().isBoolean()) {
+                        return value.getAsBoolean();
+                    }
+                    if (value.getAsJsonPrimitive().isString()) {
+                        String text = value.getAsString();
+                        if ("true".equalsIgnoreCase(text) || "false".equalsIgnoreCase(text)) {
+                            return Boolean.valueOf(text);
+                        }
+                    }
+                }
+            }
+            for (Map.Entry<String, JsonElement> entry : object.entrySet()) {
+                Boolean nested = findHistoricalBoolean(entry.getValue(), keys);
+                if (nested != null) {
+                    return nested;
+                }
+            }
+            return null;
+        }
+        if (element.isJsonArray()) {
+            for (JsonElement item : element.getAsJsonArray()) {
+                Boolean nested = findHistoricalBoolean(item, keys);
+                if (nested != null) {
+                    return nested;
+                }
+            }
+        }
+        return null;
+    }
+
+    /**
+     * 从 JSON 树中递归提取路径字段。
+     *
+     * @param inputJson 输入 JSON
+     * @return 文件路径；无法解析时返回 {@code null}
+     */
+    private static String extractPathFromJson(String inputJson) {
+        try {
+            JsonElement root = JsonParser.parseString(inputJson);
+            return findPathInElement(root);
+        } catch (Exception ignored) {
+            return null;
+        }
+    }
+
+    /**
+     * 从 JSON 节点中递归查找文件路径。
+     *
+     * @param element JSON 节点
+     * @return 文件路径；未找到时返回 {@code null}
+     */
+    private static String findPathInElement(JsonElement element) {
+        if (element == null || element.isJsonNull()) {
+            return null;
+        }
+        if (element.isJsonObject()) {
+            JsonObject object = element.getAsJsonObject();
+            for (String key : PATH_KEYS) {
+                JsonElement value = object.get(key);
+                if (value != null && value.isJsonPrimitive() && value.getAsJsonPrimitive().isString()) {
+                    return value.getAsString();
+                }
+            }
+            for (Map.Entry<String, JsonElement> entry : object.entrySet()) {
+                String nested = findPathInElement(entry.getValue());
+                if (nested != null && !nested.isBlank()) {
+                    return nested;
+                }
+            }
+            return null;
+        }
+        if (element.isJsonArray()) {
+            for (JsonElement item : element.getAsJsonArray()) {
+                String nested = findPathInElement(item);
+                if (nested != null && !nested.isBlank()) {
+                    return nested;
+                }
+            }
         }
         return null;
     }
@@ -171,6 +353,9 @@ public final class ToolMetadataSupport {
         if (normalizedToolName.contains("create")) {
             return "create";
         }
+        if (normalizedToolName.contains("delete") || normalizedToolName.contains("remove")) {
+            return "delete";
+        }
         if (normalizedToolName.contains("write")) {
             return "write";
         }
@@ -179,6 +364,9 @@ public final class ToolMetadataSupport {
         }
         if (normalizedToolName.contains("replace")) {
             return "replace";
+        }
+        if (normalizedToolName.contains("update")) {
+            return "update";
         }
         return "edit";
     }
@@ -225,7 +413,8 @@ public final class ToolMetadataSupport {
      * @return 编辑 ID
      */
     private static String buildEditId(String sessionId, String toolCallId, String absolutePath) {
-        String raw = sessionId + "|" + toolCallId + "|" + absolutePath;
+        String stablePart = toolCallId != null && !toolCallId.isBlank() ? toolCallId : sessionId;
+        String raw = stablePart + "|" + absolutePath;
         return "edit-" + Integer.toHexString(raw.hashCode());
     }
 }

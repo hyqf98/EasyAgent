@@ -3,8 +3,8 @@ package io.github.easyagent.ui.jcef;
 import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.util.text.StringUtil;
-import com.intellij.util.ui.StartupUiUtil;
 import com.intellij.ui.jcef.JBCefBrowser;
+import com.intellij.util.ui.StartupUiUtil;
 import io.github.easyagent.ai.StreamEventListener;
 import io.github.easyagent.ai.entity.AIResponse;
 import io.github.easyagent.ai.entity.MessageContent;
@@ -12,6 +12,7 @@ import io.github.easyagent.ai.entity.ToolCallContent;
 import io.github.easyagent.enums.CLIType;
 import io.github.easyagent.enums.ResponseType;
 import io.github.easyagent.session.SessionService;
+import io.github.easyagent.session.entity.SessionMessage;
 import io.github.easyagent.session.entity.SessionInfo;
 import io.github.easyagent.settings.EasyAgentState;
 import io.github.easyagent.settings.models.ModelConfigService;
@@ -19,16 +20,16 @@ import io.github.easyagent.settings.models.ModelInfo;
 import io.github.easyagent.ui.enums.JsAction;
 import io.github.easyagent.ui.enums.JsCallback;
 import io.github.easyagent.ui.enums.ThemeType;
-import io.github.easyagent.ui.service.ChatUiBridgeService;
 import io.github.easyagent.ui.service.ChatManager;
+import io.github.easyagent.ui.service.ChatUiBridgeService;
 import io.github.easyagent.ui.service.FileEditService;
 import io.github.easyagent.ui.service.FileReferenceService;
 import io.github.easyagent.ui.service.MessageConverter;
+import io.github.easyagent.ui.service.command.SlashCommandService;
 import io.github.easyagent.ui.service.entity.FileReferenceCandidatePayload;
 import io.github.easyagent.ui.service.entity.FileReferencePayload;
 import io.github.easyagent.ui.service.entity.SlashCommandExecutionPayload;
 import io.github.easyagent.ui.service.entity.SlashCommandsPayload;
-import io.github.easyagent.ui.service.command.SlashCommandService;
 import io.github.easyagent.util.GsonUtils;
 import lombok.extern.slf4j.Slf4j;
 import org.cef.browser.CefBrowser;
@@ -39,11 +40,11 @@ import org.cef.handler.CefMessageRouterHandlerAdapter;
 
 import java.util.EnumMap;
 import java.util.List;
-import java.util.function.Consumer;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.function.Consumer;
 
 /**
  * JCEF Java-JavaScript 双向通信桥。
@@ -112,7 +113,8 @@ public class JCEFMessageBridge {
         this.project = project;
         this.fileReferenceService = project != null ? project.getService(FileReferenceService.class) : null;
         this.chatUiBridgeService = project != null ? project.getService(ChatUiBridgeService.class) : null;
-        this.fileEditService = new FileEditService(project, project != null ? project.getBasePath() : null);
+        this.fileEditService = new FileEditService(project, project != null ? project.getBasePath() : null,
+                this.sessionService);
         this.slashCommandService = new SlashCommandService();
         if (this.chatUiBridgeService != null) {
             this.chatUiBridgeService.registerBridge(this);
@@ -144,7 +146,7 @@ public class JCEFMessageBridge {
         this.registerHandler(JsAction.LIST_SESSIONS, ListSessionsRequest.class,
                 request -> this.pushSessionList(request.cliType()));
         this.registerHandler(JsAction.LOAD_HISTORY, LoadHistoryRequest.class,
-                request -> this.loadHistory(request.sessionId(), request.cliType()));
+                request -> this.loadHistory(request.sessionId(), request.cliType(), request.forceReload()));
         this.registerHandler(JsAction.SEND_MESSAGE, SendMessageRequest.class, request -> this.sendUserMessage(
                 request.text(), request.cliType(), request.sessionId(), request.modelId(), request.fileReferences()));
         this.registerHandler(JsAction.STOP_GENERATION, StopGenerationRequest.class,
@@ -171,9 +173,9 @@ public class JCEFMessageBridge {
         this.registerHandler(JsAction.SAVE_CLIPBOARD_IMAGE, SaveClipboardImageRequest.class,
                 this::handleSaveClipboardImage);
         this.registerHandler(JsAction.OPEN_FILE_EDIT_DIFF, OpenFileEditDiffRequest.class,
-                request -> this.handleOpenFileEditDiff(request.editId()));
+                this::handleOpenFileEditDiff);
         this.registerHandler(JsAction.REVERT_FILE_EDIT, RevertFileEditRequest.class,
-                request -> this.handleRevertFileEdit(request.editId()));
+                this::handleRevertFileEdit);
         this.registerHandler(JsAction.GET_SLASH_COMMANDS, GetSlashCommandsRequest.class,
                 this::handleGetSlashCommands);
         this.registerHandler(JsAction.EXECUTE_SLASH_COMMAND, ExecuteSlashCommandRequest.class,
@@ -308,17 +310,36 @@ public class JCEFMessageBridge {
      * @param cliType   CLI 类型名称
      */
     private void loadHistory(String sessionId, String cliType) {
+        this.loadHistory(sessionId, cliType, false);
+    }
+
+    /**
+     * 异步加载历史会话消息并推送到前端。
+     * <p>
+     * 优先从内存缓存读取，缓存未命中时在虚拟线程中读取并缓存结果。
+     * forceReload 为 true 时会绕过缓存重新读取磁盘数据。
+     * </p>
+     *
+     * @param sessionId   会话 ID
+     * @param cliType     CLI 类型名称
+     * @param forceReload  是否强制重新读取
+     */
+    private void loadHistory(String sessionId, String cliType, boolean forceReload) {
         this.currentSessionId = sessionId;
-        String cached = this.historyCache.get(sessionId);
-        if (cached != null) {
-            this.invokeJSCallback(JsCallback.HISTORY_LOADED, cached);
-            this.persistCurrentSession(sessionId, cliType);
-            return;
+        if (!forceReload) {
+            String cached = this.historyCache.get(sessionId);
+            if (cached != null) {
+                this.invokeJSCallback(JsCallback.HISTORY_LOADED, cached);
+                this.persistCurrentSession(sessionId, cliType);
+                this.asyncExecutor.submit(() -> this.rehydrateHistoricalFileEdits(sessionId, cliType));
+                return;
+            }
         }
         this.asyncExecutor.submit(() -> {
             try {
                 CLIType type = CLIType.valueOf(cliType);
                 String json = this.chatManager.loadHistory(sessionId, type, this.currentProjectPath);
+                this.rehydrateHistoricalFileEdits(sessionId, cliType);
                 this.historyCache.put(sessionId, json);
                 this.invokeJSCallback(JsCallback.HISTORY_LOADED, json);
                 this.persistCurrentSession(sessionId, cliType);
@@ -326,6 +347,22 @@ public class JCEFMessageBridge {
                 log.warn("Failed to load history for session {}", sessionId, e);
             }
         });
+    }
+
+    /**
+     * 根据历史会话重新恢复文件编辑快照。
+     *
+     * @param sessionId 会话 ID
+     * @param cliType   CLI 类型
+     */
+    private void rehydrateHistoricalFileEdits(String sessionId, String cliType) {
+        try {
+            CLIType type = CLIType.valueOf(cliType);
+            List<SessionMessage> messages = this.sessionService.readMessages(type, sessionId);
+            this.fileEditService.trackHistoricalMessages(messages);
+        } catch (Exception e) {
+            log.debug("Failed to rehydrate file edits for session {}", sessionId, e);
+        }
     }
 
     /**
@@ -489,7 +526,9 @@ public class JCEFMessageBridge {
      * @param obj 请求 JSON 对象
      */
     private void handleSavePendingQueue(SavePendingQueueRequest request) {
-        if (this.project == null) return;
+        if (this.project == null) {
+            return;
+        }
         String sessionId = request.sessionId();
         String pendingJson = request.pendingQueue();
         EasyAgentState state = EasyAgentState.getInstance(this.project);
@@ -504,7 +543,9 @@ public class JCEFMessageBridge {
      * </p>
      */
     private void pushRestoredState() {
-        if (this.project == null) return;
+        if (this.project == null) {
+            return;
+        }
         EasyAgentState state = EasyAgentState.getInstance(this.project);
         this.invokeJSCallback(JsCallback.STATE_RESTORED, new RestoredStatePayload(
                 state.getCurrentSessionId() != null ? state.getCurrentSessionId() : "",
@@ -519,7 +560,9 @@ public class JCEFMessageBridge {
      * 推送当前 AI 重试策略配置到前端。
      */
     private void pushRetryConfig() {
-        if (this.project == null) return;
+        if (this.project == null) {
+            return;
+        }
         EasyAgentState state = EasyAgentState.getInstance(this.project);
         this.invokeJSCallback(JsCallback.RETRY_CONFIG,
                 new RetryConfigPayload(state.getRetryMaxCount(), state.getRetryTimeoutMs()));
@@ -531,7 +574,9 @@ public class JCEFMessageBridge {
      * @param obj 请求 JSON 对象
      */
     private void handleSaveRetryConfig(SaveRetryConfigRequest request) {
-        if (this.project == null) return;
+        if (this.project == null) {
+            return;
+        }
         EasyAgentState state = EasyAgentState.getInstance(this.project);
         int maxCount = request.retryMaxCount();
         long timeoutMs = request.retryTimeoutMs();
@@ -675,25 +720,31 @@ public class JCEFMessageBridge {
     /**
      * 打开文件编辑 diff。
      *
-     * @param editId 编辑 ID
+     * @param request 请求
      */
-    private void handleOpenFileEditDiff(String editId) {
-        if (editId == null || editId.isBlank()) {
+    private void handleOpenFileEditDiff(OpenFileEditDiffRequest request) {
+        if (request == null || (request.editId() == null || request.editId().isBlank())
+                && (request.toolCallId() == null || request.toolCallId().isBlank())
+                && (request.path() == null || request.path().isBlank())) {
             return;
         }
-        ApplicationManager.getApplication().invokeLater(() -> JCEFMessageBridge.this.fileEditService.openDiff(editId));
+        ApplicationManager.getApplication().invokeLater(() -> JCEFMessageBridge.this.fileEditService.openDiff(
+                request.editId(), request.toolCallId(), request.path()));
     }
 
     /**
      * 回撤文件编辑。
      *
-     * @param editId 编辑 ID
+     * @param request 请求
      */
-    private void handleRevertFileEdit(String editId) {
-        if (editId == null || editId.isBlank()) {
+    private void handleRevertFileEdit(RevertFileEditRequest request) {
+        if (request == null || (request.editId() == null || request.editId().isBlank())
+                && (request.toolCallId() == null || request.toolCallId().isBlank())
+                && (request.path() == null || request.path().isBlank())) {
             return;
         }
-        ApplicationManager.getApplication().invokeLater(() -> JCEFMessageBridge.this.fileEditService.revertEdit(editId));
+        ApplicationManager.getApplication().invokeLater(() -> JCEFMessageBridge.this.fileEditService.revertEdit(
+                request.editId(), request.toolCallId(), request.path()));
     }
 
     /**
@@ -829,7 +880,7 @@ public class JCEFMessageBridge {
                                 String request, boolean persistent,
                                 CefQueryCallback callback) {
             try {
-                handleRequest(request);
+                this.handleRequest(request);
                 callback.success("");
             } catch (Exception e) {
                 log.warn("Failed to handle JS query: {}", e.getMessage());
@@ -937,7 +988,7 @@ public class JCEFMessageBridge {
      * @param sessionId  会话 ID
      * @param cliType    CLI 类型
      */
-    private record LoadHistoryRequest(String action, String sessionId, String cliType) implements JsRequest {
+    private record LoadHistoryRequest(String action, String sessionId, String cliType, boolean forceReload) implements JsRequest {
     }
 
     /**
@@ -1044,19 +1095,23 @@ public class JCEFMessageBridge {
     /**
      * 打开文件 diff 请求。
      *
-     * @param action 动作名称
-     * @param editId 编辑 ID
+     * @param action     动作名称
+     * @param editId     编辑 ID
+     * @param toolCallId 工具调用 ID
+     * @param path       文件路径
      */
-    private record OpenFileEditDiffRequest(String action, String editId) implements JsRequest {
+    private record OpenFileEditDiffRequest(String action, String editId, String toolCallId, String path) implements JsRequest {
     }
 
     /**
      * 回撤文件编辑请求。
      *
-     * @param action 动作名称
-     * @param editId 编辑 ID
+     * @param action     动作名称
+     * @param editId     编辑 ID
+     * @param toolCallId 工具调用 ID
+     * @param path       文件路径
      */
-    private record RevertFileEditRequest(String action, String editId) implements JsRequest {
+    private record RevertFileEditRequest(String action, String editId, String toolCallId, String path) implements JsRequest {
     }
 
     /**

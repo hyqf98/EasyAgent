@@ -38,6 +38,9 @@ public class EasyAgentState implements PersistentStateComponent<EasyAgentState> 
     /** 按会话 ID 存储的待发送队列：sessionId -> JSON 数组字符串。 */
     private Map<String, String> pendingQueues = new HashMap<>();
 
+    /** 按编辑 ID 存储的 AI 文件编辑快照：editId -> JSON 字符串。 */
+    private Map<String, String> fileEditSnapshots = new HashMap<>();
+
     /** AI 重试最大次数，默认 5 次。 */
     private int retryMaxCount = 5;
 
@@ -90,6 +93,42 @@ public class EasyAgentState implements PersistentStateComponent<EasyAgentState> 
      */
     public String getPendingQueue(String sessionId) {
         return sessionId != null ? this.pendingQueues.get(sessionId) : null;
+    }
+
+    /**
+     * 保存文件编辑快照。
+     *
+     * @param editId       编辑 ID
+     * @param snapshotJson 快照 JSON 字符串
+     */
+    public synchronized void saveFileEditSnapshot(String editId, String snapshotJson) {
+        if (editId == null || editId.isBlank()) {
+            return;
+        }
+        if (snapshotJson == null || snapshotJson.isBlank()) {
+            this.fileEditSnapshots.remove(editId);
+        } else {
+            this.fileEditSnapshots.put(editId, snapshotJson);
+        }
+    }
+
+    /**
+     * 获取文件编辑快照 JSON。
+     *
+     * @param editId 编辑 ID
+     * @return 快照 JSON；不存在时返回 {@code null}
+     */
+    public synchronized String getFileEditSnapshot(String editId) {
+        return editId != null ? this.fileEditSnapshots.get(editId) : null;
+    }
+
+    /**
+     * 获取全部文件编辑快照。
+     *
+     * @return 文件编辑快照映射
+     */
+    public synchronized Map<String, String> getFileEditSnapshots() {
+        return this.fileEditSnapshots;
     }
 
     /**

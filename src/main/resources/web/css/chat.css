@@ -451,6 +451,7 @@
     padding: 0 6px 4px;
     flex-shrink: 0;
 }
+.input-inline-token,
 .input-inline-ref,
 .message-inline-ref {
     display: inline-flex;
@@ -466,6 +467,13 @@
     font-size: 11px;
     line-height: 1.4;
     vertical-align: middle;
+}
+.input-inline-command {
+    margin-right: 4px;
+    border-color: color-mix(in srgb, #10B981 26%, var(--ea-border));
+    background: linear-gradient(135deg, rgba(16, 185, 129, 0.16), color-mix(in srgb, var(--ea-bg-active) 70%, transparent));
+    color: var(--ea-text);
+    box-shadow: 0 0 0 1px color-mix(in srgb, #10B981 10%, transparent) inset;
 }
 .input-inline-ref.image-ref,
 .message-inline-ref.image-ref {
@@ -493,6 +501,14 @@
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+}
+.input-inline-command .input-inline-ref-icon {
+    background: rgba(16, 185, 129, 0.18);
+    color: #10B981;
+}
+.input-inline-command .input-inline-ref-label {
+    font-family: var(--ea-font-mono);
+    font-weight: 700;
 }
 .input-inline-ref-remove {
     display: inline-flex;
@@ -536,23 +552,79 @@
     border: 1px solid color-mix(in srgb, var(--ea-input-focus) 24%, transparent);
     border-radius: 20px;
     background:
-        linear-gradient(180deg, rgba(255,255,255,0.98) 0%, rgba(250,250,253,0.98) 100%);
-    box-shadow: 0 18px 48px rgba(31, 41, 55, 0.16), 0 0 0 1px rgba(255,255,255,0.72) inset;
+        linear-gradient(180deg,
+        color-mix(in srgb, var(--ea-popup-bg) 96%, transparent) 0%,
+        color-mix(in srgb, var(--ea-bg-secondary) 96%, transparent) 100%);
+    box-shadow: var(--ea-popup-shadow), 0 0 0 1px color-mix(in srgb, var(--ea-text) 4%, transparent) inset;
     backdrop-filter: blur(22px);
     z-index: 40;
     animation: fadeIn .16s ease;
 }
-[data-theme="dark"] .file-search-popover {
-    background:
-        linear-gradient(180deg, rgba(26, 31, 44, 0.96) 0%, rgba(20, 24, 35, 0.98) 100%);
-    border-color: color-mix(in srgb, var(--ea-input-focus) 34%, transparent);
-    box-shadow: 0 22px 60px rgba(0, 0, 0, 0.42), 0 0 0 1px rgba(255,255,255,0.04) inset;
-}
 .command-search-popover {
-    border-color: color-mix(in srgb, #10B981 24%, transparent);
+    border-color: color-mix(in srgb, #10B981 22%, var(--ea-border));
+    background:
+        linear-gradient(180deg,
+        color-mix(in srgb, #10B981 8%, var(--ea-popup-bg)) 0%,
+        color-mix(in srgb, var(--ea-bg-secondary) 96%, transparent) 100%);
+    padding: 8px;
 }
-[data-theme="dark"] .command-search-popover {
-    border-color: color-mix(in srgb, #34D399 26%, transparent);
+.command-search-popover .file-search-popover-head {
+    padding: 1px 1px 6px;
+}
+.command-search-popover .file-search-popover-kicker {
+    width: 24px;
+    height: 24px;
+    border-radius: 8px;
+    font-size: 12px;
+}
+.command-search-popover .file-search-popover-title {
+    font-size: 10px;
+}
+.command-search-popover .file-search-popover-subtitle {
+    gap: 6px;
+}
+.command-search-popover .file-search-query-chip {
+    max-width: 38%;
+    padding: 2px 7px;
+    font-size: 10px;
+}
+.command-search-popover .file-search-popover-hint {
+    font-size: 10px;
+}
+.command-search-popover .file-search-result-list {
+    max-height: 176px;
+    gap: 4px;
+}
+.command-search-popover .file-search-result {
+    padding: 7px 9px;
+    border-radius: 10px;
+}
+.command-search-popover .file-search-result:hover,
+.command-search-popover .file-search-result.active {
+    background: linear-gradient(135deg, color-mix(in srgb, #10B981 16%, transparent), color-mix(in srgb, var(--ea-bg-active) 72%, transparent));
+    border-color: color-mix(in srgb, #10B981 24%, var(--ea-border));
+    box-shadow: 0 8px 18px rgba(16, 185, 129, 0.12);
+}
+.command-search-popover .file-search-result-main {
+    font-size: 11px;
+    font-family: var(--ea-font-mono);
+}
+.command-search-popover .file-search-result-path {
+    font-size: 10px;
+    color: var(--ea-text-secondary);
+}
+.command-search-popover .command-group-badge,
+.command-search-popover .command-source-badge {
+    padding: 2px 5px;
+    font-size: 8px;
+}
+.command-search-popover .file-search-popover-foot {
+    margin-top: 6px;
+    padding-top: 6px;
+}
+.command-search-popover .file-search-popover-count,
+.command-search-popover .file-search-popover-tip {
+    font-size: 9px;
 }
 .file-search-popover-head {
     display: flex;
@@ -630,7 +702,7 @@
     display: flex;
     flex-direction: column;
     gap: 6px;
-    max-height: 280px;
+    max-height: 260px;
     overflow-y: auto;
     padding: 2px 0;
 }
@@ -642,28 +714,45 @@
     width: 100%;
     padding: 11px 12px;
     border-radius: 14px;
-    border: 1px solid rgba(148, 163, 184, 0.12);
-    background: rgba(255,255,255,0.6);
+    border: 1px solid color-mix(in srgb, var(--ea-text) 8%, transparent);
+    background: color-mix(in srgb, var(--ea-popup-bg) 74%, transparent);
     color: var(--ea-text);
     text-align: left;
     cursor: pointer;
     transition: transform var(--ea-transition), border-color var(--ea-transition), background var(--ea-transition), box-shadow var(--ea-transition);
 }
-[data-theme="dark"] .file-search-result {
-    border-color: rgba(255,255,255,0.04);
-    background: rgba(255,255,255,0.03);
-}
 .file-search-result:hover,
 .file-search-result.active {
     transform: translateY(-1px);
     border-color: color-mix(in srgb, var(--ea-input-focus) 34%, transparent);
-    background: linear-gradient(135deg, color-mix(in srgb, var(--ea-input-focus) 12%, transparent), rgba(59,130,246,0.08));
+    background: linear-gradient(135deg, color-mix(in srgb, var(--ea-input-focus) 12%, transparent), color-mix(in srgb, var(--ea-bg-active) 82%, transparent));
     box-shadow: 0 10px 24px rgba(17, 24, 39, 0.10);
 }
 .command-search-result .file-search-result-main {
     display: flex;
     align-items: center;
     gap: 8px;
+}
+.command-meta-badges {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    flex-shrink: 0;
+}
+.command-group-badge {
+    display: inline-flex;
+    align-items: center;
+    padding: 2px 7px;
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--ea-input-focus) 12%, transparent);
+    color: var(--ea-text-muted);
+    font-size: 9px;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    max-width: 140px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 .command-source-badge {
     display: inline-flex;

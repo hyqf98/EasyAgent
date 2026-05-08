@@ -19,9 +19,6 @@ public enum SlashCommandActionType implements ValueEnum<String> {
     /** 将命令展开为提示词并发送给 CLI。 */
     SEND_PROMPT("SEND_PROMPT"),
 
-    /** 仅用于信息展示，不触发任何动作。 */
-    INFO_ONLY("INFO_ONLY"),
-
     /** 直接透传给 CLI。 */
     PASS_THROUGH("PASS_THROUGH");
 

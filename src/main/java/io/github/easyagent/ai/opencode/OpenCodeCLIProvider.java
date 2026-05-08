@@ -29,28 +29,60 @@ import java.util.List;
  * @author haijun
  * @date 2026/4/30
  * @since 1.0.0
+ * @email "mailto:haijun@email.com"
+ * @version 1.0.0
  */
 @Slf4j
 public class OpenCodeCLIProvider extends AbstractCLIProvider {
 
+    /**
+     * stream event type.
+     */
     private static final Type STREAM_EVENT_TYPE = new TypeToken<StreamEvent<StreamPart>>() {}.getType();
 
     static {
         GsonUtils.registerEnums(OpenCodeEventType.class);
     }
 
+    /**
+     * Open Code Cli Provider
+     *
+     * @since 1.0.0
+     */
     public OpenCodeCLIProvider() {
         super(CLIType.OPENCODE);
     }
 
+    /**
+     * Open Code Cli Provider
+     *
+     * @param commandPath command path
+     * @since 1.0.0
+     */
     public OpenCodeCLIProvider(String commandPath) {
         super(CLIType.OPENCODE, commandPath);
     }
 
+    /**
+     * Open Code Cli Provider
+     *
+     * @param commandPath command path
+     * @param retryConfig retry config
+     * @since 1.0.0
+     */
     public OpenCodeCLIProvider(String commandPath, RetryConfig retryConfig) {
         super(CLIType.OPENCODE, commandPath, retryConfig);
     }
 
+    /**
+     * Build Command Line
+     *
+     * @param prompt prompt
+     * @param sessionId session id
+     * @param modelId model id
+     * @return general command line
+     * @since 1.0.0
+     */
     @Override
     protected GeneralCommandLine buildCommandLine(String prompt, String sessionId, String modelId) {
         GeneralCommandLine cmd = super.buildCommandLine(prompt, sessionId, modelId);
@@ -65,6 +97,13 @@ public class OpenCodeCLIProvider extends AbstractCLIProvider {
         return cmd;
     }
 
+    /**
+     * Parse Line
+     *
+     * @param line line
+     * @return list
+     * @since 1.0.0
+     */
     @Override
     protected List<AIResponse> parseLine(String line) {
         if (!GsonUtils.isJsonObject(line)) {
@@ -83,6 +122,16 @@ public class OpenCodeCLIProvider extends AbstractCLIProvider {
         return response != null ? Collections.singletonList(response) : null;
     }
 
+    /**
+     * Convert To Response
+     *
+     * @param type type
+     * @param sessionId session id
+     * @param part part
+     * @param rawLine raw line
+     * @return i response
+     * @since 1.0.0
+     */
     private AIResponse convertToResponse(OpenCodeEventType type, String sessionId, StreamPart part, String rawLine) {
         OpenCodePartType partType = part != null ? part.type() : null;
         if (partType == OpenCodePartType.STEP_START || type == OpenCodeEventType.STEP_START) {
@@ -100,6 +149,14 @@ public class OpenCodeCLIProvider extends AbstractCLIProvider {
         return this.createMessage(sessionId, MessageType.TEXT, part != null ? part.text() : null);
     }
 
+    /**
+     * Convert Tool Use
+     *
+     * @param sessionId session id
+     * @param part part
+     * @return i response
+     * @since 1.0.0
+     */
     private AIResponse convertToolUse(String sessionId, StreamPart part) {
         if (part == null) {
             return null;
@@ -114,6 +171,13 @@ public class OpenCodeCLIProvider extends AbstractCLIProvider {
         return this.createToolCall(sessionId, part.callId(), toolName, title, status, input, output);
     }
 
+    /**
+     * Convert Tool Status
+     *
+     * @param state state
+     * @return tool call status
+     * @since 1.0.0
+     */
     private ToolCallStatus convertToolStatus(ToolState state) {
         if (state == null) {
             return ToolCallStatus.CALLING;
@@ -130,6 +194,15 @@ public class OpenCodeCLIProvider extends AbstractCLIProvider {
         return ToolCallStatus.FAILED;
     }
 
+    /**
+     * Convert Step Finish
+     *
+     * @param sessionId session id
+     * @param part part
+     * @param rawLine raw line
+     * @return i response
+     * @since 1.0.0
+     */
     private AIResponse convertStepFinish(String sessionId, StreamPart part, String rawLine) {
         String reason = part != null ? part.reason() : null;
         TokenUsageContext tokenUsage = null;

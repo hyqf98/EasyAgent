@@ -19,10 +19,12 @@
             <pre>{{ output }}</pre>
         </div>
         <div v-if="fileEdit" class="tool-file-actions">
-            <span class="tool-file-path" :title="fileEdit.path">{{ fileEdit.displayName || fileEdit.relativePath || fileEdit.path }}</span>
+            <div class="tool-file-meta">
+                <span v-if="fileEdit.operation" class="tool-file-operation">{{ fileEdit.operation }}</span>
+                <span class="tool-file-path" :title="fileEdit.path">{{ fileEdit.displayName || fileEdit.relativePath || fileEdit.path }}</span>
+            </div>
             <div class="tool-file-action-buttons">
-                <button type="button" class="tool-file-action-btn" @click.stop="openDiff">{{ i18n.t('tool.diff') }}</button>
-                <button type="button" class="tool-file-action-btn" @click.stop="revertEdit">{{ i18n.t('tool.revert') }}</button>
+                <button type="button" class="tool-file-action-btn primary" @click.stop="viewChanges">{{ i18n.t('tool.viewChanges') }}</button>
             </div>
         </div>
     </div>

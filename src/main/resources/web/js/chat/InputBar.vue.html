@@ -65,19 +65,23 @@
                 </div>
             </div>
             <div v-if="commandSearchResults.length === 0" class="file-search-state empty">{{ i18n.t('input.commandSearchEmpty') }}</div>
-            <div v-else class="file-search-result-list">
+            <div ref="commandSearchList" v-else class="file-search-result-list">
                 <button
                     v-for="(item, idx) in commandSearchResults"
                     :key="item.cliType + ':' + item.name"
                     type="button"
                     class="file-search-result command-search-result"
                     :class="{ active: idx === activeCommandIndex }"
+                    :data-command-index="idx"
                     :title="item.description || item.commandText"
                     @mousedown.prevent="selectCommandCandidate(item)"
                 >
                     <div class="file-search-result-top">
                         <div class="file-search-result-main">{{ item.commandText || '/' + item.name }}</div>
-                        <span class="command-source-badge">{{ item.sourceType }}</span>
+                        <div class="command-meta-badges">
+                            <span v-if="item.group" class="command-group-badge">{{ item.group }}</span>
+                            <span class="command-source-badge">{{ item.sourceType }}</span>
+                        </div>
                     </div>
                     <div class="file-search-result-path">{{ item.description || item.group || item.commandText }}</div>
                 </button>

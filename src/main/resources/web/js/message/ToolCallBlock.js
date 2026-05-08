@@ -50,14 +50,9 @@ window.EARegisterComponent('tool-call-block', 'ToolCallBlock', {
         displayTitle() { return this.title || this.toolName || 'Tool'; }
     },
     methods: {
-        openDiff() {
+        viewChanges() {
             if (this.fileEdit && this.fileEdit.editId) {
-                EABridge.openFileEditDiff(this.fileEdit.editId);
-            }
-        },
-        revertEdit() {
-            if (this.fileEdit && this.fileEdit.editId) {
-                EABridge.revertFileEdit(this.fileEdit.editId);
+                EABridge.openFileEditDiff(this.fileEdit);
             }
         }
     }

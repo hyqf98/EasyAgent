@@ -106,7 +106,27 @@
     gap: 8px;
     padding: 8px 12px 10px;
     border-top: 1px solid var(--ea-tool-border);
-    background: rgba(0,0,0,0.02);
+    background: var(--ea-bg-secondary);
+}
+.tool-file-meta {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    min-width: 0;
+}
+.tool-file-operation {
+    display: inline-flex;
+    align-items: center;
+    width: fit-content;
+    padding: 2px 7px;
+    border-radius: 999px;
+    border: 1px solid color-mix(in srgb, var(--ea-input-focus) 18%, var(--ea-border));
+    background: color-mix(in srgb, var(--ea-input-focus) 10%, transparent);
+    color: var(--ea-text-secondary);
+    font-size: 10px;
+    line-height: 1.2;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
 }
 .tool-file-path {
     min-width: 0;
@@ -136,6 +156,15 @@
     color: var(--ea-text);
     border-color: var(--ea-input-focus);
     background: var(--ea-bg-hover);
+}
+.tool-file-action-btn.primary {
+    border-color: color-mix(in srgb, var(--ea-input-focus) 42%, var(--ea-border));
+    background: color-mix(in srgb, var(--ea-input-focus) 14%, transparent);
+    color: var(--ea-text);
+}
+.tool-file-action-btn.primary:hover {
+    border-color: var(--ea-input-focus);
+    background: color-mix(in srgb, var(--ea-input-focus) 20%, transparent);
 }
 
 /* === Todo Block === */

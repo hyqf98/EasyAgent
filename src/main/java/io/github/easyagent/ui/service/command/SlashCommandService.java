@@ -1,6 +1,5 @@
 package io.github.easyagent.ui.service.command;
 
-import com.google.gson.reflect.TypeToken;
 import com.intellij.util.execution.ParametersListUtil;
 import io.github.easyagent.enums.CLIType;
 import io.github.easyagent.ui.enums.SlashCommandActionType;
@@ -46,6 +45,9 @@ public final class SlashCommandService {
     /** Codex 用户目录。 */
     private static final Path CODEX_HOME = HOME.resolve(".codex");
 
+    /** Codex 技能目录。 */
+    private static final Path AGENTS_HOME = HOME.resolve(".agents");
+
     /** OpenCode 用户目录。 */
     private static final Path OPENCODE_HOME = HOME.resolve(".config").resolve("opencode");
 
@@ -63,24 +65,6 @@ public final class SlashCommandService {
 
     /** OpenCode 配置文件名。 */
     private static final String OPENCODE_CONFIG = "opencode.json";
-
-    /** OpenCode 命令字段名。 */
-    private static final String FIELD_COMMAND = "command";
-
-    /** OpenCode 配置模板字段名。 */
-    private static final String FIELD_TEMPLATE = "template";
-
-    /** OpenCode 配置描述字段名。 */
-    private static final String FIELD_DESCRIPTION = "description";
-
-    /** OpenCode 配置模型字段名。 */
-    private static final String FIELD_MODEL = "model";
-
-    /** OpenCode 配置代理字段名。 */
-    private static final String FIELD_AGENT = "agent";
-
-    /** OpenCode 配置子任务字段名。 */
-    private static final String FIELD_SUBTASK = "subtask";
 
     /** 命令扫描最大深度。 */
     private static final int MAX_SCAN_DEPTH = 8;
@@ -100,6 +84,15 @@ public final class SlashCommandService {
     /** 单词命令前缀。 */
     private static final String SLASH = "/";
 
+    /** 插件目录名。 */
+    private static final String PLUGINS_DIR = "plugins";
+
+    /** 代理目录名。 */
+    private static final String AGENTS_DIR = ".agents";
+
+    /** Prompt 目录名。 */
+    private static final String PROMPTS_DIR = "prompts";
+
     private final List<SlashCommandStrategy> strategies;
 
     /**
@@ -108,8 +101,7 @@ public final class SlashCommandService {
     public SlashCommandService() {
         this.strategies = List.of(
                 new OpenNewSessionStrategy(),
-                new PromptTemplateStrategy(),
-                new InfoOnlyStrategy()
+                new PromptTemplateStrategy()
         );
     }
 
@@ -147,7 +139,7 @@ public final class SlashCommandService {
         }
 
         SlashCommandInvocation invocation = new SlashCommandInvocation(cliType, rawText, parsed.name(),
-                parsed.arguments(), projectPath, requestId);
+                parsed.arguments(), parsed.trailingText(), projectPath, requestId);
         SlashCommandStrategy strategy = this.findStrategy(definition);
         return strategy.execute(definition, invocation, this);
     }
@@ -202,19 +194,13 @@ public final class SlashCommandService {
      * @param projectPath 项目路径
      */
     private void discoverClaude(List<SlashCommandDefinition> definitions, @Nullable String projectPath) {
-        this.addClaudeBuiltins(definitions);
+        this.scanAncestorScopes(definitions, projectPath, ".claude", CLIType.CLAUDE, true, true, true, false);
+        this.addCoreDefinitions(definitions, CLIType.CLAUDE);
         this.addSkillDirectory(definitions, CLAUDE_HOME.resolve(SKILLS_DIR), CLIType.CLAUDE,
                 SlashCommandSourceType.SKILL);
         this.addCommandDirectory(definitions, CLAUDE_HOME.resolve(COMMANDS_DIR), CLIType.CLAUDE,
                 SlashCommandSourceType.COMMAND);
-        if (projectPath != null && !projectPath.isBlank()) {
-            Path projectRoot = Path.of(projectPath);
-            this.addSkillDirectory(definitions, projectRoot.resolve(".claude").resolve(SKILLS_DIR), CLIType.CLAUDE,
-                    SlashCommandSourceType.SKILL);
-            this.addCommandDirectory(definitions, projectRoot.resolve(".claude").resolve(COMMANDS_DIR),
-                    CLIType.CLAUDE, SlashCommandSourceType.COMMAND);
-        }
-        this.addPluginDirectories(definitions, CLAUDE_HOME.resolve("plugins"), CLIType.CLAUDE);
+        this.addPluginDirectories(definitions, CLAUDE_HOME.resolve(PLUGINS_DIR), CLIType.CLAUDE);
     }
 
     /**
@@ -224,23 +210,18 @@ public final class SlashCommandService {
      * @param projectPath 项目路径
      */
     private void discoverCodex(List<SlashCommandDefinition> definitions, @Nullable String projectPath) {
-        this.addCodexBuiltins(definitions);
-        this.addCommandDirectory(definitions, CODEX_HOME.resolve("prompts"), CLIType.CODEX,
-                SlashCommandSourceType.COMMAND);
+        this.scanAncestorScopes(definitions, projectPath, ".codex", CLIType.CODEX, true, false, true, true);
+        this.scanAncestorScopes(definitions, projectPath, AGENTS_DIR, CLIType.CODEX, false, true, false, false);
+        this.addCoreDefinitions(definitions, CLIType.CODEX);
+        this.addCommandDirectory(definitions, CODEX_HOME.resolve(PROMPTS_DIR), CLIType.CODEX,
+                SlashCommandSourceType.CUSTOM);
         this.addCommandDirectory(definitions, CODEX_HOME.resolve(COMMANDS_DIR), CLIType.CODEX,
                 SlashCommandSourceType.COMMAND);
+        this.addSkillDirectory(definitions, AGENTS_HOME.resolve(SKILLS_DIR), CLIType.CODEX,
+                SlashCommandSourceType.SKILL);
         this.addSkillDirectory(definitions, CODEX_HOME.resolve(SKILLS_DIR), CLIType.CODEX,
                 SlashCommandSourceType.SKILL);
-        this.addPluginDirectories(definitions, CODEX_HOME.resolve("plugins"), CLIType.CODEX);
-        if (projectPath != null && !projectPath.isBlank()) {
-            Path projectRoot = Path.of(projectPath);
-            this.addCommandDirectory(definitions, projectRoot.resolve(".codex").resolve("prompts"), CLIType.CODEX,
-                    SlashCommandSourceType.COMMAND);
-            this.addCommandDirectory(definitions, projectRoot.resolve(".codex").resolve(COMMANDS_DIR), CLIType.CODEX,
-                    SlashCommandSourceType.COMMAND);
-            this.addSkillDirectory(definitions, projectRoot.resolve(".codex").resolve(SKILLS_DIR), CLIType.CODEX,
-                    SlashCommandSourceType.SKILL);
-        }
+        this.addPluginDirectories(definitions, CODEX_HOME.resolve(PLUGINS_DIR), CLIType.CODEX);
     }
 
     /**
@@ -250,7 +231,8 @@ public final class SlashCommandService {
      * @param projectPath 项目路径
      */
     private void discoverOpenCode(List<SlashCommandDefinition> definitions, @Nullable String projectPath) {
-        this.addOpenCodeBuiltins(definitions);
+        this.scanAncestorScopes(definitions, projectPath, ".opencode", CLIType.OPENCODE, true, true, false, false);
+        this.addCoreDefinitions(definitions, CLIType.OPENCODE);
         this.addOpenCodeConfigCommands(definitions, OPENCODE_HOME.resolve(OPENCODE_CONFIG));
         this.addCommandDirectory(definitions, OPENCODE_HOME.resolve(COMMANDS_DIR), CLIType.OPENCODE,
                 SlashCommandSourceType.COMMAND);
@@ -258,121 +240,121 @@ public final class SlashCommandService {
                 SlashCommandSourceType.SKILL);
         this.addSkillDirectory(definitions, OPENCODE_HOME.resolve(SKILLS_DIR), CLIType.OPENCODE,
                 SlashCommandSourceType.SKILL);
-        if (projectPath != null && !projectPath.isBlank()) {
-            Path projectRoot = Path.of(projectPath);
-            this.addCommandDirectory(definitions, projectRoot.resolve(".opencode").resolve(COMMANDS_DIR),
-                    CLIType.OPENCODE, SlashCommandSourceType.COMMAND);
-            this.addSkillDirectory(definitions, projectRoot.resolve(".opencode").resolve(OPENCODE_SKILL_DIR),
-                    CLIType.OPENCODE, SlashCommandSourceType.SKILL);
-        }
+        this.addPluginDirectories(definitions, OPENCODE_HOME.resolve(PLUGINS_DIR), CLIType.OPENCODE);
     }
 
     /**
-     * 追加 Claude 内建命令。
+     * 追加当前 CLI 的核心斜杠命令。
      *
      * @param definitions 命令定义集合
+     * @param cliType     CLI 类型
      */
-    private void addClaudeBuiltins(List<SlashCommandDefinition> definitions) {
-        this.addDefinition(definitions, this.definition(CLIType.CLAUDE, "clear", "Start a new conversation with empty context",
-                SlashCommandActionType.OPEN_NEW_SESSION, SlashCommandSourceType.BUILTIN, List.of("reset", "new"), null));
-        this.addDefinition(definitions, this.definition(CLIType.CLAUDE, "compact", "Summarize the conversation and free context",
-                SlashCommandActionType.SEND_PROMPT, SlashCommandSourceType.BUILTIN, List.of(), "Summarize the conversation so far and keep the important details."));
-        this.addDefinition(definitions, this.definition(CLIType.CLAUDE, "help", "Show help and available commands",
-                SlashCommandActionType.INFO_ONLY, SlashCommandSourceType.BUILTIN, List.of(), null));
-        this.addDefinition(definitions, this.definition(CLIType.CLAUDE, "mcp", "Manage MCP server connections and OAuth",
-                SlashCommandActionType.SEND_PROMPT, SlashCommandSourceType.BUILTIN, List.of(), null));
-        this.addDefinition(definitions, this.definition(CLIType.CLAUDE, "model", "Select or change the AI model",
-                SlashCommandActionType.SEND_PROMPT, SlashCommandSourceType.BUILTIN, List.of(), null));
-        this.addDefinition(definitions, this.definition(CLIType.CLAUDE, "permissions", "Manage tool permissions",
-                SlashCommandActionType.SEND_PROMPT, SlashCommandSourceType.BUILTIN, List.of("allowed-tools"), null));
-        this.addDefinition(definitions, this.definition(CLIType.CLAUDE, "review", "Review the working tree or code changes",
-                SlashCommandActionType.SEND_PROMPT, SlashCommandSourceType.BUILTIN, List.of(), "Review the current working tree and point out bugs, risks, and missing tests."));
-        this.addDefinition(definitions, this.definition(CLIType.CLAUDE, "init", "Initialize project with a CLAUDE.md guide",
-                SlashCommandActionType.SEND_PROMPT, SlashCommandSourceType.BUILTIN, List.of(), "Initialize the project instructions file for this repository."));
-        this.addDefinition(definitions, this.definition(CLIType.CLAUDE, "plugin", "Manage Claude Code plugins",
-                SlashCommandActionType.SEND_PROMPT, SlashCommandSourceType.BUILTIN, List.of("plugins"), null));
-        this.addDefinition(definitions, this.definition(CLIType.CLAUDE, "debug", "Enable debug logging for the session",
-                SlashCommandActionType.SEND_PROMPT, SlashCommandSourceType.SKILL, List.of(), null));
-        this.addDefinition(definitions, this.definition(CLIType.CLAUDE, "claude-api", "Load Claude API reference material",
-                SlashCommandActionType.SEND_PROMPT, SlashCommandSourceType.SKILL, List.of(), null));
-        this.addDefinition(definitions, this.definition(CLIType.CLAUDE, "simplify", "Bundled skill for simplifying work",
-                SlashCommandActionType.SEND_PROMPT, SlashCommandSourceType.SKILL, List.of(), null));
-        this.addDefinition(definitions, this.definition(CLIType.CLAUDE, "batch", "Bundled skill for batching work",
-                SlashCommandActionType.SEND_PROMPT, SlashCommandSourceType.SKILL, List.of(), null));
-        this.addDefinition(definitions, this.definition(CLIType.CLAUDE, "loop", "Bundled skill for looping tasks",
-                SlashCommandActionType.SEND_PROMPT, SlashCommandSourceType.SKILL, List.of("proactive"), null));
+    private void addCoreDefinitions(List<SlashCommandDefinition> definitions, CLIType cliType) {
+        this.addDefinition(definitions, this.definition(cliType, "new", this.coreNewDescription(cliType),
+                SlashCommandActionType.OPEN_NEW_SESSION, SlashCommandSourceType.BUILTIN, List.of("clear", "reset"),
+                null, true, false));
+        this.addDefinition(definitions, this.definition(cliType, "compact", this.coreCompactDescription(cliType),
+                SlashCommandActionType.SEND_PROMPT, SlashCommandSourceType.BUILTIN, List.of(),
+                this.coreCompactPrompt(), false, true));
+        this.addDefinition(definitions, this.definition(cliType, "init", this.coreInitDescription(cliType),
+                SlashCommandActionType.SEND_PROMPT, SlashCommandSourceType.BUILTIN, List.of(),
+                this.coreInitPrompt(cliType), false, false));
+        this.addDefinition(definitions, this.definition(cliType, "plugins", this.corePluginsDescription(cliType),
+                SlashCommandActionType.SEND_PROMPT, SlashCommandSourceType.BUILTIN, List.of("plugin"),
+                this.corePluginsPrompt(cliType), false, false));
     }
 
     /**
-     * 追加 Codex 内建命令。
+     * 获取新会话命令描述。
      *
-     * @param definitions 命令定义集合
+     * @param cliType CLI 类型
+     * @return 描述文本
      */
-    private void addCodexBuiltins(List<SlashCommandDefinition> definitions) {
-        this.addDefinition(definitions, this.definition(CLIType.CODEX, "clear", "Clear the terminal and start a fresh chat",
-                SlashCommandActionType.OPEN_NEW_SESSION, SlashCommandSourceType.BUILTIN, List.of(), null));
-        this.addDefinition(definitions, this.definition(CLIType.CODEX, "compact", "Summarize the conversation and free context",
-                SlashCommandActionType.SEND_PROMPT, SlashCommandSourceType.BUILTIN, List.of(), "Summarize the conversation so far and keep the important details."));
-        this.addDefinition(definitions, this.definition(CLIType.CODEX, "new", "Start a fresh conversation in the same CLI session",
-                SlashCommandActionType.OPEN_NEW_SESSION, SlashCommandSourceType.BUILTIN, List.of(), null));
-        this.addDefinition(definitions, this.definition(CLIType.CODEX, "review", "Ask Codex to review your working tree",
-                SlashCommandActionType.SEND_PROMPT, SlashCommandSourceType.BUILTIN, List.of(), "Review the current working tree and point out bugs, risks, and missing tests."));
-        this.addDefinition(definitions, this.definition(CLIType.CODEX, "resume", "Resume a saved conversation",
-                SlashCommandActionType.SEND_PROMPT, SlashCommandSourceType.BUILTIN, List.of(), null));
-        this.addDefinition(definitions, this.definition(CLIType.CODEX, "fork", "Fork the current conversation",
-                SlashCommandActionType.SEND_PROMPT, SlashCommandSourceType.BUILTIN, List.of(), null));
-        this.addDefinition(definitions, this.definition(CLIType.CODEX, "side", "Start an ephemeral side conversation",
-                SlashCommandActionType.SEND_PROMPT, SlashCommandSourceType.BUILTIN, List.of(), null));
-        this.addDefinition(definitions, this.definition(CLIType.CODEX, "mcp", "List MCP tools",
-                SlashCommandActionType.SEND_PROMPT, SlashCommandSourceType.BUILTIN, List.of(), null));
-        this.addDefinition(definitions, this.definition(CLIType.CODEX, "apps", "Browse apps/connectors",
-                SlashCommandActionType.SEND_PROMPT, SlashCommandSourceType.BUILTIN, List.of(), null));
-        this.addDefinition(definitions, this.definition(CLIType.CODEX, "plugins", "Browse installed and discoverable plugins",
-                SlashCommandActionType.SEND_PROMPT, SlashCommandSourceType.BUILTIN, List.of(), null));
-        this.addDefinition(definitions, this.definition(CLIType.CODEX, "feedback", "Send feedback with diagnostics",
-                SlashCommandActionType.SEND_PROMPT, SlashCommandSourceType.BUILTIN, List.of(), null));
-        this.addDefinition(definitions, this.definition(CLIType.CODEX, "diff", "Review changes with a diff",
-                SlashCommandActionType.SEND_PROMPT, SlashCommandSourceType.BUILTIN, List.of(), null));
-        this.addDefinition(definitions, this.definition(CLIType.CODEX, "ps", "Show background terminals",
-                SlashCommandActionType.SEND_PROMPT, SlashCommandSourceType.BUILTIN, List.of(), null));
-        this.addDefinition(definitions, this.definition(CLIType.CODEX, "stop", "Stop background terminals",
-                SlashCommandActionType.SEND_PROMPT, SlashCommandSourceType.BUILTIN, List.of(), null));
-        this.addDefinition(definitions, this.definition(CLIType.CODEX, "quit", "Exit the CLI",
-                SlashCommandActionType.SEND_PROMPT, SlashCommandSourceType.BUILTIN, List.of(), null));
+    private String coreNewDescription(CLIType cliType) {
+        return switch (cliType) {
+            case CLAUDE -> "Start a new conversation with empty context";
+            case CODEX -> "Start a fresh conversation";
+            case OPENCODE -> "Start a new session";
+        };
     }
 
     /**
-     * 追加 OpenCode 内建命令。
+     * 获取压缩命令描述。
      *
-     * @param definitions 命令定义集合
+     * @param cliType CLI 类型
+     * @return 描述文本
      */
-    private void addOpenCodeBuiltins(List<SlashCommandDefinition> definitions) {
-        this.addDefinition(definitions, this.definition(CLIType.OPENCODE, "init", "Initialize the current project",
-                SlashCommandActionType.SEND_PROMPT, SlashCommandSourceType.BUILTIN, List.of(), null));
-        this.addDefinition(definitions, this.definition(CLIType.OPENCODE, "undo", "Undo the last action",
-                SlashCommandActionType.SEND_PROMPT, SlashCommandSourceType.BUILTIN, List.of(), null));
-        this.addDefinition(definitions, this.definition(CLIType.OPENCODE, "redo", "Redo the last action",
-                SlashCommandActionType.SEND_PROMPT, SlashCommandSourceType.BUILTIN, List.of(), null));
-        this.addDefinition(definitions, this.definition(CLIType.OPENCODE, "share", "Share the current session",
-                SlashCommandActionType.SEND_PROMPT, SlashCommandSourceType.BUILTIN, List.of(), null));
-        this.addDefinition(definitions, this.definition(CLIType.OPENCODE, "help", "Show help and available commands",
-                SlashCommandActionType.INFO_ONLY, SlashCommandSourceType.BUILTIN, List.of(), null));
-        this.addDefinition(definitions, this.definition(CLIType.OPENCODE, "new", "Start a new session",
-                SlashCommandActionType.OPEN_NEW_SESSION, SlashCommandSourceType.BUILTIN, List.of(), null));
-        this.addDefinition(definitions, this.definition(CLIType.OPENCODE, "clear", "Clear the current chat",
-                SlashCommandActionType.OPEN_NEW_SESSION, SlashCommandSourceType.BUILTIN, List.of(), null));
-        this.addDefinition(definitions, this.definition(CLIType.OPENCODE, "compact", "Compact the current conversation",
-                SlashCommandActionType.SEND_PROMPT, SlashCommandSourceType.BUILTIN, List.of(), "Summarize the conversation so far and keep the important details."));
-        this.addDefinition(definitions, this.definition(CLIType.OPENCODE, "sessions", "List available sessions",
-                SlashCommandActionType.SEND_PROMPT, SlashCommandSourceType.BUILTIN, List.of(), null));
-        this.addDefinition(definitions, this.definition(CLIType.OPENCODE, "agent", "Switch or inspect agents",
-                SlashCommandActionType.SEND_PROMPT, SlashCommandSourceType.BUILTIN, List.of(), null));
-        this.addDefinition(definitions, this.definition(CLIType.OPENCODE, "models", "List available models",
-                SlashCommandActionType.SEND_PROMPT, SlashCommandSourceType.BUILTIN, List.of(), null));
-        this.addDefinition(definitions, this.definition(CLIType.OPENCODE, "providers", "Manage providers and credentials",
-                SlashCommandActionType.SEND_PROMPT, SlashCommandSourceType.BUILTIN, List.of("auth"), null));
-        this.addDefinition(definitions, this.definition(CLIType.OPENCODE, "mcp", "Manage MCP servers",
-                SlashCommandActionType.SEND_PROMPT, SlashCommandSourceType.BUILTIN, List.of(), null));
+    private String coreCompactDescription(CLIType cliType) {
+        return switch (cliType) {
+            case CLAUDE -> "Summarize the conversation and free context";
+            case CODEX -> "Compact the current conversation";
+            case OPENCODE -> "Compact the current conversation";
+        };
+    }
+
+    /**
+     * 获取初始化命令描述。
+     *
+     * @param cliType CLI 类型
+     * @return 描述文本
+     */
+    private String coreInitDescription(CLIType cliType) {
+        return switch (cliType) {
+            case CLAUDE -> "Initialize the project with a CLAUDE.md guide";
+            case CODEX -> "Initialize the current project";
+            case OPENCODE -> "Initialize the current project";
+        };
+    }
+
+    /**
+     * 获取插件命令描述。
+     *
+     * @param cliType CLI 类型
+     * @return 描述文本
+     */
+    private String corePluginsDescription(CLIType cliType) {
+        return switch (cliType) {
+            case CLAUDE -> "Manage Claude Code plugins";
+            case CODEX -> "Manage Codex plugins";
+            case OPENCODE -> "Manage OpenCode plugins";
+        };
+    }
+
+    /**
+     * 获取压缩命令的基础提示词。
+     *
+     * @return 提示词
+     */
+    private String coreCompactPrompt() {
+        return "Summarize the conversation so far and keep the important details.";
+    }
+
+    /**
+     * 获取初始化命令的基础提示词。
+     *
+     * @param cliType CLI 类型
+     * @return 提示词
+     */
+    private String coreInitPrompt(CLIType cliType) {
+        return switch (cliType) {
+            case CLAUDE -> "Initialize the project instructions file for this repository.";
+            case CODEX -> "Initialize the project instructions for this repository.";
+            case OPENCODE -> "Initialize the current project instructions for this repository.";
+        };
+    }
+
+    /**
+     * 获取插件命令的基础提示词。
+     *
+     * @param cliType CLI 类型
+     * @return 提示词
+     */
+    private String corePluginsPrompt(CLIType cliType) {
+        return switch (cliType) {
+            case CLAUDE -> "Open the plugin manager and show installed Claude Code plugins.";
+            case CODEX -> "Open the plugin manager and show installed Codex plugins.";
+            case OPENCODE -> "Open the plugin manager and show installed OpenCode plugins.";
+        };
     }
 
     /**
@@ -402,11 +384,11 @@ public final class SlashCommandService {
                         command.description,
                         command.template,
                         SlashCommandSourceType.COMMAND,
-                        command.subtask != null && command.subtask
-                                ? SlashCommandActionType.SEND_PROMPT
-                                : SlashCommandActionType.SEND_PROMPT,
+                        SlashCommandActionType.SEND_PROMPT,
                         this.normalizeGroup(configPath),
-                        configPath.toString()
+                        configPath.toString(),
+                        false,
+                        false
                 ));
             }
         } catch (Exception e) {
@@ -429,7 +411,10 @@ public final class SlashCommandService {
         }
         try (Stream<Path> stream = Files.walk(root, MAX_SCAN_DEPTH)) {
             stream.filter(Files::isRegularFile)
-                    .filter(path -> path.getFileName().toString().endsWith(MD_SUFFIX))
+                    .filter(path -> {
+                        String fileName = path.getFileName().toString();
+                        return fileName.endsWith(MD_SUFFIX) && !"README.md".equalsIgnoreCase(fileName);
+                    })
                     .forEach(path -> this.addMarkdownCommand(definitions, path, cliType, sourceType, false));
         } catch (IOException e) {
             log.debug("Failed to scan command directory: {}", root, e);
@@ -473,7 +458,8 @@ public final class SlashCommandService {
             stream.filter(Files::isRegularFile)
                     .forEach(path -> {
                         String fileName = path.getFileName().toString();
-                        if (fileName.endsWith(MD_SUFFIX) && path.toString().contains(Path.of(COMMANDS_DIR).toString())) {
+                        if (fileName.endsWith(MD_SUFFIX) && !"README.md".equalsIgnoreCase(fileName)
+                                && this.hasAncestor(path, COMMANDS_DIR)) {
                             this.addMarkdownCommand(definitions, path, cliType, SlashCommandSourceType.PLUGIN, false);
                         } else if ("SKILL.md".equalsIgnoreCase(fileName)) {
                             this.addMarkdownCommand(definitions, path, cliType, SlashCommandSourceType.SKILL, true);
@@ -510,7 +496,9 @@ public final class SlashCommandService {
                     sourceType,
                     SlashCommandActionType.SEND_PROMPT,
                     this.normalizeGroup(path),
-                    path.toString()
+                    path.toString(),
+                    false,
+                    false
             ));
         } catch (Exception e) {
             log.debug("Failed to parse markdown command: {}", path, e);
@@ -631,18 +619,22 @@ public final class SlashCommandService {
      * @return 解析结果
      */
     private ParsedSlashCommand parse(String rawText) {
-        if (rawText == null || rawText.isBlank() || !rawText.startsWith(SLASH)) {
+        if (rawText == null || rawText.isBlank()) {
             return null;
         }
         String line = rawText.stripLeading();
         if (!line.startsWith(SLASH)) {
             return null;
         }
-        int spaceIndex = line.indexOf(' ');
-        String name = spaceIndex > 1 ? line.substring(1, spaceIndex) : line.substring(1);
-        String argText = spaceIndex > 0 && spaceIndex < line.length() - 1 ? line.substring(spaceIndex + 1) : "";
+        int endOfName = 1;
+        while (endOfName < line.length() && !Character.isWhitespace(line.charAt(endOfName))) {
+            endOfName++;
+        }
+        String name = line.substring(1, endOfName);
+        String remainder = endOfName < line.length() ? line.substring(endOfName).stripLeading() : "";
+        String argText = remainder.isEmpty() ? "" : remainder.split("\\R", 2)[0];
         List<String> arguments = this.parseArguments(argText);
-        return new ParsedSlashCommand(name, arguments);
+        return new ParsedSlashCommand(name, arguments, remainder);
     }
 
     /**
@@ -677,8 +669,29 @@ public final class SlashCommandService {
     private SlashCommandDefinition definition(CLIType cliType, String name, String description,
                                               SlashCommandActionType actionType, SlashCommandSourceType sourceType,
                                               List<String> aliases, @Nullable String template) {
+        return this.definition(cliType, name, description, actionType, sourceType, aliases, template, false, false);
+    }
+
+    /**
+     * 构造命令定义。
+     *
+     * @param cliType           CLI 类型
+     * @param name              命令名
+     * @param description       描述
+     * @param actionType        执行类型
+     * @param sourceType        来源类型
+     * @param aliases           别名列表
+     * @param template          额外模板
+     * @param openFreshSession   是否需要打开新会话
+     * @param refreshHistory     是否需要刷新历史
+     * @return 命令定义
+     */
+    private SlashCommandDefinition definition(CLIType cliType, String name, String description,
+                                              SlashCommandActionType actionType, SlashCommandSourceType sourceType,
+                                              List<String> aliases, @Nullable String template,
+                                              boolean openFreshSession, boolean refreshHistory) {
         return new SlashCommandDefinition(cliType, name, aliases, description, template, sourceType,
-                actionType, null, null);
+                actionType, null, null, openFreshSession, refreshHistory);
     }
 
     /**
@@ -702,10 +715,24 @@ public final class SlashCommandService {
     private List<SlashCommandDefinition> deduplicate(List<SlashCommandDefinition> definitions) {
         Map<String, SlashCommandDefinition> map = new LinkedHashMap<>();
         for (SlashCommandDefinition definition : definitions) {
-            String key = definition.name().toLowerCase(Locale.ROOT);
+            String key = this.definitionKey(definition);
             map.putIfAbsent(key, definition);
         }
         return new ArrayList<>(map.values());
+    }
+
+    /**
+     * 生成命令定义的去重键。
+     *
+     * @param definition 命令定义
+     * @return 去重键
+     */
+    private String definitionKey(SlashCommandDefinition definition) {
+        String origin = definition.originPath();
+        if (origin != null && !origin.isBlank()) {
+            return definition.cliType().name() + "|" + definition.sourceType().name() + "|" + origin;
+        }
+        return definition.cliType().name() + "|" + definition.sourceType().name() + "|" + definition.name().toLowerCase(Locale.ROOT);
     }
 
     /**
@@ -745,6 +772,13 @@ public final class SlashCommandService {
             return null;
         }
         Path group = marker.getParent();
+        while (group != null && group.getFileName() != null
+                && this.isScopeDirectory(group.getFileName().toString())) {
+            group = group.getParent();
+        }
+        if (group == null || HOME.equals(group)) {
+            return null;
+        }
         if (group.getParent() != null && group.getFileName() != null
                 && VERSION_PATTERN.matcher(group.getFileName().toString()).matches()) {
             group = group.getParent();
@@ -774,9 +808,164 @@ public final class SlashCommandService {
      */
     private String skillCommandName(Path path) {
         Path parent = path.getParent();
-        return parent != null && parent.getFileName() != null ? parent.getFileName().toString() : null;
+        if (parent == null || parent.getFileName() == null) {
+            return null;
+        }
+        String leaf = parent.getFileName().toString();
+        String namespace = this.pluginNamespace(path);
+        if (namespace == null || namespace.isBlank()) {
+            return leaf;
+        }
+        return namespace + ":" + leaf;
     }
 
+    /**
+     * 解析插件命名空间。
+     *
+     * @param path 文件路径
+     * @return 插件命名空间，无法解析时返回 {@code null}
+     */
+    private String pluginNamespace(Path path) {
+        if (path == null) {
+            return null;
+        }
+        List<String> segments = new ArrayList<>();
+        for (Path current = path.toAbsolutePath().normalize(); current != null; current = current.getParent()) {
+            Path fileName = current.getFileName();
+            if (fileName != null) {
+                segments.add(0, fileName.toString());
+            }
+        }
+        int pluginsIndex = this.lastIndexOf(segments, PLUGINS_DIR);
+        if (pluginsIndex >= 0) {
+            for (int i = pluginsIndex + 1; i < segments.size() - 1; i++) {
+                String segment = segments.get(i);
+                if (!this.isStructuralSegment(segment)) {
+                    return segment;
+                }
+            }
+        }
+        int marketplacesIndex = this.lastIndexOf(segments, "marketplaces");
+        if (marketplacesIndex >= 0 && marketplacesIndex + 1 < segments.size() - 1) {
+            return segments.get(marketplacesIndex + 1);
+        }
+        return null;
+    }
+
+    /**
+     * 查找列表中某个值的最后一次出现位置。
+     *
+     * @param values 值列表
+     * @param value  目标值
+     * @return 最后一次出现的索引
+     */
+    private int lastIndexOf(List<String> values, String value) {
+        if (values == null || values.isEmpty() || value == null) {
+            return -1;
+        }
+        for (int i = values.size() - 1; i >= 0; i--) {
+            if (value.equalsIgnoreCase(values.get(i))) {
+                return i;
+            }
+        }
+        return -1;
+    }
+
+    /**
+     * 判断路径段是否属于结构性目录。
+     *
+     * @param segment 路径段
+     * @return 是否为结构性目录
+     */
+    private boolean isStructuralSegment(String segment) {
+        if (segment == null) {
+            return false;
+        }
+        return PLUGINS_DIR.equalsIgnoreCase(segment)
+                || "marketplaces".equalsIgnoreCase(segment)
+                || COMMANDS_DIR.equalsIgnoreCase(segment)
+                || SKILLS_DIR.equalsIgnoreCase(segment)
+                || OPENCODE_SKILL_DIR.equalsIgnoreCase(segment)
+                || AGENTS_DIR.equalsIgnoreCase(segment)
+                || PROMPTS_DIR.equalsIgnoreCase(segment)
+                || "examples".equalsIgnoreCase(segment)
+                || "external_plugins".equalsIgnoreCase(segment);
+    }
+
+    /**
+     * 判断路径是否为作用域目录。
+     *
+     * @param segment 路径段
+     * @return 是否为作用域目录
+     */
+    private boolean isScopeDirectory(String segment) {
+        if (segment == null) {
+            return false;
+        }
+        return segment.startsWith(".")
+                || AGENTS_DIR.equalsIgnoreCase(segment)
+                || "marketplaces".equalsIgnoreCase(segment);
+    }
+
+    /**
+     * 判断路径是否包含指定祖先目录名。
+     *
+     * @param path     文件路径
+     * @param ancestor 祖先目录名
+     * @return 是否包含
+     */
+    private boolean hasAncestor(Path path, String ancestor) {
+        if (path == null || ancestor == null) {
+            return false;
+        }
+        for (Path current = path.getParent(); current != null; current = current.getParent()) {
+            Path fileName = current.getFileName();
+            if (fileName != null && ancestor.equalsIgnoreCase(fileName.toString())) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * 扫描项目路径下的祖先作用域目录。
+     *
+     * @param definitions 命令定义集合
+     * @param projectPath 项目路径
+     * @param scopeDir    作用域目录名
+     * @param cliType     CLI 类型
+     * @param commands    是否扫描 commands
+     * @param skills      是否扫描 skills
+     * @param plugins     是否扫描 plugins
+     */
+    private void scanAncestorScopes(List<SlashCommandDefinition> definitions, @Nullable String projectPath,
+                                    String scopeDir, CLIType cliType, boolean commands, boolean skills,
+                                    boolean plugins, boolean prompts) {
+        if (projectPath == null || projectPath.isBlank()) {
+            return;
+        }
+        Path start = Path.of(projectPath).toAbsolutePath().normalize();
+        for (Path current = start; current != null; current = current.getParent()) {
+            Path scopeRoot = current.resolve(scopeDir);
+            if (commands) {
+                this.addCommandDirectory(definitions, scopeRoot.resolve(COMMANDS_DIR), cliType,
+                        SlashCommandSourceType.COMMAND);
+                if (prompts) {
+                    this.addCommandDirectory(definitions, scopeRoot.resolve(PROMPTS_DIR), cliType,
+                            SlashCommandSourceType.CUSTOM);
+                }
+            }
+            if (skills) {
+                this.addSkillDirectory(definitions, scopeRoot.resolve(SKILLS_DIR), cliType,
+                        SlashCommandSourceType.SKILL);
+                this.addSkillDirectory(definitions, scopeRoot.resolve(OPENCODE_SKILL_DIR), cliType,
+                        SlashCommandSourceType.SKILL);
+            }
+            if (plugins) {
+                this.addPluginDirectories(definitions, scopeRoot.resolve(PLUGINS_DIR), cliType);
+            }
+        }
+    }
     /**
      * 定义命令模板信息。
      *
@@ -794,11 +983,12 @@ public final class SlashCommandService {
      *
      * @param name      命令名
      * @param arguments 参数列表
+     * @param trailingText 命令后缀提示词
      * @author haijun
      * @date 2026/5/7
      * @since 1.0.0
      */
-    private record ParsedSlashCommand(String name, List<String> arguments) {
+    private record ParsedSlashCommand(String name, List<String> arguments, String trailingText) {
     }
 
     /**
@@ -808,6 +998,7 @@ public final class SlashCommandService {
      * @param rawText     原始文本
      * @param commandName 命令名
      * @param arguments   参数列表
+     * @param trailingText 命令后缀提示词
      * @param projectPath 项目路径
      * @param requestId   请求 ID
      * @author haijun
@@ -815,7 +1006,8 @@ public final class SlashCommandService {
      * @since 1.0.0
      */
     private record SlashCommandInvocation(CLIType cliType, String rawText, String commandName,
-                                          List<String> arguments, String projectPath, String requestId) {
+                                          List<String> arguments, String trailingText,
+                                          String projectPath, String requestId) {
     }
 
     /**
@@ -836,7 +1028,8 @@ public final class SlashCommandService {
      */
     private record SlashCommandDefinition(CLIType cliType, String name, List<String> aliases,
                                           String description, String template, SlashCommandSourceType sourceType,
-                                          SlashCommandActionType actionType, String group, String originPath) {
+                                          SlashCommandActionType actionType, String group, String originPath,
+                                          boolean openFreshSession, boolean refreshHistory) {
     }
 
     /**
@@ -878,14 +1071,15 @@ public final class SlashCommandService {
         public SlashCommandExecutionPayload execute(SlashCommandDefinition definition,
                                                     SlashCommandInvocation invocation,
                                                     SlashCommandService service) {
+            String prompt = invocation.trailingText();
             return SlashCommandExecutionPayload.builder()
                     .requestId(invocation.requestId())
                     .cliType(invocation.cliType().name())
                     .commandName(definition.name())
                     .executionType(SlashCommandActionType.OPEN_NEW_SESSION.name())
-                    .prompt(null)
-                    .openFreshSession(true)
-                    .refreshHistory(false)
+                    .prompt(prompt == null || prompt.isBlank() ? null : prompt)
+                    .openFreshSession(definition.openFreshSession() || definition.actionType() == SlashCommandActionType.OPEN_NEW_SESSION)
+                    .refreshHistory(definition.refreshHistory())
                     .toastMessage(null)
                     .build();
         }
@@ -906,7 +1100,7 @@ public final class SlashCommandService {
         public SlashCommandExecutionPayload execute(SlashCommandDefinition definition,
                                                     SlashCommandInvocation invocation,
                                                     SlashCommandService service) {
-            String prompt = service.expandTemplate(definition, invocation);
+            String prompt = service.composePrompt(definition, invocation);
             if (prompt == null || prompt.isBlank()) {
                 prompt = invocation.rawText();
             }
@@ -916,36 +1110,9 @@ public final class SlashCommandService {
                     .commandName(definition.name())
                     .executionType(definition.actionType().name())
                     .prompt(prompt)
-                    .openFreshSession(false)
-                    .refreshHistory(false)
+                    .openFreshSession(definition.openFreshSession())
+                    .refreshHistory(definition.refreshHistory())
                     .toastMessage(null)
-                    .build();
-        }
-    }
-
-    /**
-     * 仅展示信息的命令策略。
-     */
-    private static final class InfoOnlyStrategy implements SlashCommandStrategy {
-
-        @Override
-        public boolean supports(SlashCommandDefinition definition) {
-            return definition.actionType() == SlashCommandActionType.INFO_ONLY;
-        }
-
-        @Override
-        public SlashCommandExecutionPayload execute(SlashCommandDefinition definition,
-                                                    SlashCommandInvocation invocation,
-                                                    SlashCommandService service) {
-            return SlashCommandExecutionPayload.builder()
-                    .requestId(invocation.requestId())
-                    .cliType(invocation.cliType().name())
-                    .commandName(definition.name())
-                    .executionType(SlashCommandActionType.INFO_ONLY.name())
-                    .prompt(null)
-                    .openFreshSession(false)
-                    .refreshHistory(false)
-                    .toastMessage(definition.description())
                     .build();
         }
     }
@@ -970,6 +1137,42 @@ public final class SlashCommandService {
         }
         expanded = this.expandShellBlocks(expanded, invocation.projectPath());
         return expanded.trim();
+    }
+
+    /**
+     * 组合命令基础提示词和用户额外提示词。
+     *
+     * @param definition 命令定义
+     * @param invocation 执行入参
+     * @return 合并后的提示词
+     */
+    private String composePrompt(SlashCommandDefinition definition, SlashCommandInvocation invocation) {
+        String basePrompt = this.expandTemplate(definition, invocation);
+        String userPrompt = invocation.trailingText();
+        if (userPrompt == null || userPrompt.isBlank()) {
+            return basePrompt;
+        }
+        if (basePrompt == null || basePrompt.isBlank()) {
+            return userPrompt.trim();
+        }
+        if (definition.sourceType() != SlashCommandSourceType.BUILTIN
+                && this.usesTemplateArguments(definition.template())) {
+            return basePrompt;
+        }
+        return basePrompt.trim() + "\n\n" + userPrompt.trim();
+    }
+
+    /**
+     * 判断模板是否已经消费了用户参数。
+     *
+     * @param template 模板文本
+     * @return 是否包含参数占位符
+     */
+    private boolean usesTemplateArguments(@Nullable String template) {
+        if (template == null || template.isBlank()) {
+            return false;
+        }
+        return template.contains("$ARGUMENTS") || template.matches(".*\\$\\d+.*");
     }
 
     /**

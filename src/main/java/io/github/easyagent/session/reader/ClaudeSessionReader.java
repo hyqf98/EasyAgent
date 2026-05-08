@@ -5,6 +5,7 @@ import io.github.easyagent.enums.CLIType;
 import io.github.easyagent.enums.ContentBlockType;
 import io.github.easyagent.enums.SessionRole;
 import io.github.easyagent.session.entity.ContentBlock;
+import io.github.easyagent.session.entity.HistoricalFileEditData;
 import io.github.easyagent.session.entity.SessionInfo;
 import io.github.easyagent.session.entity.SessionMessage;
 import io.github.easyagent.session.entity.TokenUsage;
@@ -42,8 +43,27 @@ import java.util.stream.Collectors;
 @Slf4j
 public class ClaudeSessionReader implements SessionReader {
 
-    private static final String BASE_DIR = System.getProperty("user.home") + File.separator + ".claude" + File.separator + "projects";
+    private static final String DEFAULT_BASE_DIR = System.getProperty("user.home") + File.separator + ".claude"
+            + File.separator + "projects";
     private static final Type MAP_TYPE = new TypeToken<Map<String, Object>>() {}.getType();
+
+    private final String baseDir;
+
+    /**
+     * 创建 Claude 会话读取器。
+     */
+    public ClaudeSessionReader() {
+        this(DEFAULT_BASE_DIR);
+    }
+
+    /**
+     * 创建用于测试或指定目录的 Claude 会话读取器。
+     *
+     * @param baseDir Claude 项目根目录
+     */
+    ClaudeSessionReader(String baseDir) {
+        this.baseDir = baseDir;
+    }
 
     /**
      * 获取此读取器对应的 CLI 类型。
@@ -62,7 +82,7 @@ public class ClaudeSessionReader implements SessionReader {
      */
     @Override
     public boolean isAvailable() {
-        return Files.isDirectory(Paths.get(BASE_DIR));
+        return Files.isDirectory(Paths.get(baseDir));
     }
 
     /**
@@ -73,7 +93,7 @@ public class ClaudeSessionReader implements SessionReader {
     @Override
     public List<SessionInfo> listSessions() {
         List<SessionInfo> sessions = new ArrayList<>();
-        Path base = Paths.get(BASE_DIR);
+        Path base = Paths.get(baseDir);
         if (!Files.isDirectory(base)) {
             return sessions;
         }
@@ -152,12 +172,15 @@ public class ClaudeSessionReader implements SessionReader {
                     if (entry == null) {
                         continue;
                     }
-                    String type = (String) entry.get("type");
-                    if ("user".equals(type) || "assistant".equals(type)) {
-                        SessionMessage msg = parseMessage(entry, sessionId);
-                        if (msg != null) {
-                            messages.add(msg);
-                        }
+                    SessionMessage msg = parseMessage(entry, sessionId);
+                    if (msg == null) {
+                        continue;
+                    }
+                    if (shouldMergeToolResult(msg) && mergeToolResultIntoAssistant(messages, msg)) {
+                        continue;
+                    }
+                    if ("user".equals(entry.get("type")) || "assistant".equals(entry.get("type"))) {
+                        messages.add(msg);
                     }
                 } catch (Exception e) {
                     log.debug("Failed to parse Claude session line", e);
@@ -311,6 +334,7 @@ public class ClaudeSessionReader implements SessionReader {
     @SuppressWarnings("unchecked")
     private SessionMessage parseMessage(Map<String, Object> entry, String sessionId) {
         Map<String, Object> message = (Map<String, Object>) entry.get("message");
+        Map<String, Object> toolUseResult = (Map<String, Object>) entry.get("toolUseResult");
         if (message == null) {
             return null;
         }
@@ -328,7 +352,7 @@ public class ClaudeSessionReader implements SessionReader {
             for (Object item : contentList) {
                 if (item instanceof Map<?, ?> map) {
                     Map<String, Object> block = (Map<String, Object>) map;
-                    ContentBlock cb = parseContentBlock(block);
+                    ContentBlock cb = parseContentBlock(block, toolUseResult);
                     if (cb != null) {
                         contents.add(cb);
                     }
@@ -371,13 +395,71 @@ public class ClaudeSessionReader implements SessionReader {
     }
 
     /**
+     * 判断消息是否应当作为 tool_result 合并到前一个助手消息。
+     *
+     * @param msg 会话消息
+     * @return 是否应合并
+     */
+    private boolean shouldMergeToolResult(SessionMessage msg) {
+        return msg != null
+                && msg.role() == SessionRole.USER
+                && isToolResultOnly(msg)
+                && msg.parentUuid() != null
+                && !msg.parentUuid().isBlank();
+    }
+
+    /**
+     * 判断消息内容是否全部为工具结果。
+     *
+     * @param msg 会话消息
+     * @return 是否只有工具结果块
+     */
+    private boolean isToolResultOnly(SessionMessage msg) {
+        return msg != null
+                && msg.contents() != null
+                && !msg.contents().isEmpty()
+                && msg.contents().stream().allMatch(block -> block != null && block.type() == ContentBlockType.TOOL_RESULT);
+    }
+
+    /**
+     * 将 Claude 的 tool_result 行合并到对应的助手消息中。
+     *
+     * @param messages 已读取消息列表
+     * @param toolResultMessage 工具结果消息
+     * @return 合并成功返回 {@code true}
+     */
+    private boolean mergeToolResultIntoAssistant(List<SessionMessage> messages, SessionMessage toolResultMessage) {
+        if (messages.isEmpty() || toolResultMessage == null) {
+            return false;
+        }
+        String parentUuid = toolResultMessage.parentUuid();
+        if (parentUuid == null || parentUuid.isBlank()) {
+            return false;
+        }
+        for (int i = messages.size() - 1; i >= 0; i--) {
+            SessionMessage previous = messages.get(i);
+            if (previous == null || previous.role() != SessionRole.ASSISTANT) {
+                continue;
+            }
+            if (!parentUuid.equals(previous.uuid())) {
+                continue;
+            }
+            if (previous.contents() != null && toolResultMessage.contents() != null) {
+                previous.contents().addAll(toolResultMessage.contents());
+            }
+            return true;
+        }
+        return false;
+    }
+
+    /**
      * 解析 Claude 原始内容块为统一的 {@link ContentBlock}。
      *
      * @param block 原始内容块数据
      * @return 统一内容块，type 为空时返回 {@code null}
      */
     @SuppressWarnings("unchecked")
-    private ContentBlock parseContentBlock(Map<String, Object> block) {
+    private ContentBlock parseContentBlock(Map<String, Object> block, Map<String, Object> toolUseResult) {
         String type = (String) block.get("type");
         if (type == null) {
             return null;
@@ -400,9 +482,10 @@ public class ClaudeSessionReader implements SessionReader {
                     .build();
             case "tool_result" -> ContentBlock.builder()
                     .type(ContentBlockType.TOOL_RESULT)
-                    .toolUseId((String) block.get("tool_use_id"))
+                    .toolUseId(stringValue(block.get("tool_use_id")))
                     .toolOutput(block.get("content") instanceof String s ? s : String.valueOf(block.get("content")))
                     .isError(block.get("is_error") instanceof Boolean b && b)
+                    .historicalFileEditData(parseHistoricalFileEditData(toolUseResult))
                     .build();
             default -> ContentBlock.builder()
                     .type(ContentBlockType.TEXT)
@@ -412,13 +495,48 @@ public class ClaudeSessionReader implements SessionReader {
     }
 
     /**
+     * 解析 Claude 原始工具结果中的文件编辑数据。
+     *
+     * @param toolUseResult 原始工具结果
+     * @return 历史文件编辑原始数据
+     */
+    private HistoricalFileEditData parseHistoricalFileEditData(Map<String, Object> toolUseResult) {
+        if (toolUseResult == null) {
+            return null;
+        }
+        String originalFile = stringValue(toolUseResult.get("originalFile"));
+        String oldString = stringValue(toolUseResult.get("oldString"));
+        String newString = stringValue(toolUseResult.get("newString"));
+        Boolean replaceAll = toolUseResult.get("replaceAll") instanceof Boolean b ? b : null;
+        if (originalFile == null && oldString == null && newString == null) {
+            return null;
+        }
+        return HistoricalFileEditData.builder()
+                .originalFile(originalFile)
+                .oldString(oldString)
+                .newString(newString)
+                .replaceAll(replaceAll)
+                .build();
+    }
+
+    /**
+     * 将对象转为字符串。
+     *
+     * @param value 原始值
+     * @return 字符串或 {@code null}
+     */
+    private String stringValue(Object value) {
+        return value instanceof String s ? s : value != null ? String.valueOf(value) : null;
+    }
+
+    /**
      * 在所有项目目录中查找指定会话 ID 对应的 JSONL 文件。
      *
      * @param sessionId 会话唯一标识
      * @return 会话文件路径，未找到时返回 {@code null}
      */
     private Path findSessionFile(String sessionId) {
-        Path base = Paths.get(BASE_DIR);
+        Path base = Paths.get(baseDir);
         if (!Files.isDirectory(base)) {
             return null;
         }

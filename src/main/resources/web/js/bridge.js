@@ -39,6 +39,9 @@ window.EABridge = {
             if (window.EAStore) {
                 EAStore.setStreaming(false, data && data.sessionId ? data.sessionId : null);
             }
+            window.dispatchEvent(new CustomEvent('ea-stream-complete', {
+                detail: data || {}
+            }));
         };
 
         window.__ea_onSessionCreated = (data) => {
@@ -203,12 +206,13 @@ window.EABridge = {
      *
      * @param {string} sessionId - 会话 ID
      * @param {string} cliType - CLI 类型名称
+     * @param {boolean} [forceReload] - 是否强制从后端重新加载
      */
-    loadHistory(sessionId, cliType) {
+    loadHistory(sessionId, cliType, forceReload) {
         if (window.EAStore) {
             EAStore._saveCurrentToCache();
             EAStore.setLoading(sessionId);
-            if (EAStore.isSessionCached(sessionId)) {
+            if (!forceReload && EAStore.isSessionCached(sessionId)) {
                 EAStore.loadHistory({ sessionId: sessionId, messages: [] });
                 return;
             }
@@ -216,7 +220,7 @@ window.EABridge = {
             EAStore.messages = [];
             EAStore.messagesVersion++;
         }
-        this.send('loadHistory', { sessionId: sessionId, cliType: cliType });
+        this.send('loadHistory', { sessionId: sessionId, cliType: cliType, forceReload: !!forceReload });
     },
 
     /**
@@ -356,19 +360,33 @@ window.EABridge = {
      /**
       * 打开指定 AI 文件编辑的 diff。
       *
-      * @param {string} editId - 编辑 ID
+      * @param {Object} fileEdit - 文件编辑元数据
       */
-     openFileEditDiff(editId) {
-         this.send('openFileEditDiff', { editId: editId });
+     openFileEditDiff(fileEdit) {
+         if (!fileEdit) {
+             return;
+         }
+         this.send('openFileEditDiff', {
+             editId: fileEdit.editId || '',
+             toolCallId: fileEdit.toolCallId || '',
+             path: fileEdit.path || ''
+         });
      },
 
      /**
       * 回撤指定 AI 文件编辑。
       *
-      * @param {string} editId - 编辑 ID
+      * @param {Object} fileEdit - 文件编辑元数据
       */
-     revertFileEdit(editId) {
-         this.send('revertFileEdit', { editId: editId });
+     revertFileEdit(fileEdit) {
+         if (!fileEdit) {
+             return;
+         }
+         this.send('revertFileEdit', {
+             editId: fileEdit.editId || '',
+             toolCallId: fileEdit.toolCallId || '',
+             path: fileEdit.path || ''
+         });
      },
 
      /**

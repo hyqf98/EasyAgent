@@ -13,27 +13,41 @@ var EA_IMAGE_REFERENCE_COUNTER = 0;
 var EA_REFERENCE_INSTANCE_COUNTER = 0;
 var EA_INLINE_REFERENCE_PREFIX = '[[EA_REF_';
 var EA_INLINE_REFERENCE_SUFFIX = ']]';
+var EA_INLINE_TOKEN_SELECTOR = '.input-inline-token';
 var EA_REFERENCE_SELECTOR = '.input-inline-ref';
+var EA_COMMAND_SELECTOR = '.input-inline-command';
 
-function EAIsReferenceNode(node) {
+function EAIsInlineTokenNode(node) {
     return !!node
         && node.nodeType === Node.ELEMENT_NODE
         && node.classList
-        && node.classList.contains('input-inline-ref');
+        && node.classList.contains('input-inline-token');
 }
 
-function EAGetReferenceSerializedLength(node) {
-    return EAIsReferenceNode(node)
-        ? ((node.dataset && node.dataset.inlineToken) || '').length
-        : 0;
+function EAIsReferenceNode(node) {
+    return EAIsInlineTokenNode(node) && node.classList.contains('input-inline-ref');
+}
+
+function EAIsCommandNode(node) {
+    return EAIsInlineTokenNode(node) && node.classList.contains('input-inline-command');
+}
+
+function EAGetInlineTokenText(node) {
+    return EAIsInlineTokenNode(node)
+        ? ((node.dataset && node.dataset.inlineToken) || '')
+        : '';
+}
+
+function EAGetInlineTokenSerializedLength(node) {
+    return EAGetInlineTokenText(node).length;
 }
 
 function EAGetSerializedNodeLength(node) {
     if (!node) {
         return 0;
     }
-    if (EAIsReferenceNode(node)) {
-        return EAGetReferenceSerializedLength(node);
+    if (EAIsInlineTokenNode(node)) {
+        return EAGetInlineTokenSerializedLength(node);
     }
     if (node.nodeType === Node.TEXT_NODE) {
         return (node.nodeValue || '').length;
@@ -53,8 +67,8 @@ function EASerializeNode(node) {
     if (!node) {
         return '';
     }
-    if (EAIsReferenceNode(node)) {
-        return (node.dataset && node.dataset.inlineToken) || '';
+    if (EAIsInlineTokenNode(node)) {
+        return EAGetInlineTokenText(node);
     }
     if (node.nodeType === Node.TEXT_NODE) {
         return node.nodeValue || '';
@@ -163,6 +177,10 @@ window.EARegisterComponent('input-bar', 'InputBar', {
             this.availableCommands = detail.commands || [];
             this.commandSearchResults = this.filterCommandCandidates(this.commandSearchQuery);
             this.activeCommandIndex = 0;
+            this.promoteLeadingSlashCommandToken();
+            this.$nextTick(function () {
+                this.scrollActiveCommandIntoView();
+            }.bind(this));
         }.bind(this);
         document.addEventListener('click', this._onClickOutside);
         window.addEventListener('ea-insert-file-references', this._onInsertReferences);
@@ -251,7 +269,7 @@ window.EARegisterComponent('input-bar', 'InputBar', {
         },
         createReferenceChip(reference) {
             var chip = document.createElement('span');
-            chip.className = 'input-inline-ref' + (reference.referenceType === 'IMAGE' ? ' image-ref' : ' file-ref');
+            chip.className = 'input-inline-token input-inline-ref' + (reference.referenceType === 'IMAGE' ? ' image-ref' : ' file-ref');
             chip.contentEditable = 'false';
             chip.dataset.refId = reference.id;
             chip.dataset.refInstanceId = reference.instanceId;
@@ -273,6 +291,35 @@ window.EARegisterComponent('input-bar', 'InputBar', {
             remove.className = 'input-inline-ref-remove';
             remove.setAttribute('role', 'button');
             remove.setAttribute('aria-label', 'Remove reference');
+            remove.textContent = '×';
+            chip.appendChild(remove);
+
+            return chip;
+        },
+        createCommandChip(command) {
+            var chip = document.createElement('span');
+            chip.className = 'input-inline-token input-inline-command';
+            chip.contentEditable = 'false';
+            chip.dataset.inlineToken = command.commandText || ('/' + command.name);
+            chip.dataset.commandName = command.name || '';
+            chip.dataset.commandSourceType = command.sourceType || '';
+            chip.dataset.commandActionType = command.actionType || '';
+            chip.title = command.description || chip.dataset.inlineToken;
+
+            var icon = document.createElement('span');
+            icon.className = 'input-inline-ref-icon';
+            icon.textContent = 'CMD';
+            chip.appendChild(icon);
+
+            var label = document.createElement('span');
+            label.className = 'input-inline-ref-label';
+            label.textContent = chip.dataset.inlineToken;
+            chip.appendChild(label);
+
+            var remove = document.createElement('span');
+            remove.className = 'input-inline-ref-remove';
+            remove.setAttribute('role', 'button');
+            remove.setAttribute('aria-label', 'Remove command');
             remove.textContent = '×';
             chip.appendChild(remove);
 
@@ -365,10 +412,26 @@ window.EARegisterComponent('input-bar', 'InputBar', {
             this.setSelection(range);
             this.refreshComposerState();
         },
+        insertInlineTokenAtSelection(node) {
+            var range = this.getActiveRange();
+            if (!range || !node) {
+                return;
+            }
+            var spacer = document.createTextNode('');
+            var fragment = document.createDocumentFragment();
+            fragment.appendChild(node);
+            fragment.appendChild(spacer);
+            range.deleteContents();
+            range.insertNode(fragment);
+            range.setStart(spacer, spacer.nodeValue.length);
+            range.collapse(true);
+            this.setSelection(range);
+            this.refreshComposerState();
+        },
         insertNewlineAtSelection() {
             this.insertTextAtSelection('\n');
         },
-        removeReferenceChipNode(chip) {
+        removeInlineTokenNode(chip) {
             if (!chip || !chip.parentNode) {
                 return;
             }
@@ -390,7 +453,7 @@ window.EARegisterComponent('input-bar', 'InputBar', {
             this.setSelection(range);
             this.refreshComposerState();
         },
-        findAdjacentReference(direction) {
+        findAdjacentInlineToken(direction) {
             var selection = window.getSelection ? window.getSelection() : null;
             if (!selection || selection.rangeCount === 0 || !selection.isCollapsed) {
                 return null;
@@ -407,7 +470,7 @@ window.EARegisterComponent('input-bar', 'InputBar', {
 
             if (node === composer) {
                 var child = composer.childNodes[direction === 'backward' ? offset - 1 : offset];
-                return EAIsReferenceNode(child) ? child : null;
+                return EAIsInlineTokenNode(child) ? child : null;
             }
 
             if (node.nodeType === Node.TEXT_NODE) {
@@ -418,12 +481,12 @@ window.EARegisterComponent('input-bar', 'InputBar', {
                     return null;
                 }
                 var sibling = direction === 'backward' ? node.previousSibling : node.nextSibling;
-                return EAIsReferenceNode(sibling) ? sibling : null;
+                return EAIsInlineTokenNode(sibling) ? sibling : null;
             }
 
             var index = direction === 'backward' ? offset - 1 : offset;
             var childNode = node.childNodes[index];
-            return EAIsReferenceNode(childNode) ? childNode : null;
+            return EAIsInlineTokenNode(childNode) ? childNode : null;
         },
         buildPointAtOffset(root, targetOffset) {
             var remaining = Math.max(0, targetOffset || 0);
@@ -437,7 +500,7 @@ window.EARegisterComponent('input-bar', 'InputBar', {
                     }
                     var childLength = EAGetSerializedNodeLength(child);
                     if (remaining < childLength) {
-                        if (EAIsReferenceNode(child) || child.nodeName === 'BR') {
+                        if (EAIsInlineTokenNode(child) || child.nodeName === 'BR') {
                             return { container: parent, offset: i };
                         }
                         if (child.nodeType === Node.TEXT_NODE) {
@@ -472,8 +535,8 @@ window.EARegisterComponent('input-bar', 'InputBar', {
                     return;
                 }
                 if (node === container) {
-                    if (EAIsReferenceNode(node)) {
-                        total += offset > 0 ? EAGetReferenceSerializedLength(node) : 0;
+                    if (EAIsInlineTokenNode(node)) {
+                        total += offset > 0 ? EAGetInlineTokenSerializedLength(node) : 0;
                         found = true;
                         return;
                     }
@@ -490,8 +553,8 @@ window.EARegisterComponent('input-bar', 'InputBar', {
                     return;
                 }
 
-                if (EAIsReferenceNode(node)) {
-                    total += EAGetReferenceSerializedLength(node);
+                if (EAIsInlineTokenNode(node)) {
+                    total += EAGetInlineTokenSerializedLength(node);
                     return;
                 }
                 if (node.nodeType === Node.TEXT_NODE) {
@@ -518,11 +581,57 @@ window.EARegisterComponent('input-bar', 'InputBar', {
         normalizeCommandText(value) {
             return (value || '').trim().toLowerCase();
         },
+        findAvailableCommandByName(name) {
+            var list = this.availableCommands || [];
+            var normalized = this.normalizeCommandText(name);
+            if (!normalized) {
+                return null;
+            }
+            for (var i = 0; i < list.length; i++) {
+                var item = list[i];
+                if (!item) {
+                    continue;
+                }
+                if (this.normalizeCommandText(item.name) === normalized) {
+                    return item;
+                }
+                var aliases = item.aliases || [];
+                for (var j = 0; j < aliases.length; j++) {
+                    if (this.normalizeCommandText(aliases[j]) === normalized) {
+                        return item;
+                    }
+                }
+            }
+            return null;
+        },
+        resolveLeadingSlashCommand(text) {
+            var raw = text || '';
+            var trimmed = raw.replace(/^\s+/, '');
+            if (!trimmed.startsWith('/')) {
+                return null;
+            }
+            var match = trimmed.match(/^\/([^\s/@]+)(?=\s|$)/);
+            if (!match) {
+                return null;
+            }
+            var command = this.findAvailableCommandByName(match[1]);
+            if (!command) {
+                return null;
+            }
+            var prefixLength = raw.length - trimmed.length;
+            return {
+                command: command,
+                range: {
+                    start: prefixLength,
+                    end: prefixLength + match[0].length
+                }
+            };
+        },
         parseActiveSlashCommand(beforeCaret) {
             if (!beforeCaret) {
                 return null;
             }
-            var match = beforeCaret.match(/(?:^|[\s\n])\/([^\s/@]*)$/);
+            var match = beforeCaret.match(/^\s*\/([^\s/@]*)$/);
             if (!match) {
                 return null;
             }
@@ -548,13 +657,18 @@ window.EARegisterComponent('input-bar', 'InputBar', {
             if (name.indexOf(normalizedQuery) >= 0) {
                 return true;
             }
+            if (this.normalizeCommandText(command.commandText || '').indexOf(normalizedQuery) >= 0) {
+                return true;
+            }
             var aliases = command.aliases || [];
             for (var i = 0; i < aliases.length; i++) {
                 if (this.normalizeCommandText(aliases[i]).indexOf(normalizedQuery) >= 0) {
                     return true;
                 }
             }
-            return this.normalizeCommandText(command.description || '').indexOf(normalizedQuery) >= 0;
+            return this.normalizeCommandText(command.description || '').indexOf(normalizedQuery) >= 0
+                || this.normalizeCommandText(command.group || '').indexOf(normalizedQuery) >= 0
+                || this.normalizeCommandText(command.sourceType || '').indexOf(normalizedQuery) >= 0;
         },
         filterCommandCandidates(query) {
             var list = this.availableCommands || [];
@@ -565,6 +679,10 @@ window.EARegisterComponent('input-bar', 'InputBar', {
                 }
             }
             results.sort(function (a, b) {
+                var groupCompare = (a.group || '').localeCompare(b.group || '');
+                if (groupCompare !== 0) {
+                    return groupCompare;
+                }
                 return (a.name || '').localeCompare(b.name || '');
             });
             return results;
@@ -582,47 +700,54 @@ window.EARegisterComponent('input-bar', 'InputBar', {
             if (next < 0) next = this.commandSearchResults.length - 1;
             if (next >= this.commandSearchResults.length) next = 0;
             this.activeCommandIndex = next;
+            this.$nextTick(function () {
+                this.scrollActiveCommandIntoView();
+            }.bind(this));
         },
         selectCommandCandidate(candidate) {
             if (!candidate || !candidate.name || !this.activeSlashRange) return;
-            this.replaceSerializedRange(this.activeSlashRange.start, this.activeSlashRange.end, '/' + candidate.name + ' ');
+            this.replaceSerializedRange(this.activeSlashRange.start, this.activeSlashRange.end, '');
             this.pendingInsertRange = this.getCurrentSelectionRange()
                 || this.lastSelectionRange
                 || this.createRangeAtComposerEnd();
+            this.insertInlineTokenAtSelection(this.createCommandChip(candidate), true);
             this.closeCommandSearch();
             this.$nextTick(function () {
                 this.focusComposer();
             }.bind(this));
         },
+        scrollActiveCommandIntoView() {
+            var list = this.$refs.commandSearchList;
+            if (!list) {
+                return;
+            }
+            var active = list.querySelector('[data-command-index="' + this.activeCommandIndex + '"]');
+            if (!active) {
+                return;
+            }
+            var top = active.offsetTop;
+            var bottom = top + active.offsetHeight;
+            var viewTop = list.scrollTop;
+            var viewBottom = viewTop + list.clientHeight;
+            if (top < viewTop) {
+                list.scrollTop = Math.max(0, top - 4);
+            } else if (bottom > viewBottom) {
+                list.scrollTop = bottom - list.clientHeight + 4;
+            }
+        },
         resolveSubmittedSlashCommand(text) {
             var raw = text || '';
-            if (!raw.startsWith('/')) {
+            var trimmed = raw.replace(/^\s+/, '');
+            if (!trimmed.startsWith('/')) {
                 return null;
             }
-            var firstLine = raw.split('\n')[0];
+            var firstLine = trimmed.split('\n')[0];
             var match = firstLine.match(/^\/([^\s]+)(?:\s+([\s\S]*))?$/);
             if (!match) {
                 return null;
             }
             var name = match[1] || '';
-            var list = this.availableCommands || [];
-            var command = null;
-            for (var i = 0; i < list.length; i++) {
-                var item = list[i];
-                if (!item) continue;
-                if (this.normalizeCommandText(item.name) === this.normalizeCommandText(name)) {
-                    command = item;
-                    break;
-                }
-                var aliases = item.aliases || [];
-                for (var j = 0; j < aliases.length; j++) {
-                    if (this.normalizeCommandText(aliases[j]) === this.normalizeCommandText(name)) {
-                        command = item;
-                        break;
-                    }
-                }
-                if (command) break;
-            }
+            var command = this.findAvailableCommandByName(name);
             return {
                 name: name,
                 rawText: raw,
@@ -698,8 +823,8 @@ window.EARegisterComponent('input-bar', 'InputBar', {
         handleComposerClick(e) {
             var removeBtn = e.target.closest ? e.target.closest('.input-inline-ref-remove') : null;
             if (removeBtn) {
-                var chip = removeBtn.closest(EA_REFERENCE_SELECTOR);
-                this.removeReferenceChipNode(chip);
+                var chip = removeBtn.closest(EA_INLINE_TOKEN_SELECTOR);
+                this.removeInlineTokenNode(chip);
                 return;
             }
             this.handleCaretInteraction();
@@ -763,18 +888,18 @@ window.EARegisterComponent('input-bar', 'InputBar', {
                 }
             }
             if (e.key === 'Backspace') {
-                var prevChip = this.findAdjacentReference('backward');
+                var prevChip = this.findAdjacentInlineToken('backward');
                 if (prevChip) {
                     e.preventDefault();
-                    this.removeReferenceChipNode(prevChip);
+                    this.removeInlineTokenNode(prevChip);
                     return;
                 }
             }
             if (e.key === 'Delete') {
-                var nextChip = this.findAdjacentReference('forward');
+                var nextChip = this.findAdjacentInlineToken('forward');
                 if (nextChip) {
                     e.preventDefault();
-                    this.removeReferenceChipNode(nextChip);
+                    this.removeInlineTokenNode(nextChip);
                     return;
                 }
             }
@@ -867,6 +992,7 @@ window.EARegisterComponent('input-bar', 'InputBar', {
             this.refreshComposerState();
             this.syncFileSearchState();
             this.syncCommandSearchState();
+            this.promoteLeadingSlashCommandToken();
         },
         saveClipboardImage(file) {
             var reader = new FileReader();
@@ -911,6 +1037,25 @@ window.EARegisterComponent('input-bar', 'InputBar', {
             this.showCommandSearch = true;
             this.commandSearchResults = this.filterCommandCandidates(slash.query);
             this.activeCommandIndex = 0;
+            this.$nextTick(function () {
+                this.scrollActiveCommandIntoView();
+            }.bind(this));
+        },
+        promoteLeadingSlashCommandToken() {
+            var composer = this.$refs.composer;
+            if (!composer || composer.querySelector(EA_COMMAND_SELECTOR)) {
+                return;
+            }
+            var resolved = this.resolveLeadingSlashCommand(this.getComposerText());
+            if (!resolved || !resolved.command) {
+                return;
+            }
+            this.replaceSerializedRange(resolved.range.start, resolved.range.end, '');
+            this.pendingInsertRange = this.getCurrentSelectionRange()
+                || this.lastSelectionRange
+                || this.createRangeAtComposerEnd();
+            this.insertInlineTokenAtSelection(this.createCommandChip(resolved.command), false);
+            this.closeCommandSearch();
         },
         parseActiveMention(beforeCaret) {
             var match = beforeCaret.match(/@([^\s@]*)$/);

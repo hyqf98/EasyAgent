@@ -9,6 +9,7 @@ import io.github.easyagent.session.entity.ContentBlock;
 import io.github.easyagent.session.entity.SessionInfo;
 import io.github.easyagent.session.entity.SessionMessage;
 import io.github.easyagent.session.entity.TokenUsage;
+import io.github.easyagent.ui.service.ToolMetadataSupport;
 import io.github.easyagent.util.GsonUtils;
 import lombok.extern.slf4j.Slf4j;
 
@@ -280,6 +281,7 @@ public class OpenCodeSessionReader implements SessionReader {
                             .build();
                 } else if ("tool".equals(type)) {
                     String toolName = (String) data.get("tool");
+                    String toolUseId = (String) data.get("callID");
                     Map<String, Object> state = (Map<String, Object>) data.get("state");
                     String toolOutput = null;
                     String title = null;
@@ -299,10 +301,12 @@ public class OpenCodeSessionReader implements SessionReader {
 
                     block = ContentBlock.builder()
                             .type(ContentBlockType.TOOL_USE)
+                            .toolUseId(toolUseId)
                             .toolName(toolName)
                             .toolInput(toolInputJson)
                             .toolOutput(toolOutput)
                             .text(title)
+                            .historicalFileEditData(ToolMetadataSupport.resolveHistoricalFileEdit(toolName, toolInputJson))
                             .build();
                 }
 

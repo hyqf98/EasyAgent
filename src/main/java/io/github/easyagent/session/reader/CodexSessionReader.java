@@ -8,6 +8,7 @@ import io.github.easyagent.session.entity.ContentBlock;
 import io.github.easyagent.session.entity.SessionInfo;
 import io.github.easyagent.session.entity.SessionMessage;
 import io.github.easyagent.session.entity.TokenUsage;
+import io.github.easyagent.ui.service.ToolMetadataSupport;
 import io.github.easyagent.util.GsonUtils;
 import lombok.extern.slf4j.Slf4j;
 
@@ -259,12 +260,15 @@ public class CodexSessionReader implements SessionReader {
      * @return 仅包含工具调用块的助手消息
      */
     private SessionMessage parseFunctionCallPayload(Map<String, Object> payload, String sessionId) {
+        String toolName = stringValue(payload.get("name"));
+        String arguments = stringifyValue(payload.get("arguments"));
         List<ContentBlock> contents = new ArrayList<>();
         contents.add(ContentBlock.builder()
                 .type(ContentBlockType.TOOL_USE)
                 .toolUseId(stringValue(payload.get("call_id")))
-                .toolName(stringValue(payload.get("name")))
-                .toolInput(stringifyValue(payload.get("arguments")))
+                .toolName(toolName)
+                .toolInput(arguments)
+                .historicalFileEditData(ToolMetadataSupport.resolveHistoricalFileEdit(toolName, arguments))
                 .build());
         return SessionMessage.builder()
                 .sessionId(sessionId)
@@ -353,11 +357,13 @@ public class CodexSessionReader implements SessionReader {
                 Map<String, Object> function = (Map<String, Object>) block.get("function");
                 String toolName = function != null ? stringValue(function.get("name")) : stringValue(block.get("name"));
                 Object arguments = function != null ? function.get("arguments") : block.get("arguments");
+                String inputJson = stringifyValue(arguments);
                 yield ContentBlock.builder()
                         .type(ContentBlockType.TOOL_USE)
                         .toolUseId(stringValue(block.get("id")) != null ? stringValue(block.get("id")) : stringValue(block.get("call_id")))
                         .toolName(toolName)
-                        .toolInput(stringifyValue(arguments))
+                        .toolInput(inputJson)
+                        .historicalFileEditData(ToolMetadataSupport.resolveHistoricalFileEdit(toolName, inputJson))
                         .build();
             }
             case "tool_result", "function_call_output" -> ContentBlock.builder()

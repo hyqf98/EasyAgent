@@ -17,6 +17,7 @@ import lombok.Builder;
  * @param toolInput  工具调用输入参数的 JSON 字符串（TOOL_USE 类型使用）
  * @param toolOutput 工具执行输出结果（TOOL_RESULT 类型使用）
  * @param isError    工具执行是否出错（TOOL_RESULT 类型使用）
+ * @param historicalFileEditData 历史文件编辑原始数据（Claude/Codex/OpenCode 文件编辑块使用）
  * @param thinking   思考/推理内容（THINKING 类型使用）
  * @param durationMs 执行耗时（毫秒）
  * @author haijun
@@ -32,6 +33,7 @@ public record ContentBlock(
         String toolInput,
         String toolOutput,
         Boolean isError,
+        HistoricalFileEditData historicalFileEditData,
         String thinking,
         Long durationMs
 ) {}
