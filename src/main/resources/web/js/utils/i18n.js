@@ -246,7 +246,9 @@ window.EAi18n = {
         'settings.skillDelete': '删除',
         'settings.skillDeleteConfirm': '确认删除技能 "{name}"？',
         'settings.skillView': '查看',
-        'settings.skillContentEmpty': '无内容'
+        'settings.skillContentEmpty': '无内容',
+        'settings.skillContentLoading': '加载中...',
+        'settings.skillClose': '关闭'
     },
 
     /** 英文翻译表。 */
@@ -481,7 +483,9 @@ window.EAi18n = {
         'settings.skillDelete': 'Delete',
         'settings.skillDeleteConfirm': 'Delete skill "{name}"?',
         'settings.skillView': 'View',
-        'settings.skillContentEmpty': 'No content'
+        'settings.skillContentEmpty': 'No content',
+        'settings.skillContentLoading': 'Loading...',
+        'settings.skillClose': 'Close'
     },
 
     /**

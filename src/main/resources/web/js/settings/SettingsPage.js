@@ -293,10 +293,12 @@ window.EARegisterComponent('settings-page', 'SettingsPage', {
         this._onSkillDeleted = function (e) {
             var detail = e.detail || {};
         }.bind(this);
-        this._onSkillContent = function (e) {
+        this.        _onSkillContent = function (e) {
             var detail = e.detail || {};
             if (this.skillContentDialog) {
-                this.skillContentDialog.content = detail.content || '';
+                var content = detail.content || '';
+                this.skillContentDialog.content = content;
+                this.skillContentDialog.htmlContent = content ? (window.EAMarkdown ? EAMarkdown.render(content) : content) : '';
             }
         }.bind(this);
         window.addEventListener('ea-skills', this._onSkills);
@@ -940,7 +942,7 @@ window.EARegisterComponent('settings-page', 'SettingsPage', {
             EABridge.deleteSkill(this.skillFilter, item.name, item.skillPath);
         },
         onViewSkillContent(item) {
-            this.skillContentDialog = { name: item.name, content: null };
+            this.skillContentDialog = { name: item.name, content: null, htmlContent: null };
             EABridge.readSkillContent(item.skillPath);
         }
     }

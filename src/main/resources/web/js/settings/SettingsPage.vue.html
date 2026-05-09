@@ -715,11 +715,12 @@
                             <button class="ea-modal-close" @click="skillContentDialog = null">×</button>
                         </div>
                         <div class="ea-modal-body">
-                            <pre class="mcp-tool-result-content" v-if="skillContentDialog.content">{{ skillContentDialog.content }}</pre>
-                            <div v-else class="mcp-test-empty">{{ i18n.t('settings.skillContentEmpty') }}</div>
+                            <div class="md-content" v-if="skillContentDialog.htmlContent" v-html="skillContentDialog.htmlContent"></div>
+                            <div v-if="skillContentDialog.content === null" class="mcp-test-empty">{{ i18n.t('settings.skillContentLoading') }}</div>
+                            <div v-if="skillContentDialog.content !== null && !skillContentDialog.content" class="mcp-test-empty">{{ i18n.t('settings.skillContentEmpty') }}</div>
                         </div>
                         <div class="ea-modal-footer">
-                            <button class="ea-modal-btn ea-modal-btn-ghost" @click="skillContentDialog = null">{{ i18n.t('settings.mcpTestClose') }}</button>
+                            <button class="ea-modal-btn ea-modal-btn-ghost" @click="skillContentDialog = null">{{ i18n.t('settings.skillClose') }}</button>
                         </div>
                     </div>
                 </div>
@@ -730,7 +731,6 @@
                         <div class="mcp-card-header">
                             <span class="mcp-card-name">{{ item.name }}</span>
                             <span class="mcp-card-scope" :class="item.scope">{{ item.scope === 'user' ? i18n.t('settings.mcpScopeUser') : i18n.t('settings.mcpScopeProject') }}</span>
-                            <span class="mcp-card-type" :class="item.source" v-if="item.source">{{ item.source }}</span>
                             <span class="mcp-card-actions">
                                 <button class="mcp-action-btn mcp-action-test" @click="onViewSkillContent(item)" :title="i18n.t('settings.skillView')">
                                     <span class="mcp-action-icon">📄</span>
