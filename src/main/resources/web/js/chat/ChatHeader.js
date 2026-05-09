@@ -13,16 +13,12 @@ window.EARegisterComponent('chat-header', 'ChatHeader', {
         sessionTitle: { type: String, default: '' },
         model: { type: String, default: '' },
         messageCount: { type: Number, default: 0 },
-        inChat: { type: Boolean, default: false }
+        inChat: { type: Boolean, default: false },
+        showSettings: { type: Boolean, default: false }
     },
     emits: ['toggle-drawer', 'new-chat', 'back-home', 'open-settings'],
     computed: {
         store() { return window.EAStore; },
-        i18n() { void this.store.i18nVersion; return window.EAi18n; },
-        displayTitle() {
-            if (this.sessionTitle) return this.sessionTitle;
-            if (this.messageCount > 0) return this.i18n.t('chat.title');
-            return this.i18n.t('app.title');
-        }
+        i18n() { void this.store.i18nVersion; return window.EAi18n; }
     }
 });

@@ -5,8 +5,7 @@ import com.intellij.openapi.components.State;
 import com.intellij.openapi.components.Storage;
 import com.intellij.openapi.project.Project;
 import com.intellij.util.xmlb.XmlSerializerUtil;
-import lombok.Getter;
-import lombok.Setter;
+import lombok.Data;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -16,39 +15,26 @@ import java.util.Map;
 /**
  * EasyAgent 项目级别持久化状态。
  * <p>
- * 保存当前会话 ID、CLI 类型、各会话的待发送队列和 AI 重试策略配置。
- * 使用 IntelliJ {@link PersistentStateComponent} 机制自动持久化到 {@code .idea/easyagent.xml}。
+ * 仅保存项目特定的运行时数据：当前会话 ID、待发送队列和文件编辑快照。
+ * 全局配置（CLI 类型、重试策略、模型、配置档案）已迁移到 {@link EasyAgentAppState}。
  * </p>
  *
  * @author haijun
  * @date 2026/5/6
  * @since 1.0.0
  */
-@Getter
-@Setter
+@Data
 @State(name = "EasyAgent", storages = @Storage("easyagent.xml"))
 public class EasyAgentState implements PersistentStateComponent<EasyAgentState> {
 
     /** 当前活跃的会话 ID。 */
     private String currentSessionId;
 
-    /** 当前活跃的 CLI 类型名称。 */
-    private String currentCliType;
-
     /** 按会话 ID 存储的待发送队列：sessionId -> JSON 数组字符串。 */
     private Map<String, String> pendingQueues = new HashMap<>();
 
     /** 按编辑 ID 存储的 AI 文件编辑快照：editId -> JSON 字符串。 */
     private Map<String, String> fileEditSnapshots = new HashMap<>();
-
-    /** AI 重试最大次数，默认 5 次。 */
-    private int retryMaxCount = 5;
-
-    /** AI 单次执行超时时间（毫秒），默认 10 分钟，0 表示不超时。 */
-    private long retryTimeoutMs = 600000;
-
-    /** 模型配置 JSON 字符串，用于持久化。 */
-    private String modelsJson;
 
     /**
      * 获取项目级别的 EasyAgentState 实例。
@@ -73,11 +59,14 @@ public class EasyAgentState implements PersistentStateComponent<EasyAgentState> 
     /**
      * 保存指定会话的待发送队列。
      *
-     * @param sessionId       会话 ID
+     * @param sessionId        会话 ID
      * @param pendingQueueJson 待发送队列的 JSON 数组字符串
      */
-    public void savePendingQueue(String sessionId, String pendingQueueJson) {
-        if (sessionId == null) return;
+    public void savePendingQueue(String sessionId,
+                                 String pendingQueueJson) {
+        if (sessionId == null) {
+            return;
+        }
         if (pendingQueueJson == null || "[]".equals(pendingQueueJson)) {
             this.pendingQueues.remove(sessionId);
         } else {
@@ -101,7 +90,8 @@ public class EasyAgentState implements PersistentStateComponent<EasyAgentState> 
      * @param editId       编辑 ID
      * @param snapshotJson 快照 JSON 字符串
      */
-    public synchronized void saveFileEditSnapshot(String editId, String snapshotJson) {
+    public synchronized void saveFileEditSnapshot(String editId,
+                                                  String snapshotJson) {
         if (editId == null || editId.isBlank()) {
             return;
         }
@@ -129,14 +119,5 @@ public class EasyAgentState implements PersistentStateComponent<EasyAgentState> 
      */
     public synchronized Map<String, String> getFileEditSnapshots() {
         return this.fileEditSnapshots;
-    }
-
-    /**
-     * 判断重试是否启用。
-     *
-     * @return 最大重试次数大于 0 时返回 true
-     */
-    public boolean isRetryEnabled() {
-        return this.retryMaxCount > 0;
     }
 }

@@ -7,16 +7,24 @@
         </div>
         <div class="settings-menu">
             <div class="settings-menu-item" :class="{ active: activeTab === 'general' }" @click="activeTab = 'general'">
-                <span class="menu-icon">⚙</span>
+                <span class="menu-icon"><svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M7.1 1.2a.9.9 0 0 1 1.8 0l.1.6a.3.3 0 0 0 .2.2l.5.2a.3.3 0 0 0 .3 0l.5-.4a.9.9 0 0 1 1.3 1.3l-.4.5a.3.3 0 0 0 0 .3l.2.5a.3.3 0 0 0 .2.2l.6.1a.9.9 0 0 1 0 1.8l-.6.1a.3.3 0 0 0-.2.2l-.2.5a.3.3 0 0 0 0 .3l.4.5a.9.9 0 0 1-1.3 1.3l-.5-.4a.3.3 0 0 0-.3 0l-.5.2a.3.3 0 0 0-.2.2l-.1.6a.9.9 0 0 1-1.8 0l-.1-.6a.3.3 0 0 0-.2-.2l-.5-.2a.3.3 0 0 0-.3 0l-.5.4a.9.9 0 0 1-1.3-1.3l.4-.5a.3.3 0 0 0 0-.3l-.2-.5a.3.3 0 0 0-.2-.2l-.6-.1a.9.9 0 0 1 0-1.8l.6-.1a.3.3 0 0 0 .2-.2l.2-.5a.3.3 0 0 0 0-.3l-.4-.5A.9.9 0 0 1 5.6 1.8l.5.4a.3.3 0 0 0 .3 0l.5-.2a.3.3 0 0 0 .2-.2z" fill="currentColor"/><circle cx="8" cy="8" r="2" fill="var(--ea-bg-secondary, #fff)"/></svg></span>
                 <span class="menu-label">{{ i18n.t('settings.general') }}</span>
-            </div>
-            <div class="settings-menu-item" :class="{ active: activeTab === 'cli' }" @click="activeTab = 'cli'">
-                <span class="menu-icon">⌘</span>
-                <span class="menu-label">{{ i18n.t('settings.cliManager') }}</span>
             </div>
             <div class="settings-menu-item" :class="{ active: activeTab === 'models' }" @click="onOpenModels">
                 <span class="menu-icon">🤖</span>
                 <span class="menu-label">{{ i18n.t('settings.models') }}</span>
+            </div>
+            <div class="settings-menu-item" :class="{ active: activeTab === 'config' }" @click="onOpenConfig">
+                <span class="menu-icon">🔧</span>
+                <span class="menu-label">{{ i18n.t('settings.config') }}</span>
+            </div>
+            <div class="settings-menu-item" :class="{ active: activeTab === 'mcp' }" @click="onOpenMcp">
+                <span class="menu-icon">🔌</span>
+                <span class="menu-label">{{ i18n.t('settings.mcp') }}</span>
+            </div>
+            <div class="settings-menu-item" :class="{ active: activeTab === 'skills' }" @click="onOpenSkills">
+                <span class="menu-icon">⚡</span>
+                <span class="menu-label">{{ i18n.t('settings.skills') }}</span>
             </div>
         </div>
     </div>
@@ -54,18 +62,7 @@
                 </div>
             </div>
         </template>
-        <template v-if="activeTab === 'cli'">
-            <div class="settings-content-header">
-                <h3>{{ i18n.t('settings.cliManager') }}</h3>
-            </div>
-            <div class="settings-content-body">
-                <div class="cli-manager-placeholder">
-                    <div class="cli-manager-icon">⌘</div>
-                    <div class="cli-manager-title">{{ i18n.t('settings.cliManagerTitle') }}</div>
-                    <div class="cli-manager-desc">{{ i18n.t('settings.cliManagerDesc') }}</div>
-                </div>
-            </div>
-        </template>
+
         <template v-if="activeTab === 'models'">
             <div class="settings-content-header">
                 <h3>{{ i18n.t('settings.models') }}</h3>
@@ -74,63 +71,116 @@
                         <svg class="sync-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0 1 18.8-4.3M22 12.5a10 10 0 0 1-18.8 4.3"/></svg>
                         <span>{{ isSyncing ? i18n.t('settings.modelsSyncing') : i18n.t('settings.modelsSync') }}</span>
                     </button>
+                    <button class="add-model-btn" @click="onShowAddModel" v-if="!showAddModel">+ {{ i18n.t('settings.addModel') }}</button>
                 </div>
             </div>
             <div class="settings-content-body">
                 <div class="model-filter-bar">
-                    <div class="model-filter-item cli-claude" :class="{ active: modelFilter === 'CLAUDE' }" @click="modelFilter = 'CLAUDE'">
+                    <div class="model-filter-item cli-claude" :class="{ active: modelFilter === 'CLAUDE', disabled: isSyncing }" @click="!isSyncing && (modelFilter = 'CLAUDE')">
                         <span class="model-cli-dot claude"></span>Claude
                     </div>
-                    <div class="model-filter-item cli-opencode" :class="{ active: modelFilter === 'OPENCODE' }" @click="modelFilter = 'OPENCODE'">
+                    <div class="model-filter-item cli-opencode" :class="{ active: modelFilter === 'OPENCODE', disabled: isSyncing }" @click="!isSyncing && (modelFilter = 'OPENCODE')">
                         <span class="model-cli-dot opencode"></span>OpenCode
                     </div>
-                    <div class="model-filter-item cli-codex" :class="{ active: modelFilter === 'CODEX' }" @click="modelFilter = 'CODEX'">
+                    <div class="model-filter-item cli-codex" :class="{ active: modelFilter === 'CODEX', disabled: isSyncing }" @click="!isSyncing && (modelFilter = 'CODEX')">
                         <span class="model-cli-dot codex"></span>Codex
                     </div>
                 </div>
-                <div class="model-table">
-                    <div class="model-table-header">
-                        <span class="model-col-id">{{ i18n.t('settings.modelId') }}</span>
-                        <span class="model-col-name">{{ i18n.t('settings.modelName') }}</span>
-                        <span class="model-col-ctx">{{ i18n.t('settings.modelContext') }}</span>
-                        <span class="model-col-act"></span>
+
+                <!-- Add Model Form -->
+                <div class="model-add-form" v-if="showAddModel">
+                    <template v-if="isAddProviderMode">
+                        <div class="model-add-field">
+                            <label class="model-add-label">Provider</label>
+                            <div class="provider-combobox provider-combobox-sm">
+                                <input class="model-add-input provider-combobox-input" v-model="addForm.providerId"
+                                       @focus="providerDropdownOpen = 'add'; providerFilter = ''"
+                                       @input="providerFilter = $event.target.value"
+                                       @blur="onProviderBlur"
+                                       placeholder="e.g. anthropic" />
+                                <button class="provider-combobox-arrow" :class="{ open: providerDropdownOpen === 'add' }"
+                                        @mousedown.prevent="toggleProviderDropdown('add')">▼</button>
+                                <div class="provider-combobox-dropdown" v-if="providerDropdownOpen === 'add'">
+                                    <div class="provider-combobox-item" v-for="p in filteredProviders()" :key="p.id"
+                                         @mousedown.prevent="selectProvider('add', p.id)">
+                                        <span class="provider-item-id">{{ p.id }}</span>
+                                        <span class="provider-item-name">{{ p.displayName }}</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </template>
+                    <div class="model-add-field">
+                        <label class="model-add-label">{{ i18n.t('settings.modelId') }}</label>
+                        <input class="model-add-input" v-model="addForm.modelId" :placeholder="isAddProviderMode ? 'e.g. claude-sonnet-4-5' : 'e.g. claude-opus-4-7'" />
                     </div>
-                    <div
-                        class="model-table-row"
-                        :class="{ 'default-row': row.rowType === 'default' }"
-                        v-for="(row, rowIdx) in modelRows"
-                        :key="row.rowType === 'default' ? 'default-' + modelFilter : row.model.modelId + '-' + row.modelIndex + '-' + rowIdx"
-                    >
-                        <template v-if="row.rowType === 'default' && editingDefault">
-                            <span class="model-col-id"><input class="model-edit-input" v-model="defaultEditForm.modelId" :placeholder="i18n.t('settings.defaultModelPlaceholder')" /></span>
-                            <span class="model-col-name model-default-name">{{ i18n.t('settings.defaultModel') }}</span>
+                    <div class="model-add-field">
+                        <label class="model-add-label">{{ i18n.t('settings.modelName') }}</label>
+                        <input class="model-add-input" v-model="addForm.displayName" :placeholder="i18n.t('settings.addModelPlaceholder')" />
+                    </div>
+                    <div class="model-add-field">
+                        <label class="model-add-label">{{ i18n.t('settings.modelContext') }}</label>
+                        <div class="ctx-input-wrapper">
+                            <input class="model-add-input model-edit-ctx"
+                                   :value="addForm.contextDisplay"
+                                   @input="onAddCtxInput($event)"
+                                   @focus="showAddCtxDropdown = true"
+                                   @blur="onAddCtxBlur"
+                                   placeholder="128K" />
+                            <div class="ctx-dropdown" v-if="showAddCtxDropdown">
+                                <div class="ctx-dropdown-item" v-for="opt in ctxOptions" :key="opt.value"
+                                     @mousedown.prevent="onAddCtxSelect(opt.value)">{{ opt.label }}</div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="model-add-actions">
+                        <button class="model-add-confirm" @click="onConfirmAdd">{{ i18n.t('settings.addModelConfirm') }}</button>
+                        <button class="model-add-cancel" @click="onCancelAdd">{{ i18n.t('settings.addModelCancel') }}</button>
+                    </div>
+                </div>
+
+                <div class="model-table-wrapper">
+                    <div class="model-table">
+                        <div class="model-table-header">
+                            <span class="model-col-id">{{ i18n.t('settings.modelId') }}</span>
+                            <span class="model-col-name">{{ i18n.t('settings.modelName') }}</span>
+                            <span class="model-col-ctx">{{ i18n.t('settings.modelContext') }}</span>
+                            <span class="model-col-act"></span>
+                        </div>
+                        <div
+                            class="model-table-row"
+                            :class="{ 'default-row': row.rowType === 'default' }"
+                            v-for="(row, rowIdx) in modelRows"
+                            :key="row.rowType === 'default' ? 'default-' + modelFilter : row.model.modelId + '-' + row.modelIndex + '-' + rowIdx"
+                        >
+                        <template v-if="row.rowType === 'default' && !editingDefault">
+                            <span class="model-col-id model-default-id">-</span>
+                            <span class="model-col-name model-default-name">{{ defaultModelInfo.displayName || i18n.t('settings.defaultModel') }}</span>
+                            <span class="model-col-ctx">{{ formatContextWindow(defaultModelInfo.contextWindow || 128000) }}</span>
+                            <span class="model-col-act">
+                                <button class="icon-btn model-action-btn" @click="onEditDefault" :title="i18n.t('settings.modelEdit')">✎</button>
+                            </span>
+                        </template>
+                        <template v-else-if="row.rowType === 'default' && editingDefault">
+                            <span class="model-col-id model-default-id">-</span>
+                            <span class="model-col-name"><input class="model-edit-input" v-model="defaultEditForm.displayName" :placeholder="i18n.t('settings.defaultModel')" /></span>
                             <span class="model-col-ctx">
                                 <div class="ctx-input-wrapper">
                                     <input class="model-edit-input model-edit-ctx"
                                            :value="defaultEditForm.contextDisplay"
                                            @input="onDefaultCtxInput($event)"
-                                           @focus="showDefaultCtxDropdown = true"
+                                           @focus="showCtxDropdown = true"
                                            @blur="onDefaultCtxBlur"
                                            :placeholder="i18n.t('settings.modelContextPlaceholder')" />
-                                    <div class="ctx-dropdown" v-if="showDefaultCtxDropdown">
+                                    <div class="ctx-dropdown" v-if="showCtxDropdown">
                                         <div class="ctx-dropdown-item" v-for="opt in ctxOptions" :key="opt.value"
                                              @mousedown.prevent="onDefaultCtxSelect(opt.value)">{{ opt.label }}</div>
                                     </div>
                                 </div>
                             </span>
                             <span class="model-col-act">
-                                <button class="icon-btn model-action-btn" @click="onSaveDefaultModel">✓</button>
-                                <button class="icon-btn model-action-btn" @click="editingDefault = false">✕</button>
-                            </span>
-                        </template>
-                        <template v-else-if="row.rowType === 'default'">
-                            <span class="model-col-id model-cell-ellipsis model-default-id" :title="row.modelId || i18n.t('settings.defaultModelNone')">
-                                {{ row.modelId || i18n.t('settings.defaultModelNone') }}
-                            </span>
-                            <span class="model-col-name model-default-name">{{ i18n.t('settings.defaultModel') }}</span>
-                            <span class="model-col-ctx">{{ row.contextWindow ? formatContextWindow(row.contextWindow) : '-' }}</span>
-                            <span class="model-col-act">
-                                <button class="icon-btn model-action-btn" @click="onEditDefaultModel" :title="i18n.t('settings.modelEdit')">✎</button>
+                                <button class="icon-btn model-action-btn" @click="onSaveDefault">✓</button>
+                                <button class="icon-btn model-action-btn" @click="onCancelDefault">✕</button>
                             </span>
                         </template>
                         <template v-else-if="editingIndex === row.modelIndex">
@@ -160,14 +210,551 @@
                             <span class="model-col-name model-cell-ellipsis" :title="row.model.displayName">{{ row.model.displayName }}</span>
                             <span class="model-col-ctx">{{ formatContextWindow(row.model.contextWindow) }}</span>
                             <span class="model-col-act">
-                                <button class="icon-btn model-action-btn" @click="onEditModel(row.modelIndex)" :title="i18n.t('settings.modelEdit')">✎</button>
+                                 <button class="icon-btn model-action-btn" @click="onEditModel(row.modelIndex)" :title="i18n.t('settings.modelEdit')">✎</button>
                                 <button class="icon-btn model-action-btn model-action-del" @click="onDeleteModel(row.modelIndex)" :title="i18n.t('settings.modelDelete')">×</button>
                             </span>
                         </template>
                     </div>
+                    </div>
+                    <div v-if="filteredModels.length === 0 && !cliModelsLoading" class="model-empty">{{ i18n.t('settings.modelEmpty') }}</div>
+                    <div v-if="cliModelsLoading" class="model-loading-overlay">
+                        <svg class="model-loading-spinner" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0 1 18.8-4.3M22 12.5a10 10 0 0 1-18.8 4.3"/></svg>
+                        <span>{{ i18n.t('settings.modelsLoading') }}</span>
+                        <button class="loading-cancel-btn" @click="onCancelModelsLoading">{{ i18n.t('settings.cancelLoading') }}</button>
+                    </div>
                 </div>
-                <div v-if="filteredModels.length === 0" class="model-empty">{{ i18n.t('settings.modelEmpty') }}</div>
-                <div v-if="cliModelsLoading" class="model-loading">{{ i18n.t('settings.modelsLoading') }}</div>
+        </template>
+
+        <template v-if="activeTab === 'config'">
+            <div class="settings-content-header">
+                <h3>{{ i18n.t('settings.config') }}</h3>
+            </div>
+            <div class="settings-content-body">
+                <!-- Filter Bar with + Button -->
+                <div class="config-filter-bar">
+                    <div class="config-filter-tabs">
+                        <div class="config-filter-item" :class="{ active: configFilter === 'CLAUDE', disabled: !configLoaded }" @click="configLoaded && (configFilter = 'CLAUDE')">
+                            <span class="model-cli-dot claude"></span>Claude
+                        </div>
+                        <div class="config-filter-item" :class="{ active: configFilter === 'OPENCODE', disabled: !configLoaded }" @click="configLoaded && (configFilter = 'OPENCODE')">
+                            <span class="model-cli-dot opencode"></span>OpenCode
+                        </div>
+                        <div class="config-filter-item" :class="{ active: configFilter === 'CODEX', disabled: !configLoaded }" @click="configLoaded && (configFilter = 'CODEX')">
+                            <span class="model-cli-dot codex"></span>Codex
+                        </div>
+                    </div>
+                    <button class="config-add-profile-btn" @click="onShowAddProfile" :title="i18n.t('settings.profileNew')">+</button>
+                </div>
+                <div v-if="configToast" class="config-toast" :class="configToast.type">{{ configToast.message }}</div>
+
+                <!-- Default Config Card (Active) -->
+                <div class="config-card config-card-default" v-if="configLoaded">
+                    <div class="config-card-header">
+                        <span class="config-cli-dot" :class="configFilter.toLowerCase()"></span>
+                        <span class="config-card-title">{{ i18n.t('settings.profileDefault') }}</span>
+                        <span class="config-card-badge">{{ i18n.t('settings.profileCurrent') }}</span>
+                    </div>
+
+                    <!-- Claude Default Fields -->
+                    <template v-if="configFilter === 'CLAUDE'">
+                        <div class="config-field">
+                            <label class="config-label">{{ i18n.t('settings.configBaseUrl') }} <span class="config-optional">{{ i18n.t('settings.configOptional') }}</span></label>
+                            <input class="config-input" v-model="claudeForm.baseUrl" placeholder="https://api.anthropic.com" />
+                        </div>
+                        <div class="config-field">
+                            <label class="config-label">{{ i18n.t('settings.configApiKey') }}</label>
+                            <div class="config-secret-field">
+                                <input class="config-input" :type="claudeKeyVisible ? 'text' : 'password'" v-model="claudeForm.apiKey" />
+                                <button class="config-toggle-btn" @click="claudeKeyVisible = !claudeKeyVisible">{{ claudeKeyVisible ? i18n.t('settings.configHide') : i18n.t('settings.configShow') }}</button>
+                            </div>
+                        </div>
+                        <div class="config-field">
+                            <label class="config-label">{{ i18n.t('settings.configAuthToken') }} <span class="config-optional">{{ i18n.t('settings.configAuthTokenHint') }}</span></label>
+                            <input class="config-input" v-model="claudeForm.authToken" />
+                        </div>
+                        <div class="config-field">
+                            <label class="config-label">{{ i18n.t('settings.configModel') }} <span class="config-optional">{{ i18n.t('settings.configOptional') }}</span></label>
+                            <input class="config-input" v-model="claudeForm.model" placeholder="claude-sonnet-4-5-20250514" />
+                        </div>
+                    </template>
+
+                    <!-- OpenCode Default Fields -->
+                    <template v-if="configFilter === 'OPENCODE'">
+                        <div class="config-field">
+                            <label class="config-label">{{ i18n.t('settings.configProvider') }}</label>
+                            <div class="provider-combobox">
+                                <input class="config-input provider-combobox-input" v-model="opencodeForm.providerId"
+                                       @focus="providerDropdownOpen = 'default'; providerFilter = ''"
+                                       @input="providerFilter = $event.target.value"
+                                       @blur="onProviderBlur"
+                                       placeholder="e.g. anthropic" />
+                                <button class="provider-combobox-arrow" :class="{ open: providerDropdownOpen === 'default' }"
+                                        @mousedown.prevent="toggleProviderDropdown('default')">▼</button>
+                                <div class="provider-combobox-dropdown" v-if="providerDropdownOpen === 'default'">
+                                    <div class="provider-combobox-item" v-for="p in filteredProviders()" :key="p.id"
+                                         @mousedown.prevent="selectProvider('default', p.id)">
+                                        <span class="provider-item-id">{{ p.id }}</span>
+                                        <span class="provider-item-name">{{ p.displayName }}</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="config-field">
+                            <label class="config-label">{{ i18n.t('settings.configApiKey') }}</label>
+                            <div class="config-secret-field">
+                                <input class="config-input" :type="opencodeKeyVisible ? 'text' : 'password'" v-model="opencodeForm.apiKey" />
+                                <button class="config-toggle-btn" @click="opencodeKeyVisible = !opencodeKeyVisible">{{ opencodeKeyVisible ? i18n.t('settings.configHide') : i18n.t('settings.configShow') }}</button>
+                            </div>
+                        </div>
+                        <div class="config-field">
+                            <label class="config-label">{{ i18n.t('settings.configBaseUrl') }} <span class="config-optional">{{ i18n.t('settings.configOptional') }}</span></label>
+                            <input class="config-input" v-model="opencodeForm.baseUrl" />
+                        </div>
+                        <div class="config-field">
+                            <label class="config-label">{{ i18n.t('settings.configModel') }}</label>
+                            <input class="config-input" v-model="opencodeForm.model" placeholder="anthropic/claude-sonnet-4-5" />
+                        </div>
+                    </template>
+
+                    <!-- Codex Default Fields -->
+                    <template v-if="configFilter === 'CODEX'">
+                        <div class="config-field">
+                            <label class="config-label">{{ i18n.t('settings.configApiKey') }}</label>
+                            <div class="config-secret-field">
+                                <input class="config-input" :type="codexKeyVisible ? 'text' : 'password'" v-model="codexForm.apiKey" />
+                                <button class="config-toggle-btn" @click="codexKeyVisible = !codexKeyVisible">{{ codexKeyVisible ? i18n.t('settings.configHide') : i18n.t('settings.configShow') }}</button>
+                            </div>
+                        </div>
+                        <div class="config-field">
+                            <label class="config-label">{{ i18n.t('settings.configBaseUrl') }} <span class="config-optional">{{ i18n.t('settings.configOptional') }}</span></label>
+                            <input class="config-input" v-model="codexForm.baseUrl" />
+                        </div>
+                        <div class="config-field">
+                            <label class="config-label">{{ i18n.t('settings.configModel') }} <span class="config-optional">{{ i18n.t('settings.configOptional') }}</span></label>
+                            <input class="config-input" v-model="codexForm.model" placeholder="gpt-5" />
+                        </div>
+                    </template>
+
+                    <button class="config-save-btn" :disabled="configSaving === configFilter" @click="saveConfig(configFilter)">
+                        {{ configSaving === configFilter ? i18n.t('settings.configSaving') : i18n.t('settings.configSave') }}
+                    </button>
+                </div>
+
+                <!-- Profile Cards -->
+                <div class="config-card config-card-profile" v-for="p in currentProfiles" :key="p.id" v-if="configLoaded">
+                    <div class="config-card-header">
+                        <span class="config-cli-dot" :class="configFilter.toLowerCase()"></span>
+                        <span class="config-card-title">{{ p.name }}</span>
+                        <span class="config-card-actions">
+                            <button class="profile-action-btn" @click="applyProfile(configFilter, p.id)">{{ i18n.t('settings.profileApply') }}</button>
+                            <button class="profile-action-btn profile-delete-btn" @click="deleteProfile(configFilter, p.id)">{{ i18n.t('settings.profileDelete') }}</button>
+                        </span>
+                    </div>
+                    <div class="config-card-summary">
+                        <span class="config-summary-item">
+                            <span class="config-summary-label">Key:</span>
+                            <span class="config-summary-value" @click="toggleKeyVisible(p.id)">
+                                {{ isKeyVisible(p.id) ? (getProfileForm(p).apiKey || '-') : maskKey(getProfileForm(p).apiKey) }}
+                            </span>
+                        </span>
+                        <span class="config-summary-item" v-if="getProfileForm(p).baseUrl">
+                            <span class="config-summary-label">URL:</span>
+                            <span class="config-summary-value">{{ getProfileForm(p).baseUrl }}</span>
+                        </span>
+                        <span class="config-summary-item" v-if="getProfileForm(p).model">
+                            <span class="config-summary-label">Model:</span>
+                            <span class="config-summary-value">{{ getProfileForm(p).model }}</span>
+                        </span>
+                    </div>
+                </div>
+
+                <!-- New Profile Card (full form) -->
+                <div class="config-card config-card-new" v-if="configLoaded && addingProfile">
+                    <div class="config-card-header">
+                        <span class="config-cli-dot" :class="configFilter.toLowerCase()"></span>
+                        <input class="config-new-name-input" v-model="newProfileForm.name" :placeholder="i18n.t('settings.profileAddPlaceholder')" />
+                    </div>
+
+                    <!-- Claude New Profile Fields -->
+                    <template v-if="configFilter === 'CLAUDE'">
+                        <div class="config-field">
+                            <label class="config-label">{{ i18n.t('settings.configBaseUrl') }} <span class="config-optional">{{ i18n.t('settings.configOptional') }}</span></label>
+                            <input class="config-input" v-model="newProfileForm.baseUrl" placeholder="https://api.anthropic.com" />
+                        </div>
+                        <div class="config-field">
+                            <label class="config-label">{{ i18n.t('settings.configApiKey') }}</label>
+                            <div class="config-secret-field">
+                                <input class="config-input" :type="newProfileKeyVisible ? 'text' : 'password'" v-model="newProfileForm.apiKey" />
+                                <button class="config-toggle-btn" @click="newProfileKeyVisible = !newProfileKeyVisible">{{ newProfileKeyVisible ? i18n.t('settings.configHide') : i18n.t('settings.configShow') }}</button>
+                            </div>
+                        </div>
+                        <div class="config-field">
+                            <label class="config-label">{{ i18n.t('settings.configAuthToken') }} <span class="config-optional">{{ i18n.t('settings.configAuthTokenHint') }}</span></label>
+                            <input class="config-input" v-model="newProfileForm.authToken" />
+                        </div>
+                        <div class="config-field">
+                            <label class="config-label">{{ i18n.t('settings.configModel') }} <span class="config-optional">{{ i18n.t('settings.configOptional') }}</span></label>
+                            <input class="config-input" v-model="newProfileForm.model" placeholder="claude-sonnet-4-5-20250514" />
+                        </div>
+                    </template>
+
+                    <!-- OpenCode New Profile Fields -->
+                    <template v-if="configFilter === 'OPENCODE'">
+                        <div class="config-field">
+                            <label class="config-label">{{ i18n.t('settings.configProvider') }}</label>
+                            <div class="provider-combobox">
+                                <input class="config-input provider-combobox-input" v-model="newProfileForm.providerId"
+                                       @focus="providerDropdownOpen = 'new'; providerFilter = ''"
+                                       @input="providerFilter = $event.target.value"
+                                       @blur="onProviderBlur"
+                                       placeholder="e.g. anthropic" />
+                                <button class="provider-combobox-arrow" :class="{ open: providerDropdownOpen === 'new' }"
+                                        @mousedown.prevent="toggleProviderDropdown('new')">▼</button>
+                                <div class="provider-combobox-dropdown" v-if="providerDropdownOpen === 'new'">
+                                    <div class="provider-combobox-item" v-for="p in filteredProviders()" :key="p.id"
+                                         @mousedown.prevent="selectProvider('new', p.id)">
+                                        <span class="provider-item-id">{{ p.id }}</span>
+                                        <span class="provider-item-name">{{ p.displayName }}</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="config-field">
+                            <label class="config-label">{{ i18n.t('settings.configApiKey') }}</label>
+                            <div class="config-secret-field">
+                                <input class="config-input" :type="newProfileKeyVisible ? 'text' : 'password'" v-model="newProfileForm.apiKey" />
+                                <button class="config-toggle-btn" @click="newProfileKeyVisible = !newProfileKeyVisible">{{ newProfileKeyVisible ? i18n.t('settings.configHide') : i18n.t('settings.configShow') }}</button>
+                            </div>
+                        </div>
+                        <div class="config-field">
+                            <label class="config-label">{{ i18n.t('settings.configBaseUrl') }} <span class="config-optional">{{ i18n.t('settings.configOptional') }}</span></label>
+                            <input class="config-input" v-model="newProfileForm.baseUrl" />
+                        </div>
+                        <div class="config-field">
+                            <label class="config-label">{{ i18n.t('settings.configModel') }}</label>
+                            <input class="config-input" v-model="newProfileForm.model" placeholder="anthropic/claude-sonnet-4-5" />
+                        </div>
+                    </template>
+
+                    <!-- Codex New Profile Fields -->
+                    <template v-if="configFilter === 'CODEX'">
+                        <div class="config-field">
+                            <label class="config-label">{{ i18n.t('settings.configApiKey') }}</label>
+                            <div class="config-secret-field">
+                                <input class="config-input" :type="newProfileKeyVisible ? 'text' : 'password'" v-model="newProfileForm.apiKey" />
+                                <button class="config-toggle-btn" @click="newProfileKeyVisible = !newProfileKeyVisible">{{ newProfileKeyVisible ? i18n.t('settings.configHide') : i18n.t('settings.configShow') }}</button>
+                            </div>
+                        </div>
+                        <div class="config-field">
+                            <label class="config-label">{{ i18n.t('settings.configBaseUrl') }} <span class="config-optional">{{ i18n.t('settings.configOptional') }}</span></label>
+                            <input class="config-input" v-model="newProfileForm.baseUrl" />
+                        </div>
+                        <div class="config-field">
+                            <label class="config-label">{{ i18n.t('settings.configModel') }} <span class="config-optional">{{ i18n.t('settings.configOptional') }}</span></label>
+                            <input class="config-input" v-model="newProfileForm.model" placeholder="gpt-5" />
+                        </div>
+                    </template>
+
+                    <div class="config-new-actions">
+                        <button class="config-save-btn" :disabled="profileSaving === configFilter || !(newProfileForm.name || '').trim()" @click="onConfirmAddProfile">
+                            {{ profileSaving === configFilter ? i18n.t('settings.configSaving') : i18n.t('settings.profileConfirm') }}
+                        </button>
+                        <button class="config-cancel-btn" @click="onCancelAddProfile">{{ i18n.t('settings.profileCancel') }}</button>
+                    </div>
+                </div>
+
+                <div v-if="!configLoaded" class="model-loading-overlay">
+                    <svg class="model-loading-spinner" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0 1 18.8-4.3M22 12.5a10 10 0 0 1-18.8 4.3"/></svg>
+                    <span>Loading...</span>
+                    <button class="loading-cancel-btn" @click="onCancelConfigLoading">{{ i18n.t('settings.cancelLoading') }}</button>
+                </div>
+            </div>
+        </template>
+
+        <template v-if="activeTab === 'mcp'">
+            <div class="settings-content-header">
+                <h3>{{ i18n.t('settings.mcpTitle') }}</h3>
+                <div class="settings-header-actions">
+                    <button class="add-model-btn" @click="onShowAddMcp" v-if="!showMcpForm">+ {{ i18n.t('settings.mcpAdd') }}</button>
+                </div>
+            </div>
+            <div class="settings-content-body">
+                <div class="model-filter-bar">
+                    <div class="model-filter-item cli-claude" :class="{ active: mcpFilter === 'CLAUDE', disabled: mcpLoading }" @click="!mcpLoading && onMcpFilterChange('CLAUDE')">
+                        <span class="model-cli-dot claude"></span>Claude
+                    </div>
+                    <div class="model-filter-item cli-opencode" :class="{ active: mcpFilter === 'OPENCODE', disabled: mcpLoading }" @click="!mcpLoading && onMcpFilterChange('OPENCODE')">
+                        <span class="model-cli-dot opencode"></span>OpenCode
+                    </div>
+                    <div class="model-filter-item cli-codex" :class="{ active: mcpFilter === 'CODEX', disabled: mcpLoading }" @click="!mcpLoading && onMcpFilterChange('CODEX')">
+                        <span class="model-cli-dot codex"></span>Codex
+                    </div>
+                </div>
+
+                <!-- Add/Edit MCP Modal -->
+                <div class="ea-modal-overlay" v-if="showMcpForm" @mousedown.self="onOverlayMouseDown($event)" @mouseup.self="onOverlayMouseUp($event, 'mcpForm')">
+                    <div class="ea-modal">
+                        <div class="ea-modal-header">
+                            <h4>{{ mcpEditing ? i18n.t('settings.mcpEdit') : i18n.t('settings.mcpAdd') }}</h4>
+                            <button class="ea-modal-close" @click="onCancelMcp">×</button>
+                        </div>
+                        <div class="ea-modal-body">
+                            <div class="mcp-form-field">
+                                <label class="mcp-form-label">{{ i18n.t('settings.mcpName') }}</label>
+                                <input class="mcp-form-input" v-model="mcpForm.name" :placeholder="i18n.t('settings.mcpNamePlaceholder')" />
+                            </div>
+                            <div class="mcp-form-field">
+                                <label class="mcp-form-label">{{ i18n.t('settings.mcpType') }}</label>
+                                <div class="mcp-type-tabs">
+                                    <div class="mcp-type-tab" :class="{ active: mcpForm.type === 'stdio' }" @click="mcpForm.type = 'stdio'">{{ i18n.t('settings.mcpTypeStdio') }}</div>
+                                    <div class="mcp-type-tab" :class="{ active: mcpForm.type === 'http' }" @click="mcpForm.type = 'http'">{{ i18n.t('settings.mcpTypeHttp') }}</div>
+                                </div>
+                            </div>
+                            <div class="mcp-form-field">
+                                <label class="mcp-form-label">{{ i18n.t('settings.mcpScopeUser') }} / {{ i18n.t('settings.mcpScopeProject') }}</label>
+                                <div class="mcp-type-tabs">
+                                    <div class="mcp-type-tab" :class="{ active: mcpForm.scope === 'user' }" @click="mcpForm.scope = 'user'">{{ i18n.t('settings.mcpScopeUser') }}</div>
+                                    <div class="mcp-type-tab" :class="{ active: mcpForm.scope === 'project' }" @click="mcpForm.scope = 'project'">{{ i18n.t('settings.mcpScopeProject') }}</div>
+                                </div>
+                            </div>
+                            <div class="mcp-form-field" v-if="mcpForm.type === 'stdio'">
+                                <label class="mcp-form-label">{{ i18n.t('settings.mcpCommand') }}</label>
+                                <input class="mcp-form-input" v-model="mcpForm.command" :placeholder="i18n.t('settings.mcpCommandPlaceholder')" />
+                            </div>
+                            <div class="mcp-form-field" v-if="mcpForm.type === 'http'">
+                                <label class="mcp-form-label">{{ i18n.t('settings.mcpUrl') }}</label>
+                                <input class="mcp-form-input" v-model="mcpForm.url" :placeholder="i18n.t('settings.mcpUrlPlaceholder')" />
+                            </div>
+                            <div class="mcp-form-field" v-if="mcpForm.type === 'stdio'">
+                                <label class="mcp-form-label">{{ i18n.t('settings.mcpArgs') }}</label>
+                                <input class="mcp-form-input" v-model="mcpForm.argsStr" :placeholder="i18n.t('settings.mcpArgsPlaceholder')" />
+                            </div>
+                            <div class="mcp-form-field">
+                                <label class="mcp-form-label">{{ i18n.t('settings.mcpEnv') }}</label>
+                                <textarea class="mcp-form-textarea" v-model="mcpForm.envStr" :placeholder="i18n.t('settings.mcpEnvPlaceholder')" rows="3"></textarea>
+                            </div>
+                        </div>
+                        <div class="ea-modal-footer">
+                            <button class="ea-modal-btn ea-modal-btn-primary" @click="onConfirmMcp">{{ i18n.t('settings.mcpConfirm') }}</button>
+                            <button class="ea-modal-btn ea-modal-btn-ghost" @click="onCancelMcp">{{ i18n.t('settings.mcpCancel') }}</button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- MCP Test Modal -->
+                <div class="ea-modal-overlay" v-if="mcpTestDialogItem" @mousedown.self="onOverlayMouseDown($event)" @mouseup.self="onOverlayMouseUp($event, 'mcpTest')">
+                    <div class="ea-modal ea-modal-lg">
+                        <div class="ea-modal-header">
+                            <h4>⚡ {{ i18n.t('settings.mcpTest') }}: {{ mcpTestDialogItem.name }}</h4>
+                            <button class="ea-modal-close" @click="onCloseMcpTest(mcpTestDialogItem)">×</button>
+                        </div>
+                        <div class="ea-modal-body">
+                            <div class="mcp-test-header">
+                                <span class="mcp-test-status" :class="getMcpTestPanel(mcpTestDialogItem).status">
+                                    <template v-if="getMcpTestPanel(mcpTestDialogItem).status === 'connecting'">
+                                        <svg class="model-loading-spinner" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0 1 18.8-4.3M22 12.5a10 10 0 0 1-18.8 4.3"/></svg>
+                                        {{ i18n.t('settings.mcpTestConnecting') }}
+                                    </template>
+                                    <template v-else-if="getMcpTestPanel(mcpTestDialogItem).status === 'connected'">{{ i18n.t('settings.mcpTestConnected') }}: {{ getMcpTestPanel(mcpTestDialogItem).serverInfo }} <span v-if="getMcpTestPanel(mcpTestDialogItem).transportType" class="mcp-transport-tag">{{ getMcpTestPanel(mcpTestDialogItem).transportType }}</span></template>
+                                    <template v-else-if="getMcpTestPanel(mcpTestDialogItem).status === 'failed'">{{ i18n.t('settings.mcpTestFailed') }}: {{ getMcpTestPanel(mcpTestDialogItem).error }}</template>
+                                </span>
+                            </div>
+
+                            <div class="mcp-test-env" v-if="getMcpTestPanel(mcpTestDialogItem).status === 'connected' && getMcpTestPanel(mcpTestDialogItem).env && Object.keys(getMcpTestPanel(mcpTestDialogItem).env).length > 0">
+                                <div class="mcp-test-section-title">{{ i18n.t('settings.mcpHeaders') }}</div>
+                                <div class="mcp-env-item" v-for="(val, key) in getMcpTestPanel(mcpTestDialogItem).env" :key="key">
+                                    <span class="mcp-env-key">{{ key }}</span>
+                                    <span class="mcp-env-val">{{ val.length > 20 ? val.substring(0, 20) + '...' : val }}</span>
+                                </div>
+                            </div>
+
+                            <div class="mcp-test-tools" v-if="getMcpTestPanel(mcpTestDialogItem).status === 'connected'">
+                                <div class="mcp-test-section-title">{{ i18n.t('settings.mcpTools') }} ({{ getMcpTestPanel(mcpTestDialogItem).tools.length }})</div>
+                                <div v-if="getMcpTestPanel(mcpTestDialogItem).tools.length === 0" class="mcp-test-empty">{{ i18n.t('settings.mcpToolsEmpty') }}</div>
+                                <div class="mcp-tool-card" v-for="tool in getMcpTestPanel(mcpTestDialogItem).tools" :key="tool.name">
+                                    <div class="mcp-tool-header">
+                                        <span class="mcp-tool-name">{{ tool.name }}</span>
+                                        <span class="mcp-tool-desc" v-if="tool.description">{{ tool.description }}</span>
+                                    </div>
+                                    <div class="mcp-tool-params" v-if="tool.properties && Object.keys(tool.properties).length > 0">
+                                        <div class="mcp-tool-param" v-for="(prop, pkey) in tool.properties" :key="pkey">
+                                            <span class="mcp-param-name">{{ prop.name }}</span>
+                                            <span class="mcp-param-type">{{ prop.type }}</span>
+                                            <span class="mcp-param-required" v-if="tool.required && tool.required.indexOf(prop.name) >= 0">*</span>
+                                            <span class="mcp-param-desc" v-if="prop.description">{{ prop.description }}</span>
+                                        </div>
+                                    </div>
+                                    <div class="mcp-tool-actions">
+                                        <div class="mcp-tool-args-row" v-if="tool.properties && Object.keys(tool.properties).length > 0">
+                                            <textarea class="mcp-tool-args-input"
+                                                :value="getToolArgsInput(getMcpTestPanel(mcpTestDialogItem).connectionId, tool.name)"
+                                                @input="mcpToolArgs[getMcpTestPanel(mcpTestDialogItem).connectionId + '::' + tool.name] = $event.target.value"
+                                                :placeholder="i18n.t('settings.mcpToolArgsPlaceholder')"
+                                                rows="2"></textarea>
+                                        </div>
+                                        <button class="mcp-tool-call-btn"
+                                                :disabled="getMcpTestPanel(mcpTestDialogItem).callingTool === tool.name"
+                                                @click="onCallMcpTool(mcpTestDialogItem, tool)">
+                                            {{ getMcpTestPanel(mcpTestDialogItem).callingTool === tool.name ? i18n.t('settings.mcpToolCalling') : i18n.t('settings.mcpToolCall') }}
+                                        </button>
+                                    </div>
+                                    <div class="mcp-tool-result" v-if="getToolResult(getMcpTestPanel(mcpTestDialogItem).connectionId, tool.name)">
+                                        <div class="mcp-tool-result-header">{{ i18n.t('settings.mcpToolResult') }}:</div>
+                                        <pre class="mcp-tool-result-content">{{ getToolResult(getMcpTestPanel(mcpTestDialogItem).connectionId, tool.name) }}</pre>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="ea-modal-footer">
+                            <button class="ea-modal-btn ea-modal-btn-ghost" @click="onCloseMcpTest(mcpTestDialogItem)">{{ i18n.t('settings.mcpTestClose') }}</button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- MCP Server List -->
+                <div class="mcp-list" v-if="mcpList.length > 0">
+                    <div class="mcp-card" v-for="item in mcpList" :key="item.name + '-' + item.scope">
+                        <div class="mcp-card-header">
+                            <span class="mcp-card-name">{{ item.name }}</span>
+                            <span class="mcp-card-type" :class="item.type">{{ item.type }}</span>
+                            <span class="mcp-card-scope" :class="item.scope">{{ item.scope === 'user' ? i18n.t('settings.mcpScopeUser') : i18n.t('settings.mcpScopeProject') }}</span>
+                            <span class="mcp-card-actions">
+                                <button class="mcp-action-btn mcp-action-test" @click="onTestMcp(item)" :title="i18n.t('settings.mcpTest')" v-if="!getMcpTestPanel(item)">
+                                    <span class="mcp-action-icon">⚡</span>
+                                    <span class="mcp-action-label">{{ i18n.t('settings.mcpTest') }}</span>
+                                </button>
+                                <button class="mcp-action-btn mcp-action-edit" @click="onEditMcp(item)" :title="i18n.t('settings.mcpEdit')">
+                                    <span class="mcp-action-icon">✎</span>
+                                    <span class="mcp-action-label">{{ i18n.t('settings.mcpEdit') }}</span>
+                                </button>
+                                <button class="mcp-action-btn mcp-action-del" @click="onDeleteMcp(item)" :title="i18n.t('settings.mcpDelete')">
+                                    <span class="mcp-action-icon">×</span>
+                                    <span class="mcp-action-label">{{ i18n.t('settings.mcpDelete') }}</span>
+                                </button>
+                            </span>
+                        </div>
+                        <div class="mcp-card-body">
+                            <span class="mcp-card-detail" v-if="item.command">
+                                <span class="mcp-detail-label">{{ i18n.t('settings.mcpCommand') }}:</span>
+                                <span class="mcp-detail-value">{{ item.command }}<template v-if="item.args && item.args.length"> {{ item.args.join(' ') }}</template></span>
+                            </span>
+                            <span class="mcp-card-detail" v-if="item.url">
+                                <span class="mcp-detail-label">{{ i18n.t('settings.mcpUrl') }}:</span>
+                                <span class="mcp-detail-value">{{ item.url }}</span>
+                            </span>
+                        </div>
+                    </div>
+                </div>
+                <div v-if="mcpList.length === 0 && !mcpLoading" class="model-empty">{{ i18n.t('settings.mcpEmpty') }}</div>
+                <div v-if="mcpLoading" class="model-loading-overlay">
+                    <svg class="model-loading-spinner" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0 1 18.8-4.3M22 12.5a10 10 0 0 1-18.8 4.3"/></svg>
+                    <span>Loading...</span>
+                    <button class="loading-cancel-btn" @click="onCancelMcpLoading">{{ i18n.t('settings.cancelLoading') }}</button>
+                </div>
+            </div>
+        </template>
+
+        <template v-if="activeTab === 'skills'">
+            <div class="settings-content-header">
+                <h3>{{ i18n.t('settings.skillsTitle') }}</h3>
+                <div class="settings-header-actions">
+                    <button class="add-model-btn" @click="onShowInstallSkill" v-if="!showSkillInstallForm">+ {{ i18n.t('settings.skillInstall') }}</button>
+                </div>
+            </div>
+            <div class="settings-content-body">
+                <div class="model-filter-bar">
+                    <div class="model-filter-item cli-claude" :class="{ active: skillFilter === 'CLAUDE', disabled: skillLoading }" @click="!skillLoading && onSkillFilterChange('CLAUDE')">
+                        <span class="model-cli-dot claude"></span>Claude
+                    </div>
+                    <div class="model-filter-item cli-opencode" :class="{ active: skillFilter === 'OPENCODE', disabled: skillLoading }" @click="!skillLoading && onSkillFilterChange('OPENCODE')">
+                        <span class="model-cli-dot opencode"></span>OpenCode
+                    </div>
+                    <div class="model-filter-item cli-codex" :class="{ active: skillFilter === 'CODEX', disabled: skillLoading }" @click="!skillLoading && onSkillFilterChange('CODEX')">
+                        <span class="model-cli-dot codex"></span>Codex
+                    </div>
+                </div>
+
+                <!-- Install Skill Modal -->
+                <div class="ea-modal-overlay" v-if="showSkillInstallForm" @mousedown.self="onOverlayMouseDown($event)" @mouseup.self="onOverlayMouseUp($event, 'skillInstallForm')">
+                    <div class="ea-modal">
+                        <div class="ea-modal-header">
+                            <h4>{{ i18n.t('settings.skillInstallTitle') }}</h4>
+                            <button class="ea-modal-close" @click="onCancelInstallSkill">×</button>
+                        </div>
+                        <div class="ea-modal-body">
+                            <div class="mcp-form-field">
+                                <label class="mcp-form-label">{{ i18n.t('settings.skillGithubUrl') }}</label>
+                                <input class="mcp-form-input" v-model="skillInstallForm.githubUrl" :placeholder="i18n.t('settings.skillGithubUrlPlaceholder')" />
+                            </div>
+                            <div class="mcp-form-field">
+                                <label class="mcp-form-label">{{ i18n.t('settings.skillPath') }} <span class="config-optional">{{ i18n.t('settings.configOptional') }}</span></label>
+                                <input class="mcp-form-input" v-model="skillInstallForm.skillPath" :placeholder="i18n.t('settings.skillPathPlaceholder')" />
+                            </div>
+                            <div class="mcp-form-field">
+                                <label class="mcp-form-label">{{ i18n.t('settings.mcpScopeUser') }} / {{ i18n.t('settings.mcpScopeProject') }}</label>
+                                <div class="mcp-type-tabs">
+                                    <div class="mcp-type-tab" :class="{ active: skillInstallForm.scope === 'user' }" @click="skillInstallForm.scope = 'user'">{{ i18n.t('settings.mcpScopeUser') }}</div>
+                                    <div class="mcp-type-tab" :class="{ active: skillInstallForm.scope === 'project' }" @click="skillInstallForm.scope = 'project'">{{ i18n.t('settings.mcpScopeProject') }}</div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="ea-modal-footer">
+                            <button class="ea-modal-btn ea-modal-btn-primary" :disabled="skillInstalling" @click="onConfirmInstallSkill">
+                                {{ skillInstalling ? i18n.t('settings.skillInstalling') : i18n.t('settings.skillInstallConfirm') }}
+                            </button>
+                            <button class="ea-modal-btn ea-modal-btn-ghost" @click="onCancelInstallSkill">{{ i18n.t('settings.mcpCancel') }}</button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Skill Content Modal -->
+                <div class="ea-modal-overlay" v-if="skillContentDialog" @mousedown.self="onOverlayMouseDown($event)" @mouseup.self="onOverlayMouseUp($event, 'skillContent')">
+                    <div class="ea-modal ea-modal-lg">
+                        <div class="ea-modal-header">
+                            <h4>{{ skillContentDialog.name }}</h4>
+                            <button class="ea-modal-close" @click="skillContentDialog = null">×</button>
+                        </div>
+                        <div class="ea-modal-body">
+                            <pre class="mcp-tool-result-content" v-if="skillContentDialog.content">{{ skillContentDialog.content }}</pre>
+                            <div v-else class="mcp-test-empty">{{ i18n.t('settings.skillContentEmpty') }}</div>
+                        </div>
+                        <div class="ea-modal-footer">
+                            <button class="ea-modal-btn ea-modal-btn-ghost" @click="skillContentDialog = null">{{ i18n.t('settings.mcpTestClose') }}</button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Skills List -->
+                <div class="mcp-list" v-if="skillList.length > 0">
+                    <div class="mcp-card" v-for="item in skillList" :key="item.name + '-' + item.scope + '-' + item.skillPath">
+                        <div class="mcp-card-header">
+                            <span class="mcp-card-name">{{ item.name }}</span>
+                            <span class="mcp-card-scope" :class="item.scope">{{ item.scope === 'user' ? i18n.t('settings.mcpScopeUser') : i18n.t('settings.mcpScopeProject') }}</span>
+                            <span class="mcp-card-type" :class="item.source" v-if="item.source">{{ item.source }}</span>
+                            <span class="mcp-card-actions">
+                                <button class="mcp-action-btn mcp-action-test" @click="onViewSkillContent(item)" :title="i18n.t('settings.skillView')">
+                                    <span class="mcp-action-icon">📄</span>
+                                    <span class="mcp-action-label">{{ i18n.t('settings.skillView') }}</span>
+                                </button>
+                                <button class="mcp-action-btn mcp-action-del" @click="onDeleteSkill(item)" :title="i18n.t('settings.skillDelete')">
+                                    <span class="mcp-action-icon">×</span>
+                                    <span class="mcp-action-label">{{ i18n.t('settings.skillDelete') }}</span>
+                                </button>
+                            </span>
+                        </div>
+                        <div class="mcp-card-body">
+                            <span class="mcp-card-detail" v-if="item.description">
+                                <span class="mcp-detail-value">{{ item.description }}</span>
+                            </span>
+                        </div>
+                    </div>
+                </div>
+                <div v-if="skillList.length === 0 && !skillLoading" class="model-empty">{{ i18n.t('settings.skillEmpty') }}</div>
+                <div v-if="skillLoading" class="model-loading-overlay">
+                    <svg class="model-loading-spinner" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0 1 18.8-4.3M22 12.5a10 10 0 0 1-18.8 4.3"/></svg>
+                    <span>Loading...</span>
+                    <button class="loading-cancel-btn" @click="skillLoading = false">{{ i18n.t('settings.cancelLoading') }}</button>
+                </div>
             </div>
         </template>
     </div>

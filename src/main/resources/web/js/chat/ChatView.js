@@ -97,19 +97,18 @@ window.EARegisterComponent('chat-view', 'ChatView', {
             var window = EA_DEFAULT_CONTEXT_WINDOW;
             if (map[this.store.selectedModelId]) {
                 window = map[this.store.selectedModelId];
+            } else if (!this.store.selectedModelId) {
+                var cliType = this.store.cliType || 'CLAUDE';
+                var defaultInfo = this.store.defaultModelInfoMap[cliType];
+                if (defaultInfo && defaultInfo.contextWindow) {
+                    window = defaultInfo.contextWindow;
+                }
             } else {
                 for (var key in map) {
                     if (model.indexOf(key.toLowerCase()) >= 0) {
                         window = map[key];
                         break;
                     }
-                }
-            }
-            if (window === EA_DEFAULT_CONTEXT_WINDOW) {
-                var dm = this.store.defaultModels || {};
-                var cliDefault = dm[this.store.cliType];
-                if (cliDefault && cliDefault.contextWindow > 0) {
-                    window = cliDefault.contextWindow;
                 }
             }
             var inputTokens = lastUsage.input || lastUsage.total || 0;
@@ -323,6 +322,8 @@ window.EARegisterComponent('chat-view', 'ChatView', {
             this.store.messages = [];
             this.store.sessionTitle = '';
             this.store.model = '';
+            this.store.selectedModelId = '';
+            this.store.selectedReasoningLevel = '';
             this.pendingQueue = [];
             this.pendingSlashRefreshSessionId = null;
             this.store.messagesVersion++;

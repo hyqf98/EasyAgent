@@ -33,24 +33,50 @@ public class CodexCLIProvider extends AbstractCLIProvider {
         GsonUtils.registerEnums(CodexItemType.class);
     }
 
+    /**
+     * 使用默认命令路径构造（不重试）。
+     */
     public CodexCLIProvider() {
         super(CLIType.CODEX);
     }
 
+    /**
+     * 使用自定义命令路径构造（不重试）。
+     *
+     * @param commandPath 自定义命令路径
+     */
     public CodexCLIProvider(String commandPath) {
         super(CLIType.CODEX, commandPath);
     }
 
+    /**
+     * 使用自定义命令路径和重试配置构造。
+     *
+     * @param commandPath 自定义命令路径
+     * @param retryConfig 重试配置
+     */
     public CodexCLIProvider(String commandPath, RetryConfig retryConfig) {
         super(CLIType.CODEX, commandPath, retryConfig);
     }
 
+    /**
+     * 构建 CLI 执行命令行。
+     *
+     * @param prompt         用户提示内容
+     * @param sessionId      可选的会话 ID
+     * @param modelId        可选的模型 ID
+     * @param reasoningLevel 可选的推理等级
+     * @return 配置好的命令行对象
+     */
     @Override
-    protected GeneralCommandLine buildCommandLine(String prompt, String sessionId, String modelId) {
-        GeneralCommandLine cmd = super.buildCommandLine(prompt, sessionId, modelId);
+    protected GeneralCommandLine buildCommandLine(String prompt, String sessionId, String modelId, String reasoningLevel) {
+        GeneralCommandLine cmd = super.buildCommandLine(prompt, sessionId, modelId, reasoningLevel);
         cmd.addParameters("exec", "--json", "--skip-git-repo-check", "--sandbox", "workspace-write", "--ask-for-approval", "never");
         if (GsonUtils.isNotEmpty(modelId)) {
             cmd.addParameters("--model", modelId);
+        }
+        if (GsonUtils.isNotEmpty(reasoningLevel)) {
+            cmd.addParameters("--config", "model_reasoning_effort=" + reasoningLevel);
         }
         cmd.addParameters("--", prompt);
         return cmd;

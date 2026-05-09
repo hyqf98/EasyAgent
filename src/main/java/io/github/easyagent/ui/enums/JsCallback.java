@@ -60,22 +60,45 @@ public enum JsCallback implements ValueEnum<String> {
     SLASH_COMMANDS("SlashCommands"),
 
     /** 斜杠命令执行结果推送。 */
-    SLASH_COMMAND_EXECUTED("SlashCommandExecuted");
+    SLASH_COMMAND_EXECUTED("SlashCommandExecuted"),
+
+    /** CLI 配置数据推送。 */
+    CLI_CONFIGS("CliConfigs"),
+
+    /** CLI 配置保存结果推送。 */
+    CLI_CONFIGS_SAVED("CliConfigsSaved"),
+
+    /** MCP 配置列表推送。 */
+    MCP_CONFIGS("McpConfigs"),
+
+    /** MCP 配置保存结果推送。 */
+    MCP_SAVED("McpSaved"),
+
+    /** MCP 测试连接结果推送。 */
+    MCP_TEST_CONNECTED("McpTestConnected"),
+
+    /** MCP 工具列表推送。 */
+    MCP_TOOLS("McpTools"),
+
+    /** MCP 工具调用结果推送。 */
+    MCP_TOOL_RESULT("McpToolResult"),
+
+    /** Skills 技能列表推送。 */
+    SKILLS("Skills"),
+
+    /** Skill 安装结果推送。 */
+    SKILL_INSTALLED("SkillInstalled"),
+
+    /** Skill 删除结果推送。 */
+    SKILL_DELETED("SkillDeleted"),
+
+    /** Skill 详情内容推送。 */
+    SKILL_CONTENT("SkillContent");
 
     /** 回调名称。 */
     private final String value;
 
     JsCallback(String value) {
         this.value = value;
-    }
-
-    /**
-     * 根据字符串值解析回调名称枚举。
-     *
-     * @param value 回调名称字符串
-     * @return 对应的回调名称枚举，无法匹配时返回 {@code null}
-     */
-    public static JsCallback fromValue(String value) {
-        return ValueEnum.fromValue(JsCallback.class, value);
     }
 }

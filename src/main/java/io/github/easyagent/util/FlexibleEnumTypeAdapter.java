@@ -52,17 +52,17 @@ import java.util.Map;
 public class FlexibleEnumTypeAdapter<E extends Enum<E>> implements JsonDeserializer<E>, JsonSerializer<E> {
 
     /**
-     * enum class.
+     * 枚举类。
      */
     private final Class<E> enumClass;
 
     /**
-     * name to enum.
+     * 名称到枚举实例的映射。
      */
     private final Map<String, E> nameToEnum;
 
     /**
-     * value to enum.
+     * 数值到枚举实例的映射。
      */
     private final Map<Integer, E> valueToEnum;
 
@@ -77,9 +77,9 @@ public class FlexibleEnumTypeAdapter<E extends Enum<E>> implements JsonDeseriali
     @Target(ElementType.FIELD)
     public @interface EnumValue {
         /**
-         * Value
+         * 枚举对应的整数值。
          *
-         * @return int
+         * @return 整数值
          * @since 1.0.0
          */
         int value();
@@ -112,13 +112,13 @@ public class FlexibleEnumTypeAdapter<E extends Enum<E>> implements JsonDeseriali
     }
 
     /**
-     * Deserialize
+     * 反序列化 JSON 元素为枚举实例。
      *
-     * @param json json
-     * @param typeOfT type of t
-     * @param context context
-     * @return e
-     * @throws JsonParseException
+     * @param json    待解析的 JSON 元素
+     * @param typeOfT 目标类型
+     * @param context 反序列化上下文
+     * @return 匹配的枚举实例，无法匹配时返回 {@code null}
+     * @throws JsonParseException JSON 解析异常
      * @since 1.0.0
      */
     @Override
@@ -155,12 +155,12 @@ public class FlexibleEnumTypeAdapter<E extends Enum<E>> implements JsonDeseriali
     }
 
     /**
-     * Serialize
+     * 序列化枚举实例为 JSON 元素。
      *
-     * @param src src
-     * @param typeOfSrc type of src
-     * @param context context
-     * @return json element
+     * @param src         枚举实例
+     * @param typeOfSrc   源类型
+     * @param context     序列化上下文
+     * @return 对应的 JSON 元素
      * @since 1.0.0
      */
     @Override

@@ -65,6 +65,15 @@ public enum JsAction implements ValueEnum<String> {
     /** 查询 CLI 可用模型列表。 */
     QUERY_CLI_MODELS("queryCliModels"),
 
+    /** 保存 CLI 配置档案。 */
+    SAVE_CLI_PROFILE("saveCliProfile"),
+
+    /** 删除 CLI 配置档案。 */
+    DELETE_CLI_PROFILE("deleteCliProfile"),
+
+    /** 应用 CLI 配置档案（切换到指定档案）。 */
+    APPLY_CLI_PROFILE("applyCliProfile"),
+
     /** 搜索项目文件引用候选。 */
     SEARCH_FILE_REFERENCES("searchFileReferences"),
 
@@ -84,22 +93,48 @@ public enum JsAction implements ValueEnum<String> {
     GET_SLASH_COMMANDS("getSlashCommands"),
 
     /** 执行一个斜杠命令。 */
-    EXECUTE_SLASH_COMMAND("executeSlashCommand");
+    EXECUTE_SLASH_COMMAND("executeSlashCommand"),
+
+    /** 获取 CLI 配置管理数据。 */
+    GET_CLI_CONFIGS("getCliConfigs"),
+
+    /** 保存 CLI 配置。 */
+    SAVE_CLI_CONFIGS("saveCliConfigs"),
+
+    /** 获取 MCP 服务器配置列表。 */
+    GET_MCP_CONFIGS("getMcpConfigs"),
+
+    /** 保存（新增/编辑）MCP 服务器配置。 */
+    SAVE_MCP_SERVER("saveMcpServer"),
+
+    /** 删除 MCP 服务器配置。 */
+    DELETE_MCP_SERVER("deleteMcpServer"),
+
+    /** 测试连接 MCP 服务器。 */
+    TEST_MCP_CONNECT("testMcpConnect"),
+
+    /** 列出 MCP 服务器工具。 */
+    LIST_MCP_TOOLS("listMcpTools"),
+
+    /** 调用 MCP 工具。 */
+    CALL_MCP_TOOL("callMcpTool"),
+
+    /** 获取 Skills 技能列表。 */
+    GET_SKILLS("getSkills"),
+
+    /** 从 GitHub 安装 Skill。 */
+    INSTALL_SKILL("installSkill"),
+
+    /** 删除 Skill。 */
+    DELETE_SKILL("deleteSkill"),
+
+    /** 读取 Skill 详情内容。 */
+    READ_SKILL_CONTENT("readSkillContent");
 
     /** 动作标识值。 */
     private final String value;
 
     JsAction(String value) {
         this.value = value;
-    }
-
-    /**
-     * 根据字符串值解析 JS 动作枚举。
-     *
-     * @param value 动作字符串
-     * @return 对应的 JS 动作枚举，无法匹配时返回 {@code null}
-     */
-    public static JsAction fromValue(String value) {
-        return ValueEnum.fromValue(JsAction.class, value);
     }
 }

@@ -28,14 +28,4 @@ public enum SlashCommandActionType implements ValueEnum<String> {
     SlashCommandActionType(String value) {
         this.value = value;
     }
-
-    /**
-     * 根据字符串值解析执行方式。
-     *
-     * @param value 执行方式字符串
-     * @return 对应枚举，无法匹配时返回 {@code null}
-     */
-    public static SlashCommandActionType fromValue(String value) {
-        return ValueEnum.fromValue(SlashCommandActionType.class, value);
-    }
 }

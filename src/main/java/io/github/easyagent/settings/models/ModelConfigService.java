@@ -3,13 +3,13 @@ package io.github.easyagent.settings.models;
 import com.google.gson.JsonObject;
 import com.google.gson.reflect.TypeToken;
 import io.github.easyagent.enums.CLIType;
+import io.github.easyagent.settings.config.CliConfigService;
 import io.github.easyagent.util.GsonUtils;
 import lombok.extern.slf4j.Slf4j;
 
-import java.io.BufferedReader;
 import java.io.IOException;
-import java.io.InputStreamReader;
 import java.lang.reflect.Type;
+import java.net.ProxySelector;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
@@ -29,12 +29,11 @@ import java.util.stream.Collectors;
 /**
  * AI 模型配置管理服务。
  * <p>
- * 提供模型配置的加载、同步、持久化和 CLI 查询功能。
- * 支持三种数据来源：
+ * 提供模型配置的加载、同步、持久化和查询功能。
+ * 支持两种数据来源：
  * <ul>
- *   <li>远程 GitHub 仓库的 {@code models.json}</li>
- *   <li>本地项目根目录的 {@code models.json}</li>
- *   <li>OpenCode CLI 的 {@code opencode models --verbose} 命令</li>
+ *   <li>远程 GitHub 仓库的 {@code models.json}（v2 格式）</li>
+ *   <li>{@code models.dev} API 获取 OpenCode 支持的全量模型</li>
  * </ul>
  * </p>
  *
@@ -49,8 +48,18 @@ public class ModelConfigService {
     private static final String REMOTE_MODELS_URL =
             "https://raw.githubusercontent.com/hyqf98/EasyAgent/main/models.json";
 
+    /** models.dev API 地址，包含所有 OpenCode 支持的 provider 和模型。 */
+    private static final String MODELS_DEV_URL = "https://models.dev/api.json";
+
     /** 默认上下文窗口大小（128K）。 */
     private static final int DEFAULT_CONTEXT_WINDOW = 128000;
+
+    /** 内置推理等级（远程同步失败时的兜底）。 */
+    private static final Map<CLIType, List<String>> BUILTIN_REASONING_LEVELS = Map.of(
+            CLIType.CLAUDE, List.of("low", "medium", "high", "xhigh", "max"),
+            CLIType.OPENCODE, List.of("minimal", "low", "medium", "high", "max"),
+            CLIType.CODEX, List.of("low", "medium", "high")
+    );
 
     /** {@code List<ModelInfo>} 的泛型类型标记。 */
     private static final Type MODEL_LIST_TYPE = new TypeToken<List<ModelInfo>>() {}.getType();
@@ -58,12 +67,19 @@ public class ModelConfigService {
     /** 内存缓存，{@link CLIType} -> List<{@link ModelInfo}>。 */
     private final Map<CLIType, List<ModelInfo>> modelCache = new ConcurrentHashMap<>();
 
-    /** 默认模型配置，{@link CLIType} -> {modelId, contextWindow}。 */
-    private final Map<CLIType, DefaultModelConfig> defaultModels = new ConcurrentHashMap<>();
+    /** 推理等级配置，{@link CLIType} -> 可用等级列表。 */
+    private final Map<CLIType, List<String>> reasoningLevels = new ConcurrentHashMap<>();
 
-    /** HTTP 客户端，用于远程同步。 */
+    /** 默认模型信息，{@link CLIType} -> {displayName, contextWindow}。 */
+    private final Map<CLIType, DefaultModelInfo> defaultModelInfoMap = new ConcurrentHashMap<>();
+
+    /** 从 models.dev API 缓存的动态 provider 列表（id + displayName）。 */
+    private volatile List<CliConfigService.ProviderInfo> cachedDynamicProviders = Collections.emptyList();
+
+    /** HTTP 客户端，用于远程同步（自动使用 IDE 代理配置）。 */
     private final HttpClient httpClient = HttpClient.newBuilder()
             .connectTimeout(Duration.ofSeconds(10))
+            .proxy(ProxySelector.getDefault())
             .build();
 
     /**
@@ -91,41 +107,71 @@ public class ModelConfigService {
     }
 
     /**
-     * 从 JSON 字符串加载模型配置到内存缓存。
+     * 从 JSON 字符串加载模型配置到内存缓存（仅支持 v2 格式）。
      *
      * @param json 模型配置 JSON 字符串
      */
     public void loadFromJson(String json) {
         try {
             JsonObject root = GsonUtils.parseObject(json);
-            List<ModelInfo> all = GsonUtils.fromJson(
-                    root.getAsJsonArray("models").toString(), MODEL_LIST_TYPE);
             this.modelCache.clear();
-            for (ModelInfo m : all) {
-                this.modelCache.computeIfAbsent(m.cliType(), k -> new ArrayList<>()).add(m);
+            this.reasoningLevels.clear();
+            this.defaultModelInfoMap.clear();
+
+            if (root.has("cliGroups") && root.get("cliGroups").isJsonObject()) {
+                this.loadCliGroups(root.getAsJsonObject("cliGroups"));
             }
 
-            this.defaultModels.clear();
-            if (root.has("defaultModels") && root.get("defaultModels").isJsonObject()) {
-                JsonObject dm = root.getAsJsonObject("defaultModels");
-                for (String key : dm.keySet()) {
-                    try {
-                        CLIType cliType = CLIType.valueOf(key);
-                        JsonObject val = dm.getAsJsonObject(key);
-                        String modelId = GsonUtils.getString(val, "modelId");
-                        int ctx = GsonUtils.getInt(val, "contextWindow", DEFAULT_CONTEXT_WINDOW);
-                        this.defaultModels.put(cliType, new DefaultModelConfig(
-                                modelId != null ? modelId : "",
-                                ctx
-                        ));
-                    } catch (IllegalArgumentException ignored) {
-                    }
-                }
-            }
-
-            log.debug("Loaded {} models from JSON", all.size());
+            int total = this.modelCache.values().stream().mapToInt(List::size).sum();
+            log.debug("Loaded {} models from JSON", total);
         } catch (Exception e) {
             log.warn("Failed to parse models JSON", e);
+        }
+    }
+
+    /**
+     * 解析 v2 格式的 cliGroups 对象。
+     *
+     * @param cliGroups CLI 分组 JSON 对象
+     */
+    private void loadCliGroups(JsonObject cliGroups) {
+        for (String cliKey : cliGroups.keySet()) {
+            try {
+                CLIType cliType = CLIType.valueOf(cliKey);
+                JsonObject group = cliGroups.getAsJsonObject(cliKey);
+
+                if (group.has("models") && group.get("models").isJsonArray()) {
+                    List<ModelInfo> models = GsonUtils.fromJson(
+                            group.getAsJsonArray("models").toString(), MODEL_LIST_TYPE);
+                    List<ModelInfo> enriched = models.stream()
+                            .map(m -> ModelInfo.builder()
+                                    .modelId(m.modelId())
+                                    .displayName(m.displayName())
+                                    .cliType(cliType)
+                                    .contextWindow(m.contextWindow())
+                                    .provider(m.provider())
+                                    .build())
+                            .collect(Collectors.toList());
+                    this.modelCache.put(cliType, enriched);
+                }
+
+                if (group.has("reasoningLevels") && group.get("reasoningLevels").isJsonArray()) {
+                    List<String> levels = new ArrayList<>();
+                    group.getAsJsonArray("reasoningLevels").forEach(e -> levels.add(e.getAsString()));
+                    this.reasoningLevels.put(cliType, levels);
+                }
+
+                if (group.has("defaultModelInfo") && group.get("defaultModelInfo").isJsonObject()) {
+                    JsonObject info = group.getAsJsonObject("defaultModelInfo");
+                    DefaultModelInfo defaultInfo = DefaultModelInfo.builder()
+                            .displayName(GsonUtils.getString(info, "displayName"))
+                            .contextWindow(GsonUtils.getInt(info, "contextWindow",
+                                    DefaultModelInfo.DEFAULT_CONTEXT_WINDOW))
+                            .build();
+                    this.defaultModelInfoMap.put(cliType, defaultInfo);
+                }
+            } catch (IllegalArgumentException ignored) {
+            }
         }
     }
 
@@ -136,17 +182,26 @@ public class ModelConfigService {
      */
     public String toJson() {
         JsonObject root = new JsonObject();
-        root.addProperty("version", 1);
-        root.add("models", GsonUtils.toJsonTree(getAllModels()));
+        root.addProperty("version", 2);
 
-        JsonObject dm = new JsonObject();
-        for (Map.Entry<CLIType, DefaultModelConfig> entry : this.defaultModels.entrySet()) {
-            JsonObject val = new JsonObject();
-            val.addProperty("modelId", entry.getValue().modelId());
-            val.addProperty("contextWindow", entry.getValue().contextWindow());
-            dm.add(entry.getKey().name(), val);
+        JsonObject cliGroups = new JsonObject();
+        for (CLIType cliType : CLIType.values()) {
+            JsonObject group = new JsonObject();
+
+            List<String> levels = this.getReasoningLevels(cliType);
+            group.add("reasoningLevels", GsonUtils.toJsonTree(levels));
+
+            List<ModelInfo> models = this.modelCache.getOrDefault(cliType, Collections.emptyList());
+            group.add("models", GsonUtils.toJsonTree(models));
+
+            DefaultModelInfo defaultInfo = this.defaultModelInfoMap.get(cliType);
+            if (defaultInfo != null) {
+                group.add("defaultModelInfo", GsonUtils.toJsonTree(defaultInfo));
+            }
+
+            cliGroups.add(cliType.name(), group);
         }
-        root.add("defaultModels", dm);
+        root.add("cliGroups", cliGroups);
 
         return GsonUtils.toJson(root);
     }
@@ -203,49 +258,89 @@ public class ModelConfigService {
     }
 
     /**
-     * 查询 OpenCode CLI 可用模型列表。
+     * 从 models.dev API 获取所有 provider 的模型列表。
      * <p>
-     * 执行 {@code opencode models --verbose} 命令，解析 JSON 输出中的
-     * 模型 ID、名称和上下文窗口大小。
+     * 遍历 {@code https://models.dev/api.json} 返回的所有 provider，
+     * 将每个 provider 下的模型以 {@code providerId/modelId} 格式汇总。
+     * 同时更新内部的动态 provider 缓存列表，供配置管理页面使用。
      * </p>
      *
      * @return 模型配置列表，查询失败返回空列表
      */
-    public List<ModelInfo> queryOpenCodeModels() {
+    public List<ModelInfo> queryModelsDev() {
         List<ModelInfo> result = new ArrayList<>();
         try {
-            ProcessBuilder pb = new ProcessBuilder(CLIType.OPENCODE.getCommandPath(), "models", "--refresh", "--verbose");
-            pb.redirectErrorStream(true);
-            Process process = pb.start();
-
-            StringBuilder output = new StringBuilder();
-            try (BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream()))) {
-                String line;
-                while ((line = reader.readLine()) != null) {
-                    output.append(line).append("\n");
-                }
+            HttpRequest request = HttpRequest.newBuilder()
+                    .uri(URI.create(MODELS_DEV_URL))
+                    .timeout(Duration.ofSeconds(30))
+                    .GET()
+                    .build();
+            HttpResponse<String> response = this.httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+            if (response.statusCode() != 200) {
+                log.warn("models.dev API returned status: {}", response.statusCode());
+                return result;
             }
-            process.waitFor();
 
-            String raw = stripAnsi(output.toString()).trim();
-            for (String json : this.extractJsonBlocks(raw)) {
+            JsonObject root = GsonUtils.parseObject(response.body());
+            List<CliConfigService.ProviderInfo> dynamicProviders = new ArrayList<>();
+
+            for (String providerKey : root.keySet()) {
                 try {
-                    ModelInfo model = this.parseOpenCodeModel(json);
-                    if (model != null) {
-                        result.add(model);
+                    JsonObject providerObj = root.getAsJsonObject(providerKey);
+                    if (providerObj == null || !providerObj.has("models")) {
+                        continue;
+                    }
+                    String providerName = GsonUtils.getString(providerObj, "name");
+                    if (providerName != null && !providerName.isBlank()) {
+                        dynamicProviders.add(new CliConfigService.ProviderInfo(providerKey, providerName));
+                    }
+
+                    JsonObject modelsObj = providerObj.getAsJsonObject("models");
+                    for (String modelId : modelsObj.keySet()) {
+                        try {
+                            JsonObject m = modelsObj.getAsJsonObject(modelId);
+                            String name = GsonUtils.getString(m, "name");
+                            String displayName = (name != null && !name.isBlank()) ? name : modelId;
+
+                            int context = 0;
+                            JsonObject limit = GsonUtils.getJsonObject(m, "limit");
+                            if (limit != null) {
+                                context = GsonUtils.getInt(limit, "context", 0);
+                            }
+
+                            result.add(ModelInfo.builder()
+                                    .modelId(providerKey + "/" + modelId)
+                                    .displayName(displayName)
+                                    .cliType(CLIType.OPENCODE)
+                                    .contextWindow(context > 0 ? context : ModelInfo.DEFAULT_CONTEXT_WINDOW)
+                                    .provider(providerKey)
+                                    .build());
+                        } catch (Exception ignored) {
+                        }
                     }
                 } catch (Exception ignored) {
                 }
             }
-            log.info("Queried {} models from OpenCode CLI", result.size());
+
+            this.cachedDynamicProviders = dynamicProviders;
+            log.info("Queried {} models from {} providers via models.dev", result.size(), dynamicProviders.size());
         } catch (Exception e) {
-            log.warn("Failed to query OpenCode models", e);
+            log.warn("Failed to query models.dev", e);
         }
         return result;
     }
 
     /**
-     * 保存用户编辑后的模型列表到内存缓存。
+     * 获取缓存的动态 provider 列表（来自 models.dev API）。
+     *
+     * @return provider 信息列表，未查询过则返回空列表
+     */
+    public List<CliConfigService.ProviderInfo> getDynamicProviders() {
+        return this.cachedDynamicProviders;
+    }
+
+    /**
+     * 保存模型列表到内存缓存（覆盖式）。
      *
      * @param models 模型列表
      */
@@ -293,68 +388,56 @@ public class ModelConfigService {
     }
 
     /**
-     * 获取指定 CLI 类型的默认模型配置。
+     * 获取指定 CLI 类型的推理等级列表。
      *
      * @param cliType CLI 类型
-     * @return 默认模型配置，不存在返回 {@code null}
+     * @return 可用推理等级列表，不存在返回空列表
      */
-    public DefaultModelConfig getDefaultModel(CLIType cliType) {
-        return this.defaultModels.get(cliType);
+    public List<String> getReasoningLevels(CLIType cliType) {
+        List<String> levels = this.reasoningLevels.get(cliType);
+        if (levels != null && !levels.isEmpty()) {
+            return levels;
+        }
+        return BUILTIN_REASONING_LEVELS.getOrDefault(cliType, Collections.emptyList());
     }
 
     /**
-     * 获取所有默认模型配置。
+     * 获取所有 CLI 类型的推理等级配置。
+     * <p>
+     * 优先返回远程同步的数据，为空时回退到内置默认值。
+     * </p>
      *
-     * @return CLI 类型到默认模型配置的映射
+     * @return CLI 类型到推理等级列表的映射
      */
-    public Map<CLIType, DefaultModelConfig> getAllDefaultModels() {
-        return new LinkedHashMap<>(this.defaultModels);
+    public Map<CLIType, List<String>> getAllReasoningLevels() {
+        Map<CLIType, List<String>> result = new LinkedHashMap<>();
+        for (CLIType cliType : CLIType.values()) {
+            result.put(cliType, this.getReasoningLevels(cliType));
+        }
+        return result;
     }
 
     /**
-     * 保存指定 CLI 类型的默认模型配置。
+     * 获取指定 CLI 类型的默认模型信息。
      *
      * @param cliType CLI 类型
-     * @param config  默认模型配置
+     * @return 默认模型信息，不存在返回 null
      */
-    public void saveDefaultModel(CLIType cliType, DefaultModelConfig config) {
-        if (config != null) {
-            this.defaultModels.put(cliType, config);
-        } else {
-            this.defaultModels.remove(cliType);
-        }
+    public DefaultModelInfo getDefaultModelInfo(CLIType cliType) {
+        return this.defaultModelInfoMap.get(cliType);
     }
 
     /**
-     * 解析单个 OpenCode 模型 JSON 块为 {@link ModelInfo}。
+     * 保存指定 CLI 类型的默认模型信息。
      *
-     * @param json 模型 JSON 字符串
-     * @return {@link ModelInfo}，缺少必要字段时返回 {@code null}
+     * @param cliType CLI 类型
+     * @param info    默认模型信息
      */
-    private ModelInfo parseOpenCodeModel(String json) {
-        JsonObject obj = GsonUtils.parseObject(json);
-        String modelId = GsonUtils.getString(obj, "id");
-        if (modelId == null) {
-            return null;
+    public void saveDefaultModelInfo(CLIType cliType,
+                                     DefaultModelInfo info) {
+        if (info != null) {
+            this.defaultModelInfoMap.put(cliType, info);
         }
-        String providerId = GsonUtils.getString(obj, "providerID");
-        String fullId = (providerId == null || providerId.isEmpty()) ? modelId : providerId + "/" + modelId;
-        String name = GsonUtils.getString(obj, "name");
-        String displayName = (name != null) ? name : modelId;
-
-        int context = 0;
-        JsonObject limit = GsonUtils.getJsonObject(obj, "limit");
-        if (limit != null) {
-            context = GsonUtils.getInt(limit, "context", 0);
-        }
-
-        return ModelInfo.builder()
-                .modelId(fullId)
-                .displayName(displayName)
-                .cliType(CLIType.OPENCODE)
-                .contextWindow(context > 0 ? context : ModelInfo.DEFAULT_CONTEXT_WINDOW)
-                .provider(providerId != null ? providerId : "")
-                .build();
     }
 
     /**
@@ -375,73 +458,5 @@ public class ModelConfigService {
             dir = parent;
         }
         return null;
-    }
-
-    /**
-     * 在 JSON 字符串中查找第一个顶层闭合大括号位置。
-     *
-     * @param json JSON 字符串
-     * @return 闭合大括号索引，未找到返回 -1
-     */
-    private int findMatchingBrace(String json) {
-        int depth = 0;
-        boolean inStr = false;
-        for (int i = 0; i < json.length(); i++) {
-            char c = json.charAt(i);
-            if (c == '\\' && inStr) {
-                i++;
-                continue;
-            }
-            if (c == '"') {
-                inStr = !inStr;
-                continue;
-            }
-            if (inStr) {
-                continue;
-            }
-            if (c == '{') {
-                depth++;
-            } else if (c == '}') {
-                depth--;
-                if (depth == 0) {
-                    return i;
-                }
-            }
-        }
-        return -1;
-    }
-
-    /**
-     * 从 CLI 原始输出中提取顶层 JSON 对象块。
-     *
-     * @param raw CLI 原始输出
-     * @return JSON 对象字符串列表
-     */
-    private List<String> extractJsonBlocks(String raw) {
-        List<String> blocks = new ArrayList<>();
-        int index = 0;
-        while (index < raw.length()) {
-            int start = raw.indexOf('{', index);
-            if (start < 0) {
-                break;
-            }
-            int end = this.findMatchingBrace(raw.substring(start));
-            if (end < 0) {
-                break;
-            }
-            blocks.add(raw.substring(start, start + end + 1));
-            index = start + end + 1;
-        }
-        return blocks;
-    }
-
-    /**
-     * 去除终端 ANSI 转义序列。
-     *
-     * @param text 原始终端输出
-     * @return 清洗后的文本
-     */
-    private static String stripAnsi(String text) {
-        return text.replaceAll("\\u001B\\[[;\\d]*m", "");
     }
 }

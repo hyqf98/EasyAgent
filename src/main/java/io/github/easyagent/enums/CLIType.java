@@ -14,7 +14,7 @@ import lombok.Getter;
  * @since 1.0.0
  */
 @Getter
-public enum CLIType {
+public enum CLIType implements ValueEnum<String> {
 
     /** OpenCode CLI 工具。 */
     OPENCODE("opencode-cli", "opencode"),
@@ -34,5 +34,10 @@ public enum CLIType {
     CLIType(String name, String commandPath) {
         this.name = name;
         this.commandPath = commandPath;
+    }
+
+    @Override
+    public String getValue() {
+        return this.name;
     }
 }

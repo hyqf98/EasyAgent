@@ -30,9 +30,7 @@ import java.util.List;
 @Slf4j
 public class GsonUtils {
 
-    /**
-     * registered enums.
-     */
+    /** 已注册的枚举类型列表。 */
     private static final List<Class<? extends Enum<?>>> REGISTERED_ENUMS = new ArrayList<>();
 
     /**
@@ -82,10 +80,9 @@ public class GsonUtils {
     }
 
     /**
-     * Build Gson With Enums
+     * 使用已注册的枚举类型构建 Gson 实例。
      *
-     * @return gson
-     * @since 1.0.0
+     * @return Gson 实例
      */
     private static Gson buildGsonWithEnums() {
         GsonBuilder builder = new GsonBuilder();
@@ -96,12 +93,11 @@ public class GsonUtils {
     }
 
     /**
-     * Register Adapter
+     * 为指定枚举类型注册灵活适配器。
      *
-     * @param <E>       类型参数 E
-     * @param builder   builder
-     * @param enumClass enum class
-     * @since 1.0.0
+     * @param <E>       枚举泛型
+     * @param builder   Gson 构建器
+     * @param enumClass 枚举类
      */
     @SuppressWarnings({"unchecked", "rawtypes"})
     private static <E extends Enum<E>> void registerAdapter(GsonBuilder builder, Class<? extends Enum<?>> enumClass) {
@@ -109,10 +105,9 @@ public class GsonUtils {
     }
 
     /**
-     * Create Base Gson
+     * 创建基础 Gson 实例。
      *
-     * @return gson
-     * @since 1.0.0
+     * @return Gson 实例
      */
     private static Gson createBaseGson() {
         return new GsonBuilder().create();

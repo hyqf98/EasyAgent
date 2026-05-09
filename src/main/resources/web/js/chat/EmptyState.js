@@ -8,7 +8,7 @@
  * @component empty-state
  */
 window.EARegisterComponent('empty-state', 'EmptyState', {
-    emits: ['select-cli', 'open-settings'],
+    emits: ['select-cli'],
     data() {
         return {
             availableCLIs: [],
@@ -30,6 +30,13 @@ window.EARegisterComponent('empty-state', 'EmptyState', {
                 var found = self.availableCLIs.find(function(c) { return c.type === cli.type; });
                 return Object.assign({}, cli, { available: found ? found.available : false });
             });
+        },
+        installItems() {
+            return [
+                { name: 'Claude Code', cmd: 'npm install -g @anthropic-ai/claude-code' },
+                { name: 'OpenCode', cmd: 'curl -fsSL https://opencode.ai/install | bash' },
+                { name: 'Codex', cmd: 'npm install -g @openai/codex' }
+            ];
         }
     },
     mounted() {
@@ -48,7 +55,6 @@ window.EARegisterComponent('empty-state', 'EmptyState', {
         }
     },
     methods: {
-        selectCLI(type) { this.$emit('select-cli', type); },
-        openSettings() { this.$emit('open-settings'); }
+        selectCLI(type) { this.$emit('select-cli', type); }
     }
 });

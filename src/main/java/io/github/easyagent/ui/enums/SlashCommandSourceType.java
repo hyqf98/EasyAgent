@@ -37,14 +37,4 @@ public enum SlashCommandSourceType implements ValueEnum<String> {
     SlashCommandSourceType(String value) {
         this.value = value;
     }
-
-    /**
-     * 根据字符串值解析来源类型。
-     *
-     * @param value 来源类型字符串
-     * @return 对应枚举，无法匹配时返回 {@code null}
-     */
-    public static SlashCommandSourceType fromValue(String value) {
-        return ValueEnum.fromValue(SlashCommandSourceType.class, value);
-    }
 }

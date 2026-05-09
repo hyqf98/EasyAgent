@@ -20,3 +20,10 @@ src/main/resources/web/vue.global.js
 
 # IDEA sandbox (runIde persistent data)
 .idea-sandbox/
+.claude/
+.gitnexus/
+.agents/
+AGENTS.md
+CLAUDE.md
+CLAUDE.md.local
+models.json

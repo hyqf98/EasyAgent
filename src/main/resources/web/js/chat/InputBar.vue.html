@@ -93,14 +93,29 @@
         </div>
         <div class="input-bottom-bar">
             <button class="input-ref-btn" type="button" @click="openFileSearchShortcut">@</button>
-            <div class="model-dropdown-wrapper" :class="{ open: showModelDropdown }">
-                <button class="model-dropdown-trigger" @click="showModelDropdown = !showModelDropdown">
-                    <span class="model-dropdown-label">{{ currentModelLabel }}</span>
-                    <svg class="model-dropdown-arrow" width="8" height="5" viewBox="0 0 8 5"><path d="M0 0l4 5 4-5z" fill="currentColor"/></svg>
-                </button>
-                <div class="model-dropdown-list" v-if="showModelDropdown && currentModels.length > 0">
-                    <div class="model-dropdown-item" :class="{ active: !store.selectedModelId }" @click="selectModel('')">{{ i18n.t('chat.defaultModel') }}</div>
-                    <div class="model-dropdown-item" :class="{ active: store.selectedModelId === m.modelId }" v-for="m in currentModels" :key="m.modelId" @click="selectModel(m.modelId)">{{ m.displayName || m.modelId }}</div>
+            <div class="input-bottom-controls">
+                <div class="model-dropdown-wrapper" :class="{ open: showModelDropdown }">
+                    <button class="model-dropdown-trigger" @click="showModelDropdown = !showModelDropdown">
+                        <span class="model-dropdown-label">{{ currentModelLabel }}</span>
+                        <svg class="model-dropdown-arrow" width="8" height="5" viewBox="0 0 8 5"><path d="M0 0l4 5 4-5z" fill="currentColor"/></svg>
+                    </button>
+                    <div class="model-dropdown-list" v-if="showModelDropdown && currentModels.length > 0">
+                        <div class="model-dropdown-item" :class="{ active: !store.selectedModelId }" @click="selectModel('')">{{ i18n.t('chat.defaultModel') }}</div>
+                        <div class="model-dropdown-item" :class="{ active: store.selectedModelId === m.modelId }" v-for="m in currentModels" :key="m.modelId" @click="selectModel(m.modelId)">{{ m.displayName || m.modelId }}</div>
+                    </div>
+                </div>
+                <div v-if="currentReasoningLevels.length > 0" class="reasoning-dropdown-wrapper" :class="{ open: showReasoningDropdown }">
+                    <button class="reasoning-dropdown-trigger" @click="showReasoningDropdown = !showReasoningDropdown">
+                        <span class="reasoning-dropdown-icon">
+                            <svg width="12" height="12" viewBox="0 0 16 16" fill="none"><path d="M8 1L10.5 6H5.5L8 1ZM8 15L5.5 10H10.5L8 15Z" fill="currentColor"/></svg>
+                        </span>
+                        <span class="reasoning-dropdown-label">{{ currentReasoningLabel }}</span>
+                        <svg class="reasoning-dropdown-arrow" width="8" height="5" viewBox="0 0 8 5"><path d="M0 0l4 5 4-5z" fill="currentColor"/></svg>
+                    </button>
+                    <div class="reasoning-dropdown-list" v-if="showReasoningDropdown">
+                        <div class="reasoning-dropdown-item" :class="{ active: !store.selectedReasoningLevel }" @click="selectReasoningLevel('')">{{ i18n.t('chat.reasoningDefault') }}</div>
+                        <div class="reasoning-dropdown-item" :class="{ active: store.selectedReasoningLevel === level }" v-for="level in currentReasoningLevels" :key="level" @click="selectReasoningLevel(level)">{{ i18n.t('chat.reasoning_' + level) || level }}</div>
+                    </div>
                 </div>
             </div>
         </div>

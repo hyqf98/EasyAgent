@@ -204,7 +204,9 @@ window.EAStore = Vue.reactive({
     modelContextMap: {},
     modelsList: [],
     selectedModelId: '',
-    defaultModels: {},
+    reasoningLevelsMap: {},
+    selectedReasoningLevel: '',
+    defaultModelInfoMap: {},
 
     get isStreaming() {
         return !!EA_STREAMING_MAP[this.sessionId];

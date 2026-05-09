@@ -45,14 +45,4 @@ public enum ContentBlockType implements ValueEnum<String> {
     ContentBlockType(String value) {
         this.value = value;
     }
-
-    /**
-     * 根据字符串值解析内容块类型枚举。
-     *
-     * @param value 类型字符串
-     * @return 对应的内容块类型枚举，无法匹配时返回 {@code null}
-     */
-    public static ContentBlockType fromValue(String value) {
-        return ValueEnum.fromValue(ContentBlockType.class, value);
-    }
 }

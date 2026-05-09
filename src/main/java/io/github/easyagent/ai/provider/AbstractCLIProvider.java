@@ -177,8 +177,13 @@ public abstract class AbstractCLIProvider implements AIProvider {
      */
     @Override
     public void chat(String prompt, String sessionId, String modelId, StreamEventListener listener) {
+        this.chat(prompt, sessionId, modelId, null, listener);
+    }
+
+    @Override
+    public void chat(String prompt, String sessionId, String modelId, String reasoningLevel, StreamEventListener listener) {
         String trackId = sessionId != null ? sessionId : "anon-" + System.nanoTime();
-        this.executor.submit(() -> this.executeWithRetry(prompt, trackId, modelId, listener));
+        this.executor.submit(() -> this.executeWithRetry(prompt, trackId, modelId, reasoningLevel, listener));
     }
 
     /**
@@ -190,6 +195,19 @@ public abstract class AbstractCLIProvider implements AIProvider {
      * @param listener  流式事件监听器
      */
     private void executeWithRetry(String prompt, String sessionId, String modelId, StreamEventListener listener) {
+        this.executeWithRetry(prompt, sessionId, modelId, null, listener);
+    }
+
+    /**
+     * 带重试逻辑的 CLI 执行入口（含推理等级）。
+     *
+     * @param prompt         用户提示内容
+     * @param sessionId      会话 ID
+     * @param modelId        可选的模型 ID
+     * @param reasoningLevel 可选的推理等级
+     * @param listener       流式事件监听器
+     */
+    private void executeWithRetry(String prompt, String sessionId, String modelId, String reasoningLevel, StreamEventListener listener) {
         int maxAttempts = this.retryConfig.isEnabled() ? this.retryConfig.maxRetries() + 1 : 1;
         Exception lastException = null;
         this.retryInterruptedFlags.remove(sessionId);
@@ -200,7 +218,7 @@ public abstract class AbstractCLIProvider implements AIProvider {
                 return;
             }
             try {
-                GeneralCommandLine commandLine = this.buildCommandLine(prompt, sessionId, modelId);
+                GeneralCommandLine commandLine = this.buildCommandLine(prompt, sessionId, modelId, reasoningLevel);
                 log.info("[CLI] Executing (attempt {}/{}): {}", attempt, maxAttempts, commandLine.getCommandLineString());
                 this.executeProcess(commandLine, sessionId, listener);
                 return;
@@ -317,7 +335,7 @@ public abstract class AbstractCLIProvider implements AIProvider {
      * @return 配置好的命令行对象
      */
     protected GeneralCommandLine buildCommandLine(String prompt, String sessionId) {
-        return this.buildCommandLine(prompt, sessionId, null);
+        return this.buildCommandLine(prompt, sessionId, null, null);
     }
 
     /**
@@ -332,6 +350,22 @@ public abstract class AbstractCLIProvider implements AIProvider {
      * @return 配置好的命令行对象
      */
     protected GeneralCommandLine buildCommandLine(String prompt, String sessionId, String modelId) {
+        return this.buildCommandLine(prompt, sessionId, modelId, null);
+    }
+
+    /**
+     * 构建 CLI 执行命令行（含推理等级）。
+     * <p>
+     * 子类覆盖此方法拼接 CLI 特定参数，默认设置 UTF-8 编码、合并错误流和 NO_COLOR。
+     * </p>
+     *
+     * @param prompt         用户提示内容
+     * @param sessionId      可选的会话 ID，为 null 时忽略
+     * @param modelId        可选的模型 ID，为 null 时使用默认模型
+     * @param reasoningLevel 可选的推理等级，为 null 时使用默认
+     * @return 配置好的命令行对象
+     */
+    protected GeneralCommandLine buildCommandLine(String prompt, String sessionId, String modelId, String reasoningLevel) {
         GeneralCommandLine cmd = new GeneralCommandLine();
         cmd.setExePath(this.getCommandPath());
         cmd.setCharset(StandardCharsets.UTF_8);

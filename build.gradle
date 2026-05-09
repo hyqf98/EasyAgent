@@ -45,6 +45,10 @@ dependencies {
     implementation("org.slf4j:slf4j-api:2.0.13")
     implementation("ch.qos.logback:logback-classic:1.5.6")
     implementation("org.xerial:sqlite-jdbc:3.45.2.0")
+    implementation("com.moandjiezana.toml:toml4j:0.7.2") {
+        exclude group: 'com.google.code.gson', module: 'gson'
+    }
+    implementation("io.modelcontextprotocol.sdk:mcp:1.1.0")
 
     testImplementation("org.junit.jupiter:junit-jupiter-api:5.10.2")
     testImplementation("org.junit.jupiter:junit-jupiter-engine:5.10.2")

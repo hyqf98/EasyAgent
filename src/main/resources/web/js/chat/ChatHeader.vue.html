@@ -1,8 +1,5 @@
 <template>
-<div class="chat-header">
-    <div class="chat-header-left">
-        <span class="chat-header-title">{{ displayTitle }}</span>
-    </div>
+<div v-if="!showSettings" class="chat-header">
     <div class="chat-header-actions">
         <button v-if="inChat" class="icon-btn" @click="$emit('back-home')" :title="i18n.t('header.home')">⌂</button>
         <button v-if="inChat" class="icon-btn" @click="$emit('toggle-drawer')" title="History">☰</button>

@@ -36,14 +36,4 @@ public enum SessionRole implements ValueEnum<String> {
     SessionRole(String value) {
         this.value = value;
     }
-
-    /**
-     * 根据字符串值解析角色枚举。
-     *
-     * @param value 角色字符串
-     * @return 对应的角色枚举，无法匹配时返回 {@code null}
-     */
-    public static SessionRole fromValue(String value) {
-        return ValueEnum.fromValue(SessionRole.class, value);
-    }
 }

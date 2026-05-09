@@ -7,9 +7,9 @@ import io.github.easyagent.ai.entity.AbstractContentBlock;
 import io.github.easyagent.util.RawJsonStringAdapter;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
-import lombok.Getter;
+import lombok.Data;
+import lombok.EqualsAndHashCode;
 import lombok.NoArgsConstructor;
-import lombok.Setter;
 
 /**
  * Claude 消息内容块。
@@ -28,8 +28,8 @@ import lombok.Setter;
  * @date 2026/4/30
  * @since 1.0.0
  */
-@Getter
-@Setter
+@Data
+@EqualsAndHashCode(callSuper = true)
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder

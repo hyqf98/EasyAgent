@@ -1,5 +1,6 @@
 package io.github.easyagent.ai.codex.enums;
 
+import io.github.easyagent.enums.ValueEnum;
 import lombok.Getter;
 
 /**
@@ -13,10 +14,17 @@ import lombok.Getter;
  * @since 1.0.0
  */
 @Getter
-public enum CodexItemType {
+public enum CodexItemType implements ValueEnum<String> {
 
     /** Agent 消息。 */
-    AGENT_MESSAGE,
+    AGENT_MESSAGE("agent_message"),
     /** 工具调用。 */
-    TOOL_CALL
+    TOOL_CALL("tool_call");
+
+    /** 类型标识值。 */
+    private final String value;
+
+    CodexItemType(String value) {
+        this.value = value;
+    }
 }

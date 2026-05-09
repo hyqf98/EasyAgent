@@ -4,19 +4,33 @@ import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.util.text.StringUtil;
 import com.intellij.ui.jcef.JBCefBrowser;
-import com.intellij.util.ui.StartupUiUtil;
+import com.intellij.ui.JBColor;
 import io.github.easyagent.ai.StreamEventListener;
 import io.github.easyagent.ai.entity.AIResponse;
 import io.github.easyagent.ai.entity.MessageContent;
 import io.github.easyagent.ai.entity.ToolCallContent;
 import io.github.easyagent.enums.CLIType;
 import io.github.easyagent.enums.ResponseType;
+import io.github.easyagent.enums.ValueEnum;
 import io.github.easyagent.session.SessionService;
 import io.github.easyagent.session.entity.SessionMessage;
 import io.github.easyagent.session.entity.SessionInfo;
+import io.github.easyagent.settings.EasyAgentAppState;
 import io.github.easyagent.settings.EasyAgentState;
+import io.github.easyagent.settings.config.CliConfigService;
+import io.github.easyagent.settings.config.ClaudeConfig;
+import io.github.easyagent.settings.config.CodexConfig;
+import io.github.easyagent.settings.config.OpenCodeConfig;
+import io.github.easyagent.settings.config.CliConfigs;
+import io.github.easyagent.settings.config.CliProfile;
+import io.github.easyagent.settings.mcp.McpConfigService;
+import io.github.easyagent.settings.mcp.McpServerEntry;
+import io.github.easyagent.settings.mcp.McpTestService;
+import io.github.easyagent.settings.models.DefaultModelInfo;
 import io.github.easyagent.settings.models.ModelConfigService;
 import io.github.easyagent.settings.models.ModelInfo;
+import io.github.easyagent.settings.skills.SkillEntry;
+import io.github.easyagent.settings.skills.SkillsConfigService;
 import io.github.easyagent.ui.enums.JsAction;
 import io.github.easyagent.ui.enums.JsCallback;
 import io.github.easyagent.ui.enums.ThemeType;
@@ -38,9 +52,11 @@ import org.cef.browser.CefMessageRouter;
 import org.cef.callback.CefQueryCallback;
 import org.cef.handler.CefMessageRouterHandlerAdapter;
 
+import java.util.ArrayList;
 import java.util.EnumMap;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -74,6 +90,14 @@ public class JCEFMessageBridge {
     private final SessionService sessionService;
 
     private final ModelConfigService modelConfigService;
+
+    private final CliConfigService cliConfigService;
+
+    private final McpConfigService mcpConfigService;
+
+    private final McpTestService mcpTestService;
+
+    private final SkillsConfigService skillsConfigService;
 
     private final Project project;
 
@@ -110,6 +134,10 @@ public class JCEFMessageBridge {
         this.chatManager = chatManager;
         this.sessionService = new SessionService();
         this.modelConfigService = new ModelConfigService();
+        this.cliConfigService = new CliConfigService();
+        this.mcpConfigService = new McpConfigService();
+        this.mcpTestService = new McpTestService();
+        this.skillsConfigService = new SkillsConfigService();
         this.project = project;
         this.fileReferenceService = project != null ? project.getService(FileReferenceService.class) : null;
         this.chatUiBridgeService = project != null ? project.getService(ChatUiBridgeService.class) : null;
@@ -127,13 +155,11 @@ public class JCEFMessageBridge {
      * 初始化模型配置，优先从持久化恢复，其次从本地文件加载。
      */
     private void initModelConfigs() {
-        if (this.project != null) {
-            EasyAgentState state = EasyAgentState.getInstance(this.project);
-            String saved = state.getModelsJson();
-            if (saved != null && !saved.isBlank()) {
-                this.modelConfigService.loadFromJson(saved);
-                return;
-            }
+        EasyAgentAppState appState = EasyAgentAppState.getInstance();
+        String saved = appState.getModelsJson();
+        if (saved != null && !saved.isBlank()) {
+            this.modelConfigService.loadFromJson(saved);
+            return;
         }
         this.modelConfigService.loadFromLocal();
     }
@@ -148,7 +174,8 @@ public class JCEFMessageBridge {
         this.registerHandler(JsAction.LOAD_HISTORY, LoadHistoryRequest.class,
                 request -> this.loadHistory(request.sessionId(), request.cliType(), request.forceReload()));
         this.registerHandler(JsAction.SEND_MESSAGE, SendMessageRequest.class, request -> this.sendUserMessage(
-                request.text(), request.cliType(), request.sessionId(), request.modelId(), request.fileReferences()));
+                request.text(), request.cliType(), request.sessionId(), request.modelId(),
+                request.reasoningLevel(), request.fileReferences()));
         this.registerHandler(JsAction.STOP_GENERATION, StopGenerationRequest.class,
                 request -> this.chatManager.stopGeneration(request.sessionId()));
         this.registerHandler(JsAction.GET_THEME, ActionRequest.class, request -> this.sendThemeUpdate());
@@ -180,6 +207,35 @@ public class JCEFMessageBridge {
                 this::handleGetSlashCommands);
         this.registerHandler(JsAction.EXECUTE_SLASH_COMMAND, ExecuteSlashCommandRequest.class,
                 this::handleExecuteSlashCommand);
+        this.registerHandler(JsAction.GET_CLI_CONFIGS, ActionRequest.class, request -> this.pushCliConfigs());
+        this.registerHandler(JsAction.SAVE_CLI_CONFIGS, SaveCliConfigsRequest.class,
+                this::handleSaveCliConfigs);
+        this.registerHandler(JsAction.SAVE_CLI_PROFILE, SaveCliProfileRequest.class,
+                this::handleSaveCliProfile);
+        this.registerHandler(JsAction.DELETE_CLI_PROFILE, DeleteCliProfileRequest.class,
+                this::handleDeleteCliProfile);
+        this.registerHandler(JsAction.APPLY_CLI_PROFILE, ApplyCliProfileRequest.class,
+                this::handleApplyCliProfile);
+        this.registerHandler(JsAction.GET_MCP_CONFIGS, McpConfigsRequest.class,
+                this::handleGetMcpConfigs);
+        this.registerHandler(JsAction.SAVE_MCP_SERVER, SaveMcpServerRequest.class,
+                this::handleSaveMcpServer);
+        this.registerHandler(JsAction.DELETE_MCP_SERVER, DeleteMcpServerRequest.class,
+                this::handleDeleteMcpServer);
+        this.registerHandler(JsAction.TEST_MCP_CONNECT, TestMcpConnectRequest.class,
+                this::handleTestMcpConnect);
+        this.registerHandler(JsAction.LIST_MCP_TOOLS, ListMcpToolsRequest.class,
+                this::handleListMcpTools);
+        this.registerHandler(JsAction.CALL_MCP_TOOL, CallMcpToolRequest.class,
+                this::handleCallMcpTool);
+        this.registerHandler(JsAction.GET_SKILLS, GetSkillsRequest.class,
+                this::handleGetSkills);
+        this.registerHandler(JsAction.INSTALL_SKILL, InstallSkillRequest.class,
+                this::handleInstallSkill);
+        this.registerHandler(JsAction.DELETE_SKILL, DeleteSkillRequest.class,
+                this::handleDeleteSkill);
+        this.registerHandler(JsAction.READ_SKILL_CONTENT, ReadSkillContentRequest.class,
+                this::handleReadSkillContent);
     }
 
     /**
@@ -207,7 +263,7 @@ public class JCEFMessageBridge {
      * 同步当前 IDE 主题到前端。
      */
     public void sendThemeUpdate() {
-        ThemeType theme = ThemeType.fromDark(StartupUiUtil.isUnderDarcula());
+        ThemeType theme = ThemeType.fromDark(!JBColor.isBright());
         this.invokeJSCallback(JsCallback.THEME_CHANGED, new ThemePayload(theme.isDark()));
     }
 
@@ -246,6 +302,7 @@ public class JCEFMessageBridge {
         if (this.chatUiBridgeService != null) {
             this.chatUiBridgeService.unregisterBridge(this);
         }
+        this.mcpTestService.closeAll();
         this.chatManager.shutdown();
         this.asyncExecutor.shutdownNow();
     }
@@ -371,12 +428,13 @@ public class JCEFMessageBridge {
      * @param sessionId 会话 ID
      * @param cliType   CLI 类型名称
      */
-    private void persistCurrentSession(String sessionId, String cliType) {
+    private void persistCurrentSession(String sessionId,
+                                       String cliType) {
         if (this.project != null) {
             EasyAgentState state = EasyAgentState.getInstance(this.project);
             state.setCurrentSessionId(sessionId);
-            state.setCurrentCliType(cliType);
         }
+        EasyAgentAppState.getInstance().setCurrentCliType(cliType);
     }
 
     /**
@@ -388,6 +446,7 @@ public class JCEFMessageBridge {
      * @param modelId   模型 ID，可为 null
      */
     private void sendUserMessage(String text, String cliType, String sessionId, String modelId,
+                                 String reasoningLevel,
                                  List<FileReferencePayload> fileReferences) {
         try {
             CLIType type = CLIType.valueOf(cliType);
@@ -401,7 +460,7 @@ public class JCEFMessageBridge {
             this.currentSessionId = effectiveSessionId;
 
             this.chatManager.sendMessage(prompt, effectiveSessionId, type,
-                    this.currentProjectPath, modelId, new StreamEventListener() {
+                    this.currentProjectPath, modelId, reasoningLevel, new StreamEventListener() {
                 @Override
                 public void onResponse(AIResponse response) {
                     JCEFMessageBridge.this.logAIResponse(response);
@@ -547,12 +606,13 @@ public class JCEFMessageBridge {
             return;
         }
         EasyAgentState state = EasyAgentState.getInstance(this.project);
+        EasyAgentAppState appState = EasyAgentAppState.getInstance();
         this.invokeJSCallback(JsCallback.STATE_RESTORED, new RestoredStatePayload(
                 state.getCurrentSessionId() != null ? state.getCurrentSessionId() : "",
-                state.getCurrentCliType() != null ? state.getCurrentCliType() : "",
+                appState.getCurrentCliType() != null ? appState.getCurrentCliType() : "",
                 this.pendingQueueStates(state.getPendingQueues()),
-                state.getRetryMaxCount(),
-                state.getRetryTimeoutMs()
+                appState.getRetryMaxCount(),
+                appState.getRetryTimeoutMs()
         ));
     }
 
@@ -560,12 +620,9 @@ public class JCEFMessageBridge {
      * 推送当前 AI 重试策略配置到前端。
      */
     private void pushRetryConfig() {
-        if (this.project == null) {
-            return;
-        }
-        EasyAgentState state = EasyAgentState.getInstance(this.project);
+        EasyAgentAppState appState = EasyAgentAppState.getInstance();
         this.invokeJSCallback(JsCallback.RETRY_CONFIG,
-                new RetryConfigPayload(state.getRetryMaxCount(), state.getRetryTimeoutMs()));
+                new RetryConfigPayload(appState.getRetryMaxCount(), appState.getRetryTimeoutMs()));
     }
 
     /**
@@ -574,14 +631,11 @@ public class JCEFMessageBridge {
      * @param obj 请求 JSON 对象
      */
     private void handleSaveRetryConfig(SaveRetryConfigRequest request) {
-        if (this.project == null) {
-            return;
-        }
-        EasyAgentState state = EasyAgentState.getInstance(this.project);
+        EasyAgentAppState appState = EasyAgentAppState.getInstance();
         int maxCount = request.retryMaxCount();
         long timeoutMs = request.retryTimeoutMs();
-        state.setRetryMaxCount(maxCount);
-        state.setRetryTimeoutMs(timeoutMs);
+        appState.setRetryMaxCount(maxCount);
+        appState.setRetryTimeoutMs(timeoutMs);
         this.chatManager.updateRetryConfig(maxCount, timeoutMs);
     }
 
@@ -597,23 +651,21 @@ public class JCEFMessageBridge {
     }
 
     /**
-     * 从远程同步最新的模型配置，并查询所有 CLI 可用模型。
+     * 从远程同步最新的模型配置，并从 models.dev API 查询 OpenCode 支持的模型。
      */
     private void handleSyncModels() {
         this.asyncExecutor.submit(() -> {
             String json = this.modelConfigService.syncFromRemote();
-            if (json != null && this.project != null) {
-                EasyAgentState state = EasyAgentState.getInstance(this.project);
-                state.setModelsJson(json);
+            if (json != null) {
+                EasyAgentAppState.getInstance().setModelsJson(json);
             }
-            List<ModelInfo> cliModels = this.modelConfigService.queryOpenCodeModels();
-            if (!cliModels.isEmpty()) {
-                this.modelConfigService.mergeModels(cliModels);
-                if (this.project != null) {
-                    EasyAgentState state = EasyAgentState.getInstance(this.project);
-                    state.setModelsJson(this.modelConfigService.toJson());
-                }
+
+            List<ModelInfo> openCodeModels = this.modelConfigService.queryModelsDev();
+            if (!openCodeModels.isEmpty()) {
+                this.modelConfigService.mergeModels(openCodeModels);
             }
+
+            EasyAgentAppState.getInstance().setModelsJson(this.modelConfigService.toJson());
             this.pushModels();
         });
     }
@@ -629,14 +681,11 @@ public class JCEFMessageBridge {
             return;
         }
         this.modelConfigService.loadFromJson(modelsJson);
-        if (this.project != null) {
-            EasyAgentState state = EasyAgentState.getInstance(this.project);
-            state.setModelsJson(this.modelConfigService.toJson());
-        }
+        EasyAgentAppState.getInstance().setModelsJson(this.modelConfigService.toJson());
     }
 
     /**
-     * 查询指定 CLI 的可用模型列表。
+     * 查询指定 CLI 的可用模型列表（OpenCode 使用 models.dev API）。
      *
      * @param obj 请求 JSON 对象，包含 cliType 字段
      */
@@ -644,11 +693,399 @@ public class JCEFMessageBridge {
         String cliTypeStr = request.cliType();
         this.asyncExecutor.submit(() -> {
             if (CLIType.OPENCODE.name().equals(cliTypeStr)) {
-                List<ModelInfo> models = this.modelConfigService.queryOpenCodeModels();
+                List<ModelInfo> models = this.modelConfigService.queryModelsDev();
                 this.invokeJSCallback(JsCallback.CLI_MODELS, models);
             } else {
                 this.invokeJSCallback(JsCallback.CLI_MODELS, "[]");
             }
+        });
+    }
+
+    /**
+     * 推送 CLI 配置数据到前端。
+     */
+    private void pushCliConfigs() {
+        this.asyncExecutor.submit(() -> {
+            try {
+                CliConfigs configs = this.cliConfigService.readConfigs();
+                var profilesMap = this.loadAllProfiles();
+                CliConfigsPayload payload = new CliConfigsPayload(
+                        configs,
+                        this.cliConfigService.getOpenCodeProviders(this.modelConfigService.getDynamicProviders()),
+                        profilesMap
+                );
+                this.invokeJSCallback(JsCallback.CLI_CONFIGS, payload);
+            } catch (Exception e) {
+                log.warn("Failed to read CLI configs", e);
+                this.invokeJSCallback(JsCallback.CLI_CONFIGS,
+                        new CliConfigsPayload(CliConfigs.empty(), List.of(), java.util.Map.of()));
+            }
+        });
+    }
+
+    /**
+     * 保存 CLI 配置并联动更新默认模型。
+     *
+     * @param request 保存请求
+     */
+    private void handleSaveCliConfigs(SaveCliConfigsRequest request) {
+        this.asyncExecutor.submit(() -> {
+            String cliType = request.cliType();
+            try {
+                switch (cliType) {
+                    case "CLAUDE" -> {
+                        ClaudeConfig config = request.claude();
+                        if (config == null) {
+                            this.invokeJSCallback(JsCallback.CLI_CONFIGS_SAVED,
+                                    new CliConfigsSavedPayload(false, cliType, "No config data"));
+                            return;
+                        }
+                        this.cliConfigService.saveClaudeConfig(config);
+                    }
+                    case "OPENCODE" -> {
+                        OpenCodeConfig config = request.opencode();
+                        if (config == null) {
+                            this.invokeJSCallback(JsCallback.CLI_CONFIGS_SAVED,
+                                    new CliConfigsSavedPayload(false, cliType, "No config data"));
+                            return;
+                        }
+                        this.cliConfigService.saveOpenCodeConfig(config);
+                    }
+                    case "CODEX" -> {
+                        CodexConfig config = request.codex();
+                        if (config == null) {
+                            this.invokeJSCallback(JsCallback.CLI_CONFIGS_SAVED,
+                                    new CliConfigsSavedPayload(false, cliType, "No config data"));
+                            return;
+                        }
+                        this.cliConfigService.saveCodexConfig(config);
+                    }
+                    default -> {
+                        this.invokeJSCallback(JsCallback.CLI_CONFIGS_SAVED,
+                                new CliConfigsSavedPayload(false, cliType, "Unknown CLI type"));
+                        return;
+                    }
+                }
+
+                this.persistModelConfigs();
+                this.pushModels();
+                this.invokeJSCallback(JsCallback.CLI_CONFIGS_SAVED,
+                        new CliConfigsSavedPayload(true, cliType, ""));
+            } catch (Exception e) {
+                log.warn("Failed to save CLI configs for {}", cliType, e);
+                this.invokeJSCallback(JsCallback.CLI_CONFIGS_SAVED,
+                        new CliConfigsSavedPayload(false, cliType, e.getMessage()));
+            }
+        });
+    }
+
+    /**
+     * 持久化当前模型配置到项目状态。
+     */
+    private void persistModelConfigs() {
+        EasyAgentAppState.getInstance().setModelsJson(this.modelConfigService.toJson());
+    }
+
+    // ==================== CLI Profile Management ====================
+
+    /**
+     * 从持久化状态加载所有 CLI 配置档案。
+     *
+     * @return cliType -> List<CliProfile>
+     */
+    private java.util.Map<String, List<CliProfile>> loadAllProfiles() {
+        EasyAgentAppState appState = EasyAgentAppState.getInstance();
+        var result = new java.util.LinkedHashMap<String, List<CliProfile>>();
+        for (CLIType cliType : CLIType.values()) {
+            String json = appState.getCliProfiles().get(cliType.name());
+            result.put(cliType.name(), this.cliConfigService.loadProfiles(json));
+        }
+        return result;
+    }
+
+    /**
+     * 持久化指定 CLI 类型的配置档案列表。
+     *
+     * @param cliType  CLI 类型
+     * @param profiles 档案列表
+     */
+    private void persistProfiles(String cliType,
+                                 List<CliProfile> profiles) {
+        EasyAgentAppState.getInstance().getCliProfiles().put(cliType,
+                this.cliConfigService.serializeProfiles(profiles));
+    }
+
+    /**
+     * 保存 CLI 配置档案（新增或更新）。
+     */
+    private void handleSaveCliProfile(SaveCliProfileRequest request) {
+        this.asyncExecutor.submit(() -> {
+            String cliType = request.cliType();
+            CliProfile profile = request.profile();
+            if (profile == null || profile.getName() == null || profile.getName().isBlank()) {
+                this.invokeJSCallback(JsCallback.CLI_CONFIGS_SAVED,
+                        new CliConfigsSavedPayload(false, cliType, "Profile name is required"));
+                return;
+            }
+            if (profile.getId() == null || profile.getId().isBlank()) {
+                profile.setId(UUID.randomUUID().toString().substring(0, 8));
+            }
+            profile.setCliType(cliType);
+
+            var allProfiles = this.loadAllProfiles();
+            List<CliProfile> profiles = new ArrayList<>(allProfiles.getOrDefault(cliType, List.of()));
+            boolean updated = false;
+            for (int i = 0; i < profiles.size(); i++) {
+                if (profiles.get(i).getId().equals(profile.getId())) {
+                    profiles.set(i, profile);
+                    updated = true;
+                    break;
+                }
+            }
+            if (!updated) {
+                profiles.add(profile);
+            }
+            this.persistProfiles(cliType, profiles);
+            this.pushCliConfigs();
+            this.invokeJSCallback(JsCallback.CLI_CONFIGS_SAVED,
+                    new CliConfigsSavedPayload(true, cliType, ""));
+        });
+    }
+
+    /**
+     * 删除 CLI 配置档案。
+     */
+    private void handleDeleteCliProfile(DeleteCliProfileRequest request) {
+        this.asyncExecutor.submit(() -> {
+            String cliType = request.cliType();
+            String profileId = request.profileId();
+
+            var allProfiles = this.loadAllProfiles();
+            List<CliProfile> profiles = new ArrayList<>(allProfiles.getOrDefault(cliType, List.of()));
+            profiles.removeIf(p -> p.getId().equals(profileId));
+            this.persistProfiles(cliType, profiles);
+            this.pushCliConfigs();
+        });
+    }
+
+    /**
+     * 应用 CLI 配置档案（切换到指定档案的配置）。
+     */
+    private void handleApplyCliProfile(ApplyCliProfileRequest request) {
+        this.asyncExecutor.submit(() -> {
+            String cliType = request.cliType();
+            String profileId = request.profileId();
+
+            var allProfiles = this.loadAllProfiles();
+            List<CliProfile> profiles = allProfiles.getOrDefault(cliType, List.of());
+            CliProfile target = null;
+            for (CliProfile p : profiles) {
+                if (p.getId().equals(profileId)) {
+                    target = p;
+                    break;
+                }
+            }
+            if (target == null) {
+                this.invokeJSCallback(JsCallback.CLI_CONFIGS_SAVED,
+                        new CliConfigsSavedPayload(false, cliType, "Profile not found"));
+                return;
+            }
+            try {
+                this.cliConfigService.applyProfile(target);
+                this.pushCliConfigs();
+                this.invokeJSCallback(JsCallback.CLI_CONFIGS_SAVED,
+                        new CliConfigsSavedPayload(true, cliType, ""));
+            } catch (Exception e) {
+                this.invokeJSCallback(JsCallback.CLI_CONFIGS_SAVED,
+                        new CliConfigsSavedPayload(false, cliType, e.getMessage()));
+            }
+        });
+    }
+
+    /**
+     * 处理获取 MCP 配置列表请求。
+     *
+     * @param request MCP 配置请求
+     */
+    private void handleGetMcpConfigs(McpConfigsRequest request) {
+        this.asyncExecutor.submit(() -> {
+            String cliType = request.cliType();
+            String projectPath = this.currentProjectPath;
+            List<McpServerEntry> entries = this.mcpConfigService.loadMcpConfigs(cliType, projectPath);
+            this.invokeJSCallback(JsCallback.MCP_CONFIGS, entries);
+        });
+    }
+
+    /**
+     * 处理保存 MCP 服务器配置请求。
+     *
+     * @param request 保存 MCP 请求
+     */
+    private void handleSaveMcpServer(SaveMcpServerRequest request) {
+        this.asyncExecutor.submit(() -> {
+            String cliType = request.cliType();
+            String scope = request.scope();
+            String projectPath = "project".equals(scope) ? this.currentProjectPath : null;
+            McpServerEntry entry = request.toEntry();
+            boolean success = this.mcpConfigService.saveMcpServer(cliType, scope, projectPath, entry);
+            this.invokeJSCallback(JsCallback.MCP_SAVED,
+                    new McpSavedPayload(success, cliType, success ? "" : "Save failed"));
+            if (success) {
+                List<McpServerEntry> entries = this.mcpConfigService.loadMcpConfigs(cliType, this.currentProjectPath);
+                this.invokeJSCallback(JsCallback.MCP_CONFIGS, entries);
+            }
+        });
+    }
+
+    /**
+     * 处理删除 MCP 服务器配置请求。
+     *
+     * @param request 删除 MCP 请求
+     */
+    private void handleDeleteMcpServer(DeleteMcpServerRequest request) {
+        this.asyncExecutor.submit(() -> {
+            String cliType = request.cliType();
+            String scope = request.scope();
+            String projectPath = "project".equals(scope) ? this.currentProjectPath : null;
+            boolean success = this.mcpConfigService.deleteMcpServer(cliType, scope, projectPath, request.serverName());
+            this.invokeJSCallback(JsCallback.MCP_SAVED,
+                    new McpSavedPayload(success, cliType, success ? "" : "Delete failed"));
+            if (success) {
+                List<McpServerEntry> entries = this.mcpConfigService.loadMcpConfigs(cliType, this.currentProjectPath);
+                this.invokeJSCallback(JsCallback.MCP_CONFIGS, entries);
+            }
+        });
+    }
+
+    /**
+     * 处理测试连接 MCP 服务器请求。
+     * <p>
+     * 根据 MCP 配置启动子进程，完成 initialize 握手后返回连接结果和工具列表。
+     * </p>
+     *
+     * @param request 测试连接请求
+     */
+    private void handleTestMcpConnect(TestMcpConnectRequest request) {
+        this.asyncExecutor.submit(() -> {
+            String cliType = request.cliType();
+            String scope = request.scope();
+            String serverName = request.serverName();
+            String projectPath = "project".equals(scope) ? this.currentProjectPath : null;
+            List<McpServerEntry> entries = this.mcpConfigService.loadMcpConfigs(cliType, projectPath);
+            McpServerEntry target = null;
+            for (McpServerEntry e : entries) {
+                if (e.name().equals(serverName) && e.scope().equals(scope)) {
+                    target = e;
+                    break;
+                }
+            }
+            if (target == null) {
+                this.invokeJSCallback(JsCallback.MCP_TEST_CONNECTED,
+                        new McpTestConnectedPayload(false, null, serverName, "Server config not found", List.of(), "", Map.of()));
+                return;
+            }
+            McpTestService.ConnectResult result = this.mcpTestService.connect(target);
+            List<McpTestService.ToolInfo> tools = List.of();
+            if (result.success()) {
+                tools = this.mcpTestService.listTools(result.connectionId());
+            }
+            this.invokeJSCallback(JsCallback.MCP_TEST_CONNECTED,
+                    new McpTestConnectedPayload(result.success(), result.connectionId(),
+                            serverName, result.serverNameOrError(), tools,
+                            result.transportType(), result.env()));
+        });
+    }
+
+    /**
+     * 处理列出 MCP 服务器工具请求。
+     *
+     * @param request 列出工具请求
+     */
+    private void handleListMcpTools(ListMcpToolsRequest request) {
+        this.asyncExecutor.submit(() -> {
+            List<McpTestService.ToolInfo> tools = this.mcpTestService.listTools(request.connectionId());
+            this.invokeJSCallback(JsCallback.MCP_TOOLS,
+                    new McpToolsPayload(request.connectionId(), tools));
+        });
+    }
+
+    /**
+     * 处理调用 MCP 工具请求。
+     *
+     * @param request 工具调用请求
+     */
+    private void handleCallMcpTool(CallMcpToolRequest request) {
+        this.asyncExecutor.submit(() -> {
+            Map<String, Object> args = request.arguments() != null ? request.arguments() : Map.of();
+            McpTestService.ToolCallResult result = this.mcpTestService.callTool(
+                    request.connectionId(), request.toolName(), args);
+            this.invokeJSCallback(JsCallback.MCP_TOOL_RESULT,
+                    new McpToolResultPayload(request.connectionId(), request.toolName(), result));
+        });
+    }
+
+    /**
+     * 处理获取 Skills 列表请求。
+     *
+     * @param request Skills 列表请求
+     */
+    private void handleGetSkills(GetSkillsRequest request) {
+        this.asyncExecutor.submit(() -> {
+            String cliType = request.cliType();
+            String projectPath = this.currentProjectPath;
+            List<SkillEntry> skills = this.skillsConfigService.loadSkills(cliType, projectPath);
+            this.invokeJSCallback(JsCallback.SKILLS, skills);
+        });
+    }
+
+    /**
+     * 处理从 GitHub 安装 Skill 请求。
+     *
+     * @param request 安装请求
+     */
+    private void handleInstallSkill(InstallSkillRequest request) {
+        this.asyncExecutor.submit(() -> {
+            String cliType = request.cliType();
+            SkillsConfigService.InstallResult result = this.skillsConfigService.installSkill(
+                    cliType, request.githubUrl(), request.skillPath(), request.scope());
+            this.invokeJSCallback(JsCallback.SKILL_INSTALLED,
+                    new SkillActionPayload(result.success(), cliType, result.message()));
+            if (result.success()) {
+                List<SkillEntry> skills = this.skillsConfigService.loadSkills(cliType, this.currentProjectPath);
+                this.invokeJSCallback(JsCallback.SKILLS, skills);
+            }
+        });
+    }
+
+    /**
+     * 处理删除 Skill 请求。
+     *
+     * @param request 删除请求
+     */
+    private void handleDeleteSkill(DeleteSkillRequest request) {
+        this.asyncExecutor.submit(() -> {
+            String cliType = request.cliType();
+            SkillsConfigService.DeleteResult result = this.skillsConfigService.deleteSkill(
+                    cliType, request.skillName(), request.skillPath());
+            this.invokeJSCallback(JsCallback.SKILL_DELETED,
+                    new SkillActionPayload(result.success(), cliType, result.message()));
+            if (result.success()) {
+                List<SkillEntry> skills = this.skillsConfigService.loadSkills(cliType, this.currentProjectPath);
+                this.invokeJSCallback(JsCallback.SKILLS, skills);
+            }
+        });
+    }
+
+    /**
+     * 处理读取 Skill 内容请求。
+     *
+     * @param request 内容读取请求
+     */
+    private void handleReadSkillContent(ReadSkillContentRequest request) {
+        this.asyncExecutor.submit(() -> {
+            String content = this.skillsConfigService.readSkillContent(request.skillPath());
+            this.invokeJSCallback(JsCallback.SKILL_CONTENT,
+                    new SkillContentPayload(request.skillPath(), content != null ? content : ""));
         });
     }
 
@@ -904,7 +1341,7 @@ public class JCEFMessageBridge {
                 return;
             }
 
-            JsAction jsAction = JsAction.fromValue(envelope.action());
+            JsAction jsAction = ValueEnum.fromValue(JsAction.class, envelope.action());
             if (jsAction == null) {
                 log.debug("Unknown JS action: {}", envelope.action());
                 return;
@@ -1002,7 +1439,8 @@ public class JCEFMessageBridge {
      * @param fileReferences 文件引用列表
      */
     private record SendMessageRequest(String action, String text, String cliType, String sessionId,
-                                      String modelId, List<FileReferencePayload> fileReferences) implements JsRequest {
+                                      String modelId, String reasoningLevel,
+                                      List<FileReferencePayload> fileReferences) implements JsRequest {
     }
 
     /**
@@ -1200,5 +1638,274 @@ public class JCEFMessageBridge {
      * @param sessionIds   请求删除的会话 ID
      */
     private record SessionsDeletedPayload(int deletedCount, List<String> sessionIds) {
+    }
+
+    /**
+     * 保存 CLI 配置请求。
+     *
+     * @param action   动作名称
+     * @param cliType  CLI 类型
+     * @param claude   Claude 配置
+     * @param opencode OpenCode 配置
+     * @param codex    Codex 配置
+     */
+    private record SaveCliConfigsRequest(String action, String cliType,
+                                         ClaudeConfig claude, OpenCodeConfig opencode,
+                                         CodexConfig codex) implements JsRequest {
+    }
+
+    /**
+     * 保存 CLI 配置档案请求。
+     *
+     * @param action  动作名称
+     * @param cliType CLI 类型
+     * @param profile 配置档案数据
+     */
+    private record SaveCliProfileRequest(String action, String cliType,
+                                          CliProfile profile) implements JsRequest {
+    }
+
+    /**
+     * 删除 CLI 配置档案请求。
+     *
+     * @param action    动作名称
+     * @param cliType   CLI 类型
+     * @param profileId 档案 ID
+     */
+    private record DeleteCliProfileRequest(String action, String cliType,
+                                            String profileId) implements JsRequest {
+    }
+
+    /**
+     * 应用 CLI 配置档案请求（切换到指定档案）。
+     *
+     * @param action    动作名称
+     * @param cliType   CLI 类型
+     * @param profileId 档案 ID
+     */
+    private record ApplyCliProfileRequest(String action, String cliType,
+                                           String profileId) implements JsRequest {
+    }
+
+    /**
+     * CLI 配置数据回调载荷。
+     *
+     * @param configs   CLI 配置集合
+     * @param providers OpenCode 可用 Provider 列表
+     * @param profiles  CLI 类型到配置档案列表的映射
+     */
+    private record CliConfigsPayload(CliConfigs configs,
+                                     List<CliConfigService.ProviderInfo> providers,
+                                     java.util.Map<String, List<CliProfile>> profiles) {
+    }
+
+    /**
+     * CLI 配置保存结果回调载荷。
+     *
+     * @param success 是否成功
+     * @param cliType CLI 类型
+     * @param message 错误信息
+     */
+    private record CliConfigsSavedPayload(boolean success, String cliType, String message) {
+    }
+
+    /**
+     * 获取 MCP 配置列表请求。
+     *
+     * @param action 动作名称
+     * @param cliType CLI 类型
+     */
+    private record McpConfigsRequest(String action, String cliType) implements JsRequest {
+    }
+
+    /**
+     * 保存 MCP 服务器配置请求。
+     *
+     * @param action   动作名称
+     * @param cliType  CLI 类型
+     * @param scope    作用域：user 或 project
+     * @param name     服务器名称
+     * @param type     传输类型
+     * @param command  启动命令
+     * @param args     命令参数
+     * @param env      环境变量
+     * @param url      服务器地址
+     * @param enabled  是否启用
+     */
+    private record SaveMcpServerRequest(String action, String cliType, String scope,
+                                        String name, String type, String command,
+                                        List<String> args, Map<String, String> env,
+                                        String url, boolean enabled) implements JsRequest {
+        /**
+         * 转为 {@link McpServerEntry} 实体。
+         *
+         * @return MCP 服务器条目
+         */
+        McpServerEntry toEntry() {
+            return McpServerEntry.builder()
+                    .name(this.name).type(this.type).command(this.command)
+                    .args(this.args != null ? this.args : List.of())
+                    .env(this.env != null ? this.env : Map.of())
+                    .url(this.url).enabled(this.enabled).scope(this.scope)
+                    .configPath(null)
+                    .build();
+        }
+    }
+
+    /**
+     * 删除 MCP 服务器配置请求。
+     *
+     * @param action     动作名称
+     * @param cliType    CLI 类型
+     * @param scope      作用域
+     * @param serverName 服务器名称
+     */
+    private record DeleteMcpServerRequest(String action, String cliType,
+                                           String scope, String serverName) implements JsRequest {
+    }
+
+    /**
+     * MCP 配置保存结果回调载荷。
+     *
+     * @param success 是否成功
+     * @param cliType CLI 类型
+     * @param message 错误信息
+     */
+    private record McpSavedPayload(boolean success, String cliType, String message) {
+    }
+
+    /**
+     * 测试连接 MCP 服务器请求。
+     *
+     * @param action     动作名称
+     * @param cliType    CLI 类型
+     * @param scope      作用域
+     * @param serverName 服务器名称
+     */
+    private record TestMcpConnectRequest(String action, String cliType,
+                                         String scope, String serverName) implements JsRequest {
+    }
+
+    /**
+     * 列出 MCP 工具请求。
+     *
+     * @param action       动作名称
+     * @param connectionId 连接 ID
+     */
+    private record ListMcpToolsRequest(String action, String connectionId) implements JsRequest {
+    }
+
+    /**
+     * 调用 MCP 工具请求。
+     *
+     * @param action       动作名称
+     * @param connectionId 连接 ID
+     * @param toolName     工具名称
+     * @param arguments    工具参数
+     */
+    private record CallMcpToolRequest(String action, String connectionId,
+                                      String toolName,
+                                      Map<String, Object> arguments) implements JsRequest {
+    }
+
+    /**
+     * MCP 测试连接结果回调载荷。
+     *
+     * @param success      是否成功
+     * @param connectionId 连接 ID
+     * @param serverName   MCP 服务器名称
+     * @param serverInfo   服务器信息或错误信息
+     * @param tools        工具列表
+     */
+    private record McpTestConnectedPayload(boolean success, String connectionId,
+                                           String serverName, String serverInfo,
+                                           List<McpTestService.ToolInfo> tools,
+                                           String transportType,
+                                           Map<String, String> env) {
+    }
+
+    /**
+     * MCP 工具列表回调载荷。
+     *
+     * @param connectionId 连接 ID
+     * @param tools        工具列表
+     */
+    private record McpToolsPayload(String connectionId,
+                                   List<McpTestService.ToolInfo> tools) {
+    }
+
+    /**
+     * MCP 工具调用结果回调载荷。
+     *
+     * @param connectionId 连接 ID
+     * @param toolName     工具名称
+     * @param result       调用结果
+     */
+    private record McpToolResultPayload(String connectionId, String toolName,
+                                        McpTestService.ToolCallResult result) {
+    }
+
+    // ==================== Skills Request DTOs ====================
+
+    /**
+     * 获取 Skills 列表请求。
+     *
+     * @param action 动作名称
+     * @param cliType CLI 类型
+     */
+    private record GetSkillsRequest(String action, String cliType) implements JsRequest {
+    }
+
+    /**
+     * 从 GitHub 安装 Skill 请求。
+     *
+     * @param action    动作名称
+     * @param cliType   CLI 类型
+     * @param githubUrl GitHub 仓库地址
+     * @param skillPath skill 在仓库中的路径
+     * @param scope     安装作用域：user 或 project
+     */
+    private record InstallSkillRequest(String action, String cliType, String githubUrl,
+                                        String skillPath, String scope) implements JsRequest {
+    }
+
+    /**
+     * 删除 Skill 请求。
+     *
+     * @param action    动作名称
+     * @param cliType   CLI 类型
+     * @param skillName skill 名称
+     * @param skillPath skill 目录路径
+     */
+    private record DeleteSkillRequest(String action, String cliType,
+                                       String skillName, String skillPath) implements JsRequest {
+    }
+
+    /**
+     * 读取 Skill 内容请求。
+     *
+     * @param action    动作名称
+     * @param skillPath skill 目录路径
+     */
+    private record ReadSkillContentRequest(String action, String skillPath) implements JsRequest {
+    }
+
+    /**
+     * Skill 操作结果回调载荷。
+     *
+     * @param success 是否成功
+     * @param cliType CLI 类型
+     * @param message 结果消息
+     */
+    private record SkillActionPayload(boolean success, String cliType, String message) {
+    }
+
+    /**
+     * Skill 内容回调载荷。
+     *
+     * @param skillPath skill 目录路径
+     * @param content   SKILL.md 完整内容
+     */
+    private record SkillContentPayload(String skillPath, String content) {
     }
 }

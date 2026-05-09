@@ -27,14 +27,4 @@ public enum MessageType implements ValueEnum<String> {
     MessageType(String value) {
         this.value = value;
     }
-
-    /**
-     * 根据字符串值解析消息类型枚举。
-     *
-     * @param value 类型字符串
-     * @return 对应的消息类型枚举，无法匹配时返回 {@code null}
-     */
-    public static MessageType fromValue(String value) {
-        return ValueEnum.fromValue(MessageType.class, value);
-    }
 }

@@ -30,14 +30,4 @@ public enum ToolCallStatus implements ValueEnum<String> {
     ToolCallStatus(String value) {
         this.value = value;
     }
-
-    /**
-     * 根据字符串值解析工具调用状态枚举。
-     *
-     * @param value 状态字符串
-     * @return 对应的工具调用状态枚举，无法匹配时返回 {@code null}
-     */
-    public static ToolCallStatus fromValue(String value) {
-        return ValueEnum.fromValue(ToolCallStatus.class, value);
-    }
 }

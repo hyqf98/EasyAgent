@@ -1,5 +1,6 @@
 package io.github.easyagent.ai.opencode.enums;
 
+import io.github.easyagent.enums.ValueEnum;
 import lombok.Getter;
 
 /**
@@ -13,16 +14,23 @@ import lombok.Getter;
  * @since 1.0.0
  */
 @Getter
-public enum OpenCodeEventType {
+public enum OpenCodeEventType implements ValueEnum<String> {
 
     /** 推理步骤开始。 */
-    STEP_START,
+    STEP_START("step_start"),
     /** AI 文本输出。 */
-    TEXT,
+    TEXT("text"),
     /** AI 思考/推理。 */
-    REASONING,
+    REASONING("reasoning"),
     /** 工具调用。 */
-    TOOL_USE,
+    TOOL_USE("tool_use"),
     /** 推理步骤结束。 */
-    STEP_FINISH
+    STEP_FINISH("step_finish");
+
+    /** 类型标识值。 */
+    private final String value;
+
+    OpenCodeEventType(String value) {
+        this.value = value;
+    }
 }

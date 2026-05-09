@@ -71,6 +71,7 @@ public final class FileReferenceService {
      * @param files 选中的文件数组
      * @return 文件引用列表
      */
+    @SuppressWarnings("deprecation")
     public List<FileReferencePayload> createReferences(VirtualFile[] files) {
         return ReadAction.compute(() -> this.createReferencesInternal(files));
     }
@@ -105,6 +106,7 @@ public final class FileReferenceService {
      * @param file   当前文件
      * @return 文件引用；无法生成时返回 {@code null}
      */
+    @SuppressWarnings("deprecation")
     public FileReferencePayload createReference(@NotNull Editor editor, @Nullable VirtualFile file) {
         return ReadAction.compute(() -> this.createEditorReferenceInternal(editor, file));
     }
@@ -139,6 +141,7 @@ public final class FileReferenceService {
      * @param filePath 文件绝对路径
      * @return 完整文件引用；找不到文件时返回 {@code null}
      */
+    @SuppressWarnings("deprecation")
     public FileReferencePayload createReference(String filePath) {
         return ReadAction.compute(() -> this.createPathReferenceInternal(filePath));
     }
@@ -213,6 +216,7 @@ public final class FileReferenceService {
      * @param limit 返回数量限制
      * @return 候选列表
      */
+    @SuppressWarnings("deprecation")
     public List<FileReferenceCandidatePayload> searchCandidates(String query, Integer limit) {
         return ReadAction.compute(() -> this.searchCandidatesInternal(query, limit));
     }

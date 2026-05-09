@@ -21,6 +21,7 @@ import lombok.experimental.SuperBuilder;
 @EqualsAndHashCode(callSuper = true)
 public class ClaudeResultUsage extends ClaudeUsage {
 
+    /** 服务层级。 */
     @SerializedName("service_tier")
     private String serviceTier;
 }

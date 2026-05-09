@@ -118,8 +118,6 @@ public class MessageConverter {
     /** JSON 字段名：最大重试次数。 */
     private static final String FIELD_MAX_ATTEMPTS = "maxAttempts";
 
-
-
     /**
      * 将历史会话消息列表转换为前端 JSON。
      *

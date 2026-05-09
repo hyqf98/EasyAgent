@@ -2,9 +2,10 @@ package io.github.easyagent.session.reader;
 
 import com.google.gson.reflect.TypeToken;
 import io.github.easyagent.enums.CLIType;
-import org.sqlite.JDBC;
 import io.github.easyagent.enums.ContentBlockType;
 import io.github.easyagent.enums.SessionRole;
+import io.github.easyagent.enums.ValueEnum;
+import org.sqlite.JDBC;
 import io.github.easyagent.session.entity.ContentBlock;
 import io.github.easyagent.session.entity.SessionInfo;
 import io.github.easyagent.session.entity.SessionMessage;
@@ -218,7 +219,7 @@ public class OpenCodeSessionReader implements SessionReader {
                         .uuid(messageId)
                         .parentUuid(parentId)
                         .sessionId(sessionId)
-                        .role(SessionRole.fromValue(role))
+                        .role(ValueEnum.fromValue(SessionRole.class, role))
                         .model(model)
                         .timestamp(timeCreated)
                         .contents(parts)

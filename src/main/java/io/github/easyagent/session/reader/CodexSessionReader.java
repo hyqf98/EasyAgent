@@ -4,6 +4,7 @@ import com.google.gson.reflect.TypeToken;
 import io.github.easyagent.enums.CLIType;
 import io.github.easyagent.enums.ContentBlockType;
 import io.github.easyagent.enums.SessionRole;
+import io.github.easyagent.enums.ValueEnum;
 import io.github.easyagent.session.entity.ContentBlock;
 import io.github.easyagent.session.entity.SessionInfo;
 import io.github.easyagent.session.entity.SessionMessage;
@@ -222,7 +223,7 @@ public class CodexSessionReader implements SessionReader {
         }
 
         List<ContentBlock> contents = parseContentBlocks(payload.get("content"));
-        SessionRole sessionRole = SessionRole.fromValue(role);
+        SessionRole sessionRole = ValueEnum.fromValue(SessionRole.class, role);
         return SessionMessage.builder()
                 .sessionId(sessionId)
                 .role(sessionRole != null ? sessionRole : SessionRole.ASSISTANT)

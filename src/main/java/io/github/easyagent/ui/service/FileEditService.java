@@ -24,6 +24,7 @@ import com.intellij.openapi.vfs.VirtualFile;
 import io.github.easyagent.ai.entity.ToolCallContent;
 import io.github.easyagent.enums.CLIType;
 import io.github.easyagent.enums.ToolCallStatus;
+import io.github.easyagent.settings.EasyAgentAppState;
 import io.github.easyagent.settings.EasyAgentState;
 import io.github.easyagent.session.SessionService;
 import io.github.easyagent.session.entity.ContentBlock;
@@ -51,6 +52,7 @@ import java.util.concurrent.atomic.AtomicReference;
  * @date 2026/5/7
  * @since 1.0.0
  */
+@SuppressWarnings("deprecation")
 public final class FileEditService {
 
     /** 通知组 ID。 */
@@ -558,17 +560,17 @@ public final class FileEditService {
             return tracked != null ? tracked : this.resolveTrackedEditByPayload(editId, toolCallId, path);
         }
         FileEditSnapshot snapshot = GsonUtils.fromJson(snapshotJson, FileEditSnapshot.class);
-        if (snapshot == null || snapshot.path() == null || snapshot.path().isBlank()) {
+        if (snapshot == null || snapshot.getPath() == null || snapshot.getPath().isBlank()) {
             this.rebuildCurrentSessionHistory();
             tracked = editId != null ? this.trackedEdits.get(editId) : null;
             return tracked != null ? tracked : this.resolveTrackedEditByPayload(editId, toolCallId, path);
         }
         TrackedFileEdit restored = new TrackedFileEdit(snapshot.toPayload(),
-                this.existsFlag(snapshot.beforeExists(), snapshot.beforeContent()),
-                snapshot.beforeContent(),
-                this.existsFlag(snapshot.afterExists(), snapshot.afterContent()),
-                snapshot.afterContent(),
-                ReadAction.compute(() -> findFile(snapshot.path())));
+                this.existsFlag(snapshot.getBeforeExists(), snapshot.getBeforeContent()),
+                snapshot.getBeforeContent(),
+                this.existsFlag(snapshot.getAfterExists(), snapshot.getAfterContent()),
+                snapshot.getAfterContent(),
+                ReadAction.compute(() -> findFile(snapshot.getPath())));
         this.trackedEdits.put(editId, restored);
         return restored;
     }
@@ -582,7 +584,7 @@ public final class FileEditService {
         }
         EasyAgentState state = EasyAgentState.getInstance(this.project);
         String sessionId = state.getCurrentSessionId();
-        String cliType = state.getCurrentCliType();
+        String cliType = EasyAgentAppState.getInstance().getCurrentCliType();
         if (sessionId == null || sessionId.isBlank() || cliType == null || cliType.isBlank()) {
             return;
         }
@@ -628,12 +630,12 @@ public final class FileEditService {
                     continue;
                 }
                 TrackedFileEdit restored = new TrackedFileEdit(snapshot.toPayload(),
-                        this.existsFlag(snapshot.beforeExists(), snapshot.beforeContent()),
-                        snapshot.beforeContent(),
-                        this.existsFlag(snapshot.afterExists(), snapshot.afterContent()),
-                        snapshot.afterContent(),
-                        ReadAction.compute(() -> findFile(snapshot.path())));
-                this.trackedEdits.put(snapshot.editId(), restored);
+                        this.existsFlag(snapshot.getBeforeExists(), snapshot.getBeforeContent()),
+                        snapshot.getBeforeContent(),
+                        this.existsFlag(snapshot.getAfterExists(), snapshot.getAfterContent()),
+                        snapshot.getAfterContent(),
+                        ReadAction.compute(() -> findFile(snapshot.getPath())));
+                this.trackedEdits.put(snapshot.getEditId(), restored);
                 if (editId != null && !editId.isBlank()) {
                     this.trackedEdits.putIfAbsent(editId, restored);
                 }
@@ -669,16 +671,16 @@ public final class FileEditService {
             }
             try {
                 FileEditSnapshot snapshot = GsonUtils.fromJson(snapshotJson, FileEditSnapshot.class);
-                if (snapshot == null || !toolCallId.equals(snapshot.toolCallId())) {
+                if (snapshot == null || !toolCallId.equals(snapshot.getToolCallId())) {
                     continue;
                 }
                 TrackedFileEdit restored = new TrackedFileEdit(snapshot.toPayload(),
-                        this.existsFlag(snapshot.beforeExists(), snapshot.beforeContent()),
-                        snapshot.beforeContent(),
-                        this.existsFlag(snapshot.afterExists(), snapshot.afterContent()),
-                        snapshot.afterContent(),
-                        ReadAction.compute(() -> findFile(snapshot.path())));
-                this.trackedEdits.put(snapshot.editId(), restored);
+                        this.existsFlag(snapshot.getBeforeExists(), snapshot.getBeforeContent()),
+                        snapshot.getBeforeContent(),
+                        this.existsFlag(snapshot.getAfterExists(), snapshot.getAfterContent()),
+                        snapshot.getAfterContent(),
+                        ReadAction.compute(() -> findFile(snapshot.getPath())));
+                this.trackedEdits.put(snapshot.getEditId(), restored);
                 return restored;
             } catch (Exception ignored) {
             }
@@ -749,15 +751,15 @@ public final class FileEditService {
             }
             try {
                 FileEditSnapshot snapshot = GsonUtils.fromJson(snapshotJson, FileEditSnapshot.class);
-                if (snapshot == null || snapshot.editId() == null || snapshot.path() == null) {
+                if (snapshot == null || snapshot.getEditId() == null || snapshot.getPath() == null) {
                     continue;
                 }
-                this.trackedEdits.put(snapshot.editId(), new TrackedFileEdit(snapshot.toPayload(),
-                        this.existsFlag(snapshot.beforeExists(), snapshot.beforeContent()),
-                        snapshot.beforeContent(),
-                        this.existsFlag(snapshot.afterExists(), snapshot.afterContent()),
-                        snapshot.afterContent(),
-                        ReadAction.compute(() -> findFile(snapshot.path()))));
+                this.trackedEdits.put(snapshot.getEditId(), new TrackedFileEdit(snapshot.toPayload(),
+                        this.existsFlag(snapshot.getBeforeExists(), snapshot.getBeforeContent()),
+                        snapshot.getBeforeContent(),
+                        this.existsFlag(snapshot.getAfterExists(), snapshot.getAfterContent()),
+                        snapshot.getAfterContent(),
+                        ReadAction.compute(() -> findFile(snapshot.getPath()))));
             } catch (Exception ignored) {
             }
         }

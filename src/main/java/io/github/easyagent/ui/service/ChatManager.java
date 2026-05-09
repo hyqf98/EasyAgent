@@ -79,18 +79,19 @@ public class ChatManager {
      * @param cliType   目标 CLI 类型
      * @param projectPath 当前项目路径
      * @param modelId   模型 ID，为 {@code null} 时使用默认模型
+     * @param reasoningLevel 推理等级，为 {@code null} 时使用默认
      * @param listener  流式事件监听器
      */
     public void sendMessage(@NotNull String text, @Nullable String sessionId,
                             @NotNull CLIType cliType, @Nullable String projectPath,
-                            @Nullable String modelId,
+                            @Nullable String modelId, @Nullable String reasoningLevel,
                             @NotNull StreamEventListener listener) {
         this.currentCLIType = cliType;
         AIProvider provider = this.getOrCreateProvider(cliType);
         if (provider instanceof AbstractCLIProvider cliProvider) {
             cliProvider.setWorkingDirectory(projectPath);
         }
-        provider.chat(text, sessionId, modelId, listener);
+        provider.chat(text, sessionId, modelId, reasoningLevel, listener);
     }
 
     /**

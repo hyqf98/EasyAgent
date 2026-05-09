@@ -37,24 +37,50 @@ public class ClaudeCLIProvider extends AbstractCLIProvider {
         GsonUtils.registerEnums(ClaudeEventType.class, ClaudeContentType.class);
     }
 
+    /**
+     * 使用默认命令路径构造（不重试）。
+     */
     public ClaudeCLIProvider() {
         super(CLIType.CLAUDE);
     }
 
+    /**
+     * 使用自定义命令路径构造（不重试）。
+     *
+     * @param commandPath 自定义命令路径
+     */
     public ClaudeCLIProvider(String commandPath) {
         super(CLIType.CLAUDE, commandPath);
     }
 
+    /**
+     * 使用自定义命令路径和重试配置构造。
+     *
+     * @param commandPath 自定义命令路径
+     * @param retryConfig 重试配置
+     */
     public ClaudeCLIProvider(String commandPath, RetryConfig retryConfig) {
         super(CLIType.CLAUDE, commandPath, retryConfig);
     }
 
+    /**
+     * 构建 CLI 执行命令行。
+     *
+     * @param prompt         用户提示内容
+     * @param sessionId      可选的会话 ID
+     * @param modelId        可选的模型 ID
+     * @param reasoningLevel 可选的推理等级
+     * @return 配置好的命令行对象
+     */
     @Override
-    protected GeneralCommandLine buildCommandLine(String prompt, String sessionId, String modelId) {
-        GeneralCommandLine cmd = super.buildCommandLine(prompt, sessionId, modelId);
+    protected GeneralCommandLine buildCommandLine(String prompt, String sessionId, String modelId, String reasoningLevel) {
+        GeneralCommandLine cmd = super.buildCommandLine(prompt, sessionId, modelId, reasoningLevel);
         cmd.addParameters("-p", "--output-format", "stream-json", "--verbose", "--dangerously-skip-permissions");
         if (GsonUtils.isNotEmpty(modelId)) {
             cmd.addParameters("--model", modelId);
+        }
+        if (GsonUtils.isNotEmpty(reasoningLevel)) {
+            cmd.addParameters("--effort", reasoningLevel);
         }
         if (GsonUtils.isNotEmpty(sessionId) && !sessionId.startsWith("new-")) {
             cmd.addParameters("--resume", sessionId);

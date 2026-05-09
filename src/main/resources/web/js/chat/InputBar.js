@@ -94,6 +94,7 @@ window.EARegisterComponent('input-bar', 'InputBar', {
         return {
             isComposing: false,
             showModelDropdown: false,
+            showReasoningDropdown: false,
             fileReferences: [],
             referenceRegistry: {},
             composerEmpty: true,
@@ -135,12 +136,25 @@ window.EARegisterComponent('input-bar', 'InputBar', {
                 if (models[i].modelId === selected) return models[i].displayName || models[i].modelId;
             }
             return selected;
+        },
+        currentReasoningLevels() {
+            var map = this.store.reasoningLevelsMap || {};
+            var cliType = this.store.cliType;
+            return map[cliType] || [];
+        },
+        currentReasoningLabel() {
+            var level = this.store.selectedReasoningLevel;
+            if (!level) return this.i18n.t('chat.reasoningDefault');
+            return this.i18n.t('chat.reasoning_' + level) || level;
         }
     },
     mounted() {
         this._onClickOutside = function (e) {
             if (this.showModelDropdown && !e.target.closest('.model-dropdown-wrapper')) {
                 this.showModelDropdown = false;
+            }
+            if (this.showReasoningDropdown && !e.target.closest('.reasoning-dropdown-wrapper')) {
+                this.showReasoningDropdown = false;
             }
             if (this.showFileSearch && !e.target.closest('.input-wrapper')) {
                 this.closeFileSearch();
@@ -218,6 +232,10 @@ window.EARegisterComponent('input-bar', 'InputBar', {
         selectModel(modelId) {
             this.store.selectedModelId = modelId;
             this.showModelDropdown = false;
+        },
+        selectReasoningLevel(level) {
+            this.store.selectedReasoningLevel = level;
+            this.showReasoningDropdown = false;
         },
         requestSlashCommands() {
             var cliType = this.store.cliType;

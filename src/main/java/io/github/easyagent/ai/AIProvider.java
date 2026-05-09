@@ -52,6 +52,18 @@ public interface AIProvider {
     void chat(String prompt, String sessionId, String modelId, StreamEventListener listener);
 
     /**
+     * 发送提示消息（带可选会话 ID、模型 ID 和推理等级）并流式监听响应。
+     *
+     * @param prompt         用户输入的提示内容
+     * @param sessionId      会话 ID，为 null 时创建新会话
+     * @param modelId        模型 ID，为 null 时使用 CLI 默认模型
+     * @param reasoningLevel 推理等级，为 null 时使用默认
+     * @param listener       流式事件监听器
+     * @since 1.0.0
+     */
+    void chat(String prompt, String sessionId, String modelId, String reasoningLevel, StreamEventListener listener);
+
+    /**
      * 停止当前正在运行的 CLI 进程。
      *
      * @since 1.0.0

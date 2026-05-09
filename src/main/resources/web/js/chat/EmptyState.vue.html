@@ -18,10 +18,12 @@
     </template>
     <template v-if="cliChecked && !hasCLIs">
         <div class="empty-state-desc">{{ i18n.t('welcome.noCliDesc') }}</div>
-        <button class="empty-settings-btn" @click="openSettings">
-            <span class="empty-settings-icon">⚙</span>
-            <span>{{ i18n.t('welcome.goSettings') }}</span>
-        </button>
+        <div class="empty-state-install-hint">
+            <div class="install-item" v-for="item in installItems" :key="item.name">
+                <span class="install-name">{{ item.name }}</span>
+                <code class="install-cmd">{{ item.cmd }}</code>
+            </div>
+        </div>
     </template>
 </div>
 </template>

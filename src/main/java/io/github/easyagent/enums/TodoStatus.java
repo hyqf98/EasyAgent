@@ -33,14 +33,4 @@ public enum TodoStatus implements ValueEnum<String> {
     TodoStatus(String value) {
         this.value = value;
     }
-
-    /**
-     * 根据字符串值解析待办状态枚举。
-     *
-     * @param value 状态字符串
-     * @return 对应的待办状态枚举，无法匹配时返回 {@code null}
-     */
-    public static TodoStatus fromValue(String value) {
-        return ValueEnum.fromValue(TodoStatus.class, value);
-    }
 }

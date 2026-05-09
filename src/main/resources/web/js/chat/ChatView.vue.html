@@ -7,6 +7,7 @@
         :model="store.model"
         :message-count="store.messages.length"
         :in-chat="inChat"
+        :show-settings="showSettings"
         @toggle-drawer="toggleDrawer"
         @new-chat="onNewChat"
         @back-home="onBackHome"
@@ -63,9 +64,9 @@
                 @stop="onStop"
             ></message-bubble>
             </template>
-            <div v-if="showScrollBottom" class="scroll-bottom-btn" @click="scrollToBottom">
-                <span class="scroll-bottom-inner"><span class="scroll-bottom-arrow">↓</span></span>
-            </div>
+        </div>
+        <div v-if="showScrollBottom" class="scroll-bottom-btn" @click="scrollToBottom">
+            <span class="scroll-bottom-inner"><span class="scroll-bottom-arrow">↓</span></span>
         </div>
         <todo-list-block
             v-if="latestTodo"

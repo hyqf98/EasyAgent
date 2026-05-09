@@ -1,5 +1,6 @@
 package io.github.easyagent.ui.enums;
 
+import io.github.easyagent.enums.ValueEnum;
 import lombok.Getter;
 
 import java.awt.Color;
@@ -15,7 +16,7 @@ import java.awt.Color;
  * @since 1.0.0
  */
 @Getter
-public enum ThemeType {
+public enum ThemeType implements ValueEnum<Boolean> {
 
     /** 浅色主题。 */
     LIGHT(false),
@@ -28,6 +29,11 @@ public enum ThemeType {
 
     ThemeType(boolean dark) {
         this.dark = dark;
+    }
+
+    @Override
+    public Boolean getValue() {
+        return this.dark;
     }
 
     /**

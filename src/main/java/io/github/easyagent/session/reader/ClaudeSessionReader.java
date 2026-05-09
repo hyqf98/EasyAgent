@@ -4,6 +4,7 @@ import com.google.gson.reflect.TypeToken;
 import io.github.easyagent.enums.CLIType;
 import io.github.easyagent.enums.ContentBlockType;
 import io.github.easyagent.enums.SessionRole;
+import io.github.easyagent.enums.ValueEnum;
 import io.github.easyagent.session.entity.ContentBlock;
 import io.github.easyagent.session.entity.HistoricalFileEditData;
 import io.github.easyagent.session.entity.SessionInfo;
@@ -385,7 +386,7 @@ public class ClaudeSessionReader implements SessionReader {
                 .uuid(uuid)
                 .parentUuid(parentUuid)
                 .sessionId(sessionId)
-                .role(SessionRole.fromValue(role))
+                .role(ValueEnum.fromValue(SessionRole.class, role))
                 .model(model)
                 .cwd(cwd)
                 .timestamp(timestamp)

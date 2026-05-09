@@ -1,5 +1,6 @@
 package io.github.easyagent.ai.claude.enums;
 
+import io.github.easyagent.enums.ValueEnum;
 import lombok.Getter;
 
 /**
@@ -13,14 +14,21 @@ import lombok.Getter;
  * @since 1.0.0
  */
 @Getter
-public enum ClaudeEventType {
+public enum ClaudeEventType implements ValueEnum<String> {
 
     /** 系统初始化。 */
-    SYSTEM,
+    SYSTEM("system"),
     /** 助手响应。 */
-    ASSISTANT,
+    ASSISTANT("assistant"),
     /** 用户消息（包含工具执行结果）。 */
-    USER,
+    USER("user"),
     /** 最终结果。 */
-    RESULT
+    RESULT("result");
+
+    /** 类型标识值。 */
+    private final String value;
+
+    ClaudeEventType(String value) {
+        this.value = value;
+    }
 }

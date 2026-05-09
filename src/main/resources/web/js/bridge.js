@@ -86,26 +86,41 @@ window.EABridge = {
 
         window.__ea_onModels = (data) => {
             if (window.EAStore) {
-                var models = Array.isArray(data) ? data : (data.models || []);
-                var defaults = (data && data.defaultModels) ? data.defaultModels : null;
+                var models = [];
+                var levelsMap = {};
+                var defaultInfoMap = {};
+
+                if (data && data.cliGroups) {
+                    var groups = data.cliGroups;
+                    for (var cliKey in groups) {
+                        if (!groups.hasOwnProperty(cliKey)) continue;
+                        var group = groups[cliKey];
+                        var groupModels = group.models || [];
+                        groupModels.forEach(function (m) {
+                            m.cliType = cliKey;
+                            models.push(m);
+                        });
+                        if (group.reasoningLevels && group.reasoningLevels.length > 0) {
+                            levelsMap[cliKey] = group.reasoningLevels;
+                        }
+                        if (group.defaultModelInfo) {
+                            defaultInfoMap[cliKey] = group.defaultModelInfo;
+                        }
+                    }
+                }
+
                 var map = {};
-                var cliMap = {};
                 models.forEach(function (m) {
                     if (m.modelId && m.contextWindow) {
                         map[m.modelId] = m.contextWindow;
                     }
-                    if (m.cliType) {
-                        if (!cliMap[m.cliType]) cliMap[m.cliType] = [];
-                        cliMap[m.cliType].push(m);
-                    }
                 });
                 EAStore.modelContextMap = map;
                 EAStore.modelsList = models;
-                if (defaults) {
-                    EAStore.defaultModels = defaults;
-                }
+                EAStore.reasoningLevelsMap = levelsMap;
+                EAStore.defaultModelInfoMap = defaultInfoMap;
             }
-            window.dispatchEvent(new CustomEvent('ea-models-loaded', { detail: Array.isArray(data) ? data : (data.models || []) }));
+            window.dispatchEvent(new CustomEvent('ea-models-loaded', { detail: models }));
         };
 
         window.__ea_onCliModels = (data) => {
@@ -162,6 +177,72 @@ window.EABridge = {
             }));
         };
 
+        window.__ea_onCliConfigs = (data) => {
+            window.dispatchEvent(new CustomEvent('ea-cli-configs', {
+                detail: data || {}
+            }));
+        };
+
+        window.__ea_onCliConfigsSaved = (data) => {
+            window.dispatchEvent(new CustomEvent('ea-cli-configs-saved', {
+                detail: data || {}
+            }));
+        };
+
+        window.__ea_onMcpConfigs = (data) => {
+            window.dispatchEvent(new CustomEvent('ea-mcp-configs', {
+                detail: data || {}
+            }));
+        };
+
+        window.__ea_onMcpSaved = (data) => {
+            window.dispatchEvent(new CustomEvent('ea-mcp-saved', {
+                detail: data || {}
+            }));
+        };
+
+        window.__ea_onMcpTestConnected = (data) => {
+            window.dispatchEvent(new CustomEvent('ea-mcp-test-connected', {
+                detail: data || {}
+            }));
+        };
+
+        window.__ea_onMcpTools = (data) => {
+            window.dispatchEvent(new CustomEvent('ea-mcp-tools', {
+                detail: data || {}
+            }));
+        };
+
+        window.__ea_onMcpToolResult = (data) => {
+            window.dispatchEvent(new CustomEvent('ea-mcp-tool-result', {
+                detail: data || {}
+            }));
+        };
+
+        window.__ea_onSkills = (data) => {
+            window.dispatchEvent(new CustomEvent('ea-skills', {
+                detail: data || []
+            }));
+        };
+
+        window.__ea_onSkillInstalled = (data) => {
+            window.dispatchEvent(new CustomEvent('ea-skill-installed', {
+                detail: data || {}
+            }));
+        };
+
+        window.__ea_onSkillDeleted = (data) => {
+            window.dispatchEvent(new CustomEvent('ea-skill-deleted', {
+                detail: data || {}
+            }));
+        };
+
+        window.__ea_onSkillContent = (data) => {
+            window.dispatchEvent(new CustomEvent('ea-skill-content', {
+                detail: data || {}
+            }));
+        };
+
         if (window.cefQuery) {
             this.send('pageReady');
         }
@@ -174,10 +255,15 @@ window.EABridge = {
      * @param {Object} [data] - 附加数据对象
      */
     send(action, data) {
-        const payload = Object.assign({ action: action }, data || {});
-        const msg = JSON.stringify(payload);
+        var payload;
+        if (typeof action === 'object' && action !== null) {
+            payload = action;
+        } else {
+            payload = Object.assign({ action: action }, data || {});
+        }
+        var msg = JSON.stringify(payload);
         if (window.cefQuery) {
-            window.cefQuery({ request: msg, onSuccess: () => {}, onFailure: () => {} });
+            window.cefQuery({ request: msg, onSuccess: function() {}, onFailure: function() {} });
         }
     },
 
@@ -233,6 +319,8 @@ window.EABridge = {
         var sid = window.EAStore ? EAStore.sessionId : null;
         var data = { text: text, cliType: window.EAStore ? EAStore.cliType : 'CLAUDE', sessionId: sid };
         if (modelId) data.modelId = modelId;
+        var reasoningLevel = window.EAStore ? EAStore.selectedReasoningLevel : '';
+        if (reasoningLevel) data.reasoningLevel = reasoningLevel;
         if (fileReferences && fileReferences.length > 0) data.fileReferences = fileReferences;
         this.send('sendMessage', data);
     },
@@ -402,18 +490,119 @@ window.EABridge = {
          });
      },
 
-     /**
-      * 执行一个斜杠命令。
-      *
-      * @param {string} cliType - CLI 类型名称
-      * @param {string} rawText - 原始命令文本
-      * @param {string} requestId - 请求 ID
-      */
-     executeSlashCommand(cliType, rawText, requestId) {
-         this.send('executeSlashCommand', {
-             cliType: cliType,
-             rawText: rawText,
-             requestId: requestId || ''
-         });
-     }
- };
+      /**
+       * 执行一个斜杠命令。
+       *
+       * @param {string} cliType - CLI 类型名称
+       * @param {string} rawText - 原始命令文本
+       * @param {string} requestId - 请求 ID
+       */
+      executeSlashCommand(cliType, rawText, requestId) {
+          this.send('executeSlashCommand', {
+              cliType: cliType,
+              rawText: rawText,
+              requestId: requestId || ''
+          });
+      },
+
+      /**
+       * 获取 CLI 配置数据。
+       */
+      getCliConfigs() {
+          this.send('getCliConfigs');
+      },
+
+      /**
+       * 保存 CLI 配置。
+       *
+       * @param {string} cliType - CLI 类型名称
+       * @param {Object} config - 配置数据
+       */
+      saveCliConfigs(cliType, config) {
+          var data = { cliType: cliType };
+          if (cliType === 'CLAUDE') data.claude = config;
+          else if (cliType === 'OPENCODE') data.opencode = config;
+          else if (cliType === 'CODEX') data.codex = config;
+          this.send('saveCliConfigs', data);
+      },
+
+      /**
+       * 保存 CLI 配置档案（新增或更新）。
+       *
+       * @param {string} cliType - CLI 类型名称
+       * @param {Object} profile - 档案数据
+       */
+      saveCliProfile(cliType, profile) {
+          this.send('saveCliProfile', { cliType: cliType, profile: profile });
+      },
+
+      /**
+       * 删除 CLI 配置档案。
+       *
+       * @param {string} cliType - CLI 类型名称
+       * @param {string} profileId - 档案 ID
+       */
+      deleteCliProfile(cliType, profileId) {
+          this.send('deleteCliProfile', { cliType: cliType, profileId: profileId });
+      },
+
+      /**
+       * 应用 CLI 配置档案（切换到指定档案）。
+       *
+       * @param {string} cliType - CLI 类型名称
+       * @param {string} profileId - 档案 ID
+       */
+       applyCliProfile(cliType, profileId) {
+           this.send('applyCliProfile', { cliType: cliType, profileId: profileId });
+       },
+
+       /**
+        * 获取 Skills 技能列表。
+        *
+        * @param {string} cliType - CLI 类型名称
+        */
+       getSkills(cliType) {
+           this.send('getSkills', { cliType: cliType });
+       },
+
+       /**
+        * 从 GitHub 安装 Skill。
+        *
+        * @param {string} cliType - CLI 类型名称
+        * @param {string} githubUrl - GitHub 仓库地址
+        * @param {string} [skillPath] - skill 在仓库中的路径
+        * @param {string} [scope] - 安装作用域：user 或 project
+        */
+       installSkill(cliType, githubUrl, skillPath, scope) {
+           this.send('installSkill', {
+               cliType: cliType,
+               githubUrl: githubUrl,
+               skillPath: skillPath || '',
+               scope: scope || 'user'
+           });
+       },
+
+       /**
+        * 删除指定 Skill。
+        *
+        * @param {string} cliType - CLI 类型名称
+        * @param {string} skillName - skill 名称
+        * @param {string} skillPath - skill 目录路径
+        */
+       deleteSkill(cliType, skillName, skillPath) {
+           this.send('deleteSkill', {
+               cliType: cliType,
+               skillName: skillName,
+               skillPath: skillPath
+           });
+       },
+
+       /**
+        * 读取 Skill 的完整 SKILL.md 内容。
+        *
+        * @param {string} skillPath - skill 目录路径
+        */
+       readSkillContent(skillPath) {
+           this.send('readSkillContent', { skillPath: skillPath });
+       }
+   };
