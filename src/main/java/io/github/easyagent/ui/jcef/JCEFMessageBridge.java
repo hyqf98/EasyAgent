@@ -137,7 +137,8 @@ public class JCEFMessageBridge {
         this.cliConfigService = new CliConfigService();
         this.mcpConfigService = new McpConfigService();
         this.mcpTestService = new McpTestService();
-        this.skillsConfigService = new SkillsConfigService();
+        String basePath = project != null ? project.getBasePath() : null;
+        this.skillsConfigService = new SkillsConfigService(basePath);
         this.project = project;
         this.fileReferenceService = project != null ? project.getService(FileReferenceService.class) : null;
         this.chatUiBridgeService = project != null ? project.getService(ChatUiBridgeService.class) : null;
@@ -1031,9 +1032,7 @@ public class JCEFMessageBridge {
      */
     private void handleGetSkills(GetSkillsRequest request) {
         this.asyncExecutor.submit(() -> {
-            String cliType = request.cliType();
-            String projectPath = this.currentProjectPath;
-            List<SkillEntry> skills = this.skillsConfigService.loadSkills(cliType, projectPath);
+            List<SkillEntry> skills = this.skillsConfigService.loadSkills(request.cliType());
             this.invokeJSCallback(JsCallback.SKILLS, skills);
         });
     }
@@ -1051,7 +1050,7 @@ public class JCEFMessageBridge {
             this.invokeJSCallback(JsCallback.SKILL_INSTALLED,
                     new SkillActionPayload(result.success(), cliType, result.message()));
             if (result.success()) {
-                List<SkillEntry> skills = this.skillsConfigService.loadSkills(cliType, this.currentProjectPath);
+                List<SkillEntry> skills = this.skillsConfigService.loadSkills(cliType);
                 this.invokeJSCallback(JsCallback.SKILLS, skills);
             }
         });
@@ -1070,7 +1069,7 @@ public class JCEFMessageBridge {
             this.invokeJSCallback(JsCallback.SKILL_DELETED,
                     new SkillActionPayload(result.success(), cliType, result.message()));
             if (result.success()) {
-                List<SkillEntry> skills = this.skillsConfigService.loadSkills(cliType, this.currentProjectPath);
+                List<SkillEntry> skills = this.skillsConfigService.loadSkills(cliType);
                 this.invokeJSCallback(JsCallback.SKILLS, skills);
             }
         });

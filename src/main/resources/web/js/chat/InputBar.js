@@ -114,7 +114,8 @@ window.EARegisterComponent('input-bar', 'InputBar', {
             pendingSlashCommandRequestId: '',
             fileSearchTimer: null,
             lastSelectionRange: null,
-            pendingInsertRange: null
+            pendingInsertRange: null,
+            _commandJustInserted: false
         };
     },
     computed: {
@@ -712,6 +713,13 @@ window.EARegisterComponent('input-bar', 'InputBar', {
             this.activeCommandIndex = 0;
             this.activeSlashRange = null;
         },
+        isCaretWithinSlashRange() {
+            if (!this.activeSlashRange) return false;
+            var sel = window.getSelection ? window.getSelection() : null;
+            if (!sel || sel.rangeCount === 0 || !sel.isCollapsed) return false;
+            var caretOffset = this.computeSerializedOffset(sel.focusNode, sel.focusOffset);
+            return caretOffset > this.activeSlashRange.start && caretOffset <= this.activeSlashRange.end;
+        },
         moveActiveCommand(delta) {
             if (this.commandSearchResults.length === 0) return;
             var next = this.activeCommandIndex + delta;
@@ -728,9 +736,12 @@ window.EARegisterComponent('input-bar', 'InputBar', {
             this.pendingInsertRange = this.getCurrentSelectionRange()
                 || this.lastSelectionRange
                 || this.createRangeAtComposerEnd();
-            this.insertInlineTokenAtSelection(this.createCommandChip(candidate), true);
             this.closeCommandSearch();
+            this.insertInlineTokenAtSelection(this.createCommandChip(candidate), false);
+            this.insertTextAtSelection(' ');
+            this._commandJustInserted = true;
             this.$nextTick(function () {
+                this._commandJustInserted = false;
                 this.focusComposer();
             }.bind(this));
         },
@@ -906,6 +917,13 @@ window.EARegisterComponent('input-bar', 'InputBar', {
                 }
             }
             if (e.key === 'Backspace') {
+                if (this.activeSlashRange && this.isCaretWithinSlashRange()) {
+                    e.preventDefault();
+                    this.replaceSerializedRange(this.activeSlashRange.start, this.activeSlashRange.end, '');
+                    this.closeCommandSearch();
+                    this.refreshComposerState();
+                    return;
+                }
                 var prevChip = this.findAdjacentInlineToken('backward');
                 if (prevChip) {
                     e.preventDefault();
@@ -1040,6 +1058,9 @@ window.EARegisterComponent('input-bar', 'InputBar', {
             this.requestFileCandidates(mention.query);
         },
         syncCommandSearchState() {
+            if (this._commandJustInserted) {
+                return;
+            }
             var context = this.getMentionContext();
             if (!context) {
                 this.closeCommandSearch();

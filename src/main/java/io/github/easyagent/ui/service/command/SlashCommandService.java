@@ -69,6 +69,9 @@ public final class SlashCommandService {
     /** 命令扫描最大深度。 */
     private static final int MAX_SCAN_DEPTH = 8;
 
+    /** 已安装插件清单文件名。 */
+    private static final String INSTALLED_PLUGINS_FILE = "installed_plugins.json";
+
     /** Shell 输出最大长度。 */
     private static final int MAX_SHELL_OUTPUT_LENGTH = 4096;
 
@@ -445,6 +448,10 @@ public final class SlashCommandService {
 
     /**
      * 扫描插件目录中的命令与技能。
+     * <p>
+     * 优先读取 {@code installed_plugins.json} 清单，仅加载已安装的插件；
+     * 清单不存在时退化为扫描直接子目录（如 Codex 插件结构）。
+     * </p>
      *
      * @param definitions 命令定义集合
      * @param root       插件根目录
@@ -454,7 +461,69 @@ public final class SlashCommandService {
         if (!Files.isDirectory(root)) {
             return;
         }
-        try (Stream<Path> stream = Files.walk(root, MAX_SCAN_DEPTH)) {
+        List<Path> installPaths = this.resolveInstalledPluginPaths(root);
+        if (!installPaths.isEmpty()) {
+            for (Path installPath : installPaths) {
+                if (!Files.isDirectory(installPath)) {
+                    continue;
+                }
+                this.scanSinglePluginDir(definitions, installPath, cliType);
+            }
+            return;
+        }
+        try (Stream<Path> stream = Files.list(root)) {
+            stream.filter(Files::isDirectory)
+                    .forEach(dir -> this.scanSinglePluginDir(definitions, dir, cliType));
+        } catch (IOException e) {
+            log.debug("Failed to list plugin directories: {}", root, e);
+        }
+    }
+
+    /**
+     * 从 {@code installed_plugins.json} 解析已安装插件的路径列表。
+     *
+     * @param pluginsRoot 插件根目录（如 {@code ~/.claude/plugins}）
+     * @return 已安装插件的路径列表，无清单时返回空列表
+     */
+    private List<Path> resolveInstalledPluginPaths(Path pluginsRoot) {
+        Path manifest = pluginsRoot.resolve(INSTALLED_PLUGINS_FILE);
+        if (!Files.isRegularFile(manifest)) {
+            return List.of();
+        }
+        try {
+            String json = Files.readString(manifest, StandardCharsets.UTF_8);
+            InstalledPluginsDescriptor descriptor = io.github.easyagent.util.GsonUtils.fromJson(
+                    json, InstalledPluginsDescriptor.class);
+            if (descriptor == null || descriptor.plugins == null || descriptor.plugins.isEmpty()) {
+                return List.of();
+            }
+            List<Path> paths = new ArrayList<>();
+            for (List<InstalledPluginEntry> entries : descriptor.plugins.values()) {
+                if (entries == null) {
+                    continue;
+                }
+                for (InstalledPluginEntry entry : entries) {
+                    if (entry.installPath != null && !entry.installPath.isBlank()) {
+                        paths.add(Path.of(entry.installPath));
+                    }
+                }
+            }
+            return paths;
+        } catch (Exception e) {
+            log.debug("Failed to read installed plugins manifest: {}", manifest, e);
+            return List.of();
+        }
+    }
+
+    /**
+     * 扫描单个插件目录中的命令和技能文件。
+     *
+     * @param definitions 命令定义集合
+     * @param pluginDir   插件安装目录
+     * @param cliType     CLI 类型
+     */
+    private void scanSinglePluginDir(List<SlashCommandDefinition> definitions, Path pluginDir, CLIType cliType) {
+        try (Stream<Path> stream = Files.walk(pluginDir, MAX_SCAN_DEPTH)) {
             stream.filter(Files::isRegularFile)
                     .forEach(path -> {
                         String fileName = path.getFileName().toString();
@@ -466,7 +535,7 @@ public final class SlashCommandService {
                         }
                     });
         } catch (IOException e) {
-            log.debug("Failed to scan plugin directory: {}", root, e);
+            log.debug("Failed to scan plugin directory: {}", pluginDir, e);
         }
     }
 
@@ -976,6 +1045,28 @@ public final class SlashCommandService {
      * @since 1.0.0
      */
     private record MarkdownCommand(String description, String template) {
+    }
+
+    /**
+     * 已安装插件清单描述（对应 {@code installed_plugins.json}）。
+     *
+     * @param plugins 插件映射，key 为 {@code name@marketplace}，value 为安装条目列表
+     * @author haijun
+     * @date 2026/5/11
+     * @since 1.0.0
+     */
+    private record InstalledPluginsDescriptor(Map<String, List<InstalledPluginEntry>> plugins) {
+    }
+
+    /**
+     * 单个已安装插件条目。
+     *
+     * @param installPath 安装路径
+     * @author haijun
+     * @date 2026/5/11
+     * @since 1.0.0
+     */
+    private record InstalledPluginEntry(String installPath) {
     }
 
     /**
