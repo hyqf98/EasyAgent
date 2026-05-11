@@ -224,6 +224,12 @@ public abstract class AbstractCLIProvider implements AIProvider {
                 return;
             } catch (Exception e) {
                 lastException = e;
+                String msg = e.getMessage() != null ? e.getMessage() : "";
+                boolean manuallyStopped = msg.contains("137") || msg.contains("143");
+                if (manuallyStopped) {
+                    log.info("[CLI] Process manually stopped for session: {}", sessionId);
+                    return;
+                }
                 if (attempt < maxAttempts && !this.retryInterruptedFlags.containsKey(sessionId)) {
                     log.warn("[CLI] Failed (attempt {}/{}): {}", attempt, maxAttempts, e.getMessage());
                     listener.onResponse(this.createRetryStatus(attempt + 1, maxAttempts, e.getMessage()));
@@ -268,6 +274,10 @@ public abstract class AbstractCLIProvider implements AIProvider {
 
         this.activeProcesses.remove(sessionId);
         int exitCode = process.waitFor();
+        if (exitCode == 137 || exitCode == 143) {
+            log.info("[CLI] Process manually stopped (exit code: {}) for session: {}", exitCode, sessionId);
+            return;
+        }
         log.info("[CLI] Process exited with code: {} for session: {}", exitCode, sessionId);
         if (exitCode != 0) {
             throw new RuntimeException(this.buildProcessFailureMessage(exitCode, lastOutputLine));

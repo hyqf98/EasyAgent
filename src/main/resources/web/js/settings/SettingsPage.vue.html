@@ -60,6 +60,18 @@
                     </div>
                     <div class="settings-hint">{{ i18n.t('settings.retryHint') }}</div>
                 </div>
+                <div class="settings-section">
+                    <div class="settings-section-title">{{ i18n.t('settings.planMode') }}</div>
+                    <div class="settings-field">
+                        <label class="settings-label">{{ i18n.t('settings.planConcurrent') }}</label>
+                        <div class="settings-stepper">
+                            <button class="stepper-btn" @click="decrementPlanConcurrent">−</button>
+                            <span class="stepper-value">{{ store.planConcurrentTasks }}</span>
+                            <button class="stepper-btn" @click="incrementPlanConcurrent">+</button>
+                        </div>
+                    </div>
+                    <div class="settings-plan-hint">{{ i18n.t('settings.planConcurrentHint') }}</div>
+                </div>
             </div>
         </template>
 
@@ -84,6 +96,11 @@
                     </div>
                     <div class="model-filter-item cli-codex" :class="{ active: modelFilter === 'CODEX', disabled: isSyncing }" @click="!isSyncing && (modelFilter = 'CODEX')">
                         <span class="model-cli-dot codex"></span>Codex
+                    </div>
+                    <div class="model-search-box">
+                        <svg class="model-search-icon" width="12" height="12" viewBox="0 0 16 16" fill="none"><circle cx="6.5" cy="6.5" r="5.5" stroke="currentColor" stroke-width="1.5"/><path d="M11 11l3.5 3.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+                        <input type="text" class="model-search-input" v-model="modelSearch" :placeholder="i18n.t('settings.modelSearch') || 'Filter...'" />
+                        <button v-if="modelSearch" class="model-search-clear" @click="modelSearch = ''">×</button>
                     </div>
                 </div>
 
@@ -183,6 +200,11 @@
                                 <button class="icon-btn model-action-btn" @click="onCancelDefault">✕</button>
                             </span>
                         </template>
+                        <div v-else-if="row.rowType === 'provider-header'" class="model-provider-header">
+                            <span class="model-provider-dot"></span>
+                            <span class="model-provider-name">{{ row.provider }}</span>
+                            <span class="model-provider-count">{{ filteredModels.filter(function(m){ return (m.provider || 'other') === row.provider; }).length }}</span>
+                        </div>
                         <template v-else-if="editingIndex === row.modelIndex">
                             <span class="model-col-id"><input class="model-edit-input" v-model="editForm.modelId" /></span>
                             <span class="model-col-name"><input class="model-edit-input" v-model="editForm.displayName" /></span>

@@ -175,6 +175,10 @@ window.EARegisterComponent('message-bubble', 'MessageBubble', {
         toggleTool(block) { block.collapsed = !block.collapsed; },
         toggleSystemInfo(block) { block.collapsed = !block.collapsed; },
         renderMarkdown(text) { return EAMarkdown.render(text); },
+        stripTaskList(text) {
+            if (!text) return text;
+            return text.replace(/---TASK_LIST_START---[\s\S]*?---TASK_LIST_END---/g, '').trim();
+        },
         isUserMessage() { return this.message.role === 'USER'; },
         isReferenceBlock(b) { return b.type === 'REFERENCE' && !!b.reference; },
         isTextBlock(b) { return b.type === 'TEXT'; },

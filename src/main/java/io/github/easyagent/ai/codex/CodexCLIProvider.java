@@ -29,6 +29,8 @@ import java.util.List;
 @Slf4j
 public class CodexCLIProvider extends AbstractCLIProvider {
 
+    private volatile String currentThreadId;
+
     static {
         GsonUtils.registerEnums(CodexItemType.class);
     }
@@ -100,6 +102,7 @@ public class CodexCLIProvider extends AbstractCLIProvider {
         switch (type) {
             case "thread.started" -> {
                 String threadId = GsonUtils.getString(obj, "thread_id");
+                this.currentThreadId = threadId;
                 out.add(this.createStepStart(threadId, null));
             }
             case "turn.started" -> {
@@ -119,13 +122,14 @@ public class CodexCLIProvider extends AbstractCLIProvider {
         if (item.getType() == null) {
             return;
         }
+        String sid = this.currentThreadId;
         switch (item.getType()) {
             case AGENT_MESSAGE -> {
                 if (item.getText() != null) {
-                    out.add(this.createMessage(null, MessageType.TEXT, item.getText()));
+                    out.add(this.createMessage(sid, MessageType.TEXT, item.getText()));
                 }
             }
-            case TOOL_CALL -> out.add(this.createToolCall(null, item.getCallId(), item.getName(), null, ToolCallStatus.COMPLETED,
+            case TOOL_CALL -> out.add(this.createToolCall(sid, item.getCallId(), item.getName(), null, ToolCallStatus.COMPLETED,
                     item.getArguments(), null));
         }
     }
@@ -142,6 +146,6 @@ public class CodexCLIProvider extends AbstractCLIProvider {
                     .reasoning(usage.reasoningOutputTokens())
                     .build();
         }
-        out.add(this.createStepFinish(null, "stop", tokenUsage));
+        out.add(this.createStepFinish(this.currentThreadId, "stop", tokenUsage));
     }
 }

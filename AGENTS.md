@@ -112,7 +112,7 @@ io.github.easyagent
 <!-- gitnexus:start -->
 # GitNexus — Code Intelligence
 
-This project is indexed by GitNexus as **EasyAgent** (3294 symbols, 7969 relationships, 286 execution flows). Use the GitNexus MCP tools to understand code, assess impact, and navigate safely.
+This project is indexed by GitNexus as **EasyAgent** (4172 symbols, 9822 relationships, 300 execution flows). Use the GitNexus MCP tools to understand code, assess impact, and navigate safely.
 
 > If any GitNexus tool warns the index is stale, run `npx gitnexus analyze` in terminal first.
 
@@ -150,25 +150,5 @@ This project is indexed by GitNexus as **EasyAgent** (3294 symbols, 7969 relatio
 | Rename / extract / split / refactor | `.claude/skills/gitnexus/gitnexus-refactoring/SKILL.md` |
 | Tools, resources, schema reference | `.claude/skills/gitnexus/gitnexus-guide/SKILL.md` |
 | Index, status, clean, wiki CLI commands | `.claude/skills/gitnexus/gitnexus-cli/SKILL.md` |
-| Work in the Service area (107 symbols) | `.claude/skills/generated/service/SKILL.md` |
-| Work in the Reader area (75 symbols) | `.claude/skills/generated/reader/SKILL.md` |
-| Work in the Cluster_2 area (65 symbols) | `.claude/skills/generated/cluster-2/SKILL.md` |
-| Work in the Jcef area (56 symbols) | `.claude/skills/generated/jcef/SKILL.md` |
-| Work in the Command area (51 symbols) | `.claude/skills/generated/command/SKILL.md` |
-| Work in the Claude area (30 symbols) | `.claude/skills/generated/claude/SKILL.md` |
-| Work in the Provider area (22 symbols) | `.claude/skills/generated/provider/SKILL.md` |
-| Work in the Cluster_66 area (18 symbols) | `.claude/skills/generated/cluster-66/SKILL.md` |
-| Work in the Cluster_43 area (17 symbols) | `.claude/skills/generated/cluster-43/SKILL.md` |
-| Work in the Cluster_20 area (16 symbols) | `.claude/skills/generated/cluster-20/SKILL.md` |
-| Work in the Cluster_4 area (14 symbols) | `.claude/skills/generated/cluster-4/SKILL.md` |
-| Work in the Ai area (14 symbols) | `.claude/skills/generated/ai/SKILL.md` |
-| Work in the Cluster_36 area (13 symbols) | `.claude/skills/generated/cluster-36/SKILL.md` |
-| Work in the Session area (13 symbols) | `.claude/skills/generated/session/SKILL.md` |
-| Work in the Cluster_17 area (12 symbols) | `.claude/skills/generated/cluster-17/SKILL.md` |
-| Work in the Cluster_26 area (12 symbols) | `.claude/skills/generated/cluster-26/SKILL.md` |
-| Work in the Util area (12 symbols) | `.claude/skills/generated/util/SKILL.md` |
-| Work in the Cluster_27 area (11 symbols) | `.claude/skills/generated/cluster-27/SKILL.md` |
-| Work in the Enums area (11 symbols) | `.claude/skills/generated/enums/SKILL.md` |
-| Work in the Models area (11 symbols) | `.claude/skills/generated/models/SKILL.md` |
 
 <!-- gitnexus:end -->

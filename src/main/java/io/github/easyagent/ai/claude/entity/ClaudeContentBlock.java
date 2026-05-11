@@ -52,7 +52,8 @@ public class ClaudeContentBlock extends AbstractContentBlock<ClaudeContentType> 
     @JsonAdapter(RawJsonStringAdapter.class)
     private String input;
 
-    /** 工具结果内容，tool_result 类型时有值。 */
+    /** 工具结果内容，tool_result 类型时有值（支持 String 或 JSON Array）。 */
+    @JsonAdapter(RawJsonStringAdapter.class)
     private String content;
 
     /** 工具结果是否为错误，tool_result 类型时有值。 */

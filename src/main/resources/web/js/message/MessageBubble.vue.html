@@ -80,7 +80,7 @@
                         </div>
                         <span class="system-info-chevron" :class="{ open: !block.collapsed }">▸</span>
                     </div>
-                    <div v-else-if="isTextBlock(block)" class="md-content" v-html="renderMarkdown(block.text)"></div>
+                    <div v-else-if="isTextBlock(block)" class="md-content" v-html="renderMarkdown(stripTaskList(block.text))"></div>
                     <thinking-block v-if="isThinkingBlock(block)" :text="block.text" :collapsed="block.collapsed" @toggle="toggleThinking(block)"></thinking-block>
                     <tool-call-block v-if="isToolBlock(block)" :tool-name="block.toolName" :title="block.title" :status="block.status" :input="block.input" :output="block.output" :file-edit="block.fileEdit" :collapsed="block.collapsed" @toggle="toggleTool(block)"></tool-call-block>
                     <todo-list-block v-if="isTodoBlock(block)" :items="block.items" :cli-type="store.cliType"></todo-list-block>

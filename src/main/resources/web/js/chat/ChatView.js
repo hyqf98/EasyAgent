@@ -137,8 +137,12 @@ window.EARegisterComponent('chat-view', 'ChatView', {
             return list.filter(function (m) { return m.cliType === cliType; });
         }
     },
-    mounted() {
-        this.previousSessionId = this.store.sessionId;
+     mounted() {
+         this.previousSessionId = this.store.sessionId;
+         if (this.store.pendingOpenSettings) {
+             this.store.pendingOpenSettings = false;
+             this.showSettings = true;
+         }
         this._onSessionList = function (e) {
             var detail = e.detail || {};
             this.allSessions = detail.sessions || [];
@@ -379,6 +383,9 @@ window.EARegisterComponent('chat-view', 'ChatView', {
                 this.onStop();
             }
             this.onNewChat();
+        },
+        onOpenPlanMode() {
+            this.store.appMode = 'plan';
         },
         toggleDrawer() {
             this.showDrawer = !this.showDrawer;

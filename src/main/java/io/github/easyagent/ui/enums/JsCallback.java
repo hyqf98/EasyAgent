@@ -93,7 +93,33 @@ public enum JsCallback implements ValueEnum<String> {
     SKILL_DELETED("SkillDeleted"),
 
     /** Skill 详情内容推送。 */
-    SKILL_CONTENT("SkillContent");
+    SKILL_CONTENT("SkillContent"),
+
+    // ========== 计划模式 ==========
+
+    /** 计划创建成功推送。 */
+    PLAN_CREATED("PlanCreated"),
+
+    /** 计划列表推送。 */
+    PLAN_LIST("PlanList"),
+
+    /** 计划详情推送。 */
+    PLAN_DETAIL("PlanDetail"),
+
+    /** 单个计划任务更新推送。 */
+    PLAN_TASK_UPDATED("PlanTaskUpdated"),
+
+    /** 计划任务执行状态变更推送。 */
+    PLAN_TASK_STATUS("PlanTaskStatus"),
+
+    /** 计划删除推送。 */
+    PLAN_DELETED("PlanDeleted"),
+
+    /** 计划配置推送。 */
+    PLAN_CONFIG("PlanConfig"),
+
+    /** 计划配置保存结果推送。 */
+    PLAN_CONFIG_SAVED("PlanConfigSaved");
 
     /** 回调名称。 */
     private final String value;

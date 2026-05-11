@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>EasyAgent Plan Split View (DEV)</title>
+    <link rel="stylesheet" href="css/base.css">
+    <link rel="stylesheet" href="css/themes/light.css" id="theme-link">
+    <link rel="stylesheet" href="css/chat.css">
+    <link rel="stylesheet" href="css/components.css">
+    <link rel="stylesheet" href="css/markdown.css">
+    <link rel="stylesheet" href="css/plan.css">
+    <style>
+        body { background: #2b2b2b; margin: 0; display: flex; justify-content: center; align-items: flex-start; padding-top: 10px; min-height: 100vh; }
+        #app { width: 460px; height: 700px; border: 1px solid var(--ea-border); border-radius: 8px; overflow: hidden; }
+        .dev-banner {
+            position: fixed; bottom: 0; left: 0; right: 0;
+            background: #F59E0B; color: #000; font-size: 11px; font-weight: 600;
+            text-align: center; padding: 3px; z-index: 9999;
+        }
+    </style>
+</head>
+<body>
+    <div id="app"></div>
+
+    <script src="lib/vue.global.js"></script>
+    <script src="lib/marked.min.js"></script>
+    <script src="lib/highlight.min.js"></script>
+    <script src="lib/lucide.min.js"></script>
+    <script src="lib/sortable.min.js"></script>
+
+    <script src="js/utils/i18n.js"></script>
+    <script src="js/utils/storage.js"></script>
+    <script src="js/utils/theme.js"></script>
+    <script src="js/utils/TimeFormat.js"></script>
+    <script src="js/utils/markdown.js"></script>
+    <script src="js/utils/TemplateLoader.js"></script>
+
+    <script src="js/bridge.js"></script>
+    <script src="js/store.js"></script>
+
+    <script src="js/chat/ChatHeader.js"></script>
+    <script src="js/chat/EmptyState.js"></script>
+    <script src="js/chat/InputBar.js"></script>
+    <script src="js/chat/PendingQueue.js"></script>
+    <script src="js/chat/ChatView.js"></script>
+    <script src="js/message/ThinkingBlock.js"></script>
+    <script src="js/message/ToolCallBlock.js"></script>
+    <script src="js/message/TodoListBlock.js"></script>
+    <script src="js/message/ErrorBlock.js"></script>
+    <script src="js/message/StepInfo.js"></script>
+    <script src="js/message/MessageBubble.js"></script>
+    <script src="js/settings/SettingsPage.js"></script>
+    <script src="js/plan/PlanView.js"></script>
+
+    <script>
+    (async function() {
+        EAStorage.init();
+        EAi18n.init();
+        EATheme.init();
+        EAMarkdown.init();
+        EABridge.init();
+
+        EAStore.modelsList = [
+            { cliType: 'CLAUDE', modelId: 'claude-sonnet-4-20250514', displayName: 'Claude Sonnet 4', contextWindow: 200000 },
+            { cliType: 'CLAUDE', modelId: 'claude-opus-4-20250514', displayName: 'Claude Opus 4', contextWindow: 200000 },
+            { cliType: 'CLAUDE', modelId: 'claude-3-5-haiku-20241022', displayName: 'Claude 3.5 Haiku', contextWindow: 200000 },
+            { cliType: 'OPENCODE', modelId: 'gpt-4o', displayName: 'GPT-4o', contextWindow: 128000 },
+            { cliType: 'OPENCODE', modelId: 'gpt-4o-mini', displayName: 'GPT-4o Mini', contextWindow: 128000 },
+            { cliType: 'CODEX', modelId: 'o3', displayName: 'OpenAI o3', contextWindow: 200000 }
+        ];
+
+        var mockKanbanTasks = [
+            { taskId: 't1', planId: 'plan-1', title: '分析现有认证流程', description: '梳理当前 Session 认证的完整流程', priority: 'HIGH', status: 'PENDING', cliType: 'CLAUDE', modelId: null, sortOrder: 0 },
+            { taskId: 't2', planId: 'plan-1', title: '设计 JWT Token 结构', description: '确定 Token 的 payload 结构，设计双 Token 方案', priority: 'HIGH', status: 'PENDING', cliType: 'CLAUDE', modelId: null, sortOrder: 1 },
+            { taskId: 't3', planId: 'plan-1', title: '实现 JWT 工具类', description: '封装 Token 的生成、解析、验证和刷新逻辑', priority: 'MEDIUM', status: 'RUNNING', cliType: 'CLAUDE', modelId: 'claude-sonnet-4-20250514', executeSessionId: 'plan-t3', sortOrder: 2, startedAt: Date.now() - 60000 },
+            { taskId: 't4', planId: 'plan-1', title: '改造认证过滤器', description: '将 Spring Security 的 Session 过滤器替换为 JWT Filter', priority: 'HIGH', status: 'RUNNING', cliType: 'OPENCODE', modelId: null, executeSessionId: 'plan-t4', sortOrder: 3, startedAt: Date.now() - 30000 },
+            { taskId: 't5', planId: 'plan-1', title: '多端登录控制', description: '实现设备绑定和并发登录限制', priority: 'MEDIUM', status: 'COMPLETED', cliType: 'CLAUDE', modelId: null, executeSessionId: 'plan-t5', sortOrder: 4, completedAt: Date.now() - 1800000 },
+            { taskId: 't6', planId: 'plan-1', title: '编写集成测试', description: '覆盖登录、Token 刷新等场景', priority: 'LOW', status: 'FAILED', cliType: 'CODEX', modelId: 'o3', executeSessionId: 'plan-t6', sortOrder: 5, completedAt: Date.now() - 900000 },
+            { taskId: 't7', planId: 'plan-1', title: '配置 Token 过期策略', description: '设置 AccessToken 和 RefreshToken 的有效期', priority: 'MEDIUM', status: 'PENDING', cliType: 'CLAUDE', modelId: null, sortOrder: 6 },
+            { taskId: 't8', planId: 'plan-1', title: '添加 Token 黑名单', description: '实现 Redis 存储的 Token 黑名单机制', priority: 'LOW', status: 'PENDING', cliType: 'OPENCODE', modelId: null, sortOrder: 7 },
+            { taskId: 't9', planId: 'plan-1', title: '前端 Token 存储', description: '安全地在前端存储和管理 Token', priority: 'MEDIUM', status: 'PENDING', cliType: 'CLAUDE', modelId: null, sortOrder: 8 },
+            { taskId: 't10', planId: 'plan-1', title: 'API 文档更新', description: '更新 Swagger 文档中的认证相关接口说明', priority: 'LOW', status: 'COMPLETED', cliType: 'CLAUDE', modelId: null, executeSessionId: 'plan-t10', sortOrder: 9, completedAt: Date.now() - 600000 }
+        ];
+
+        var kanbanPlan = {
+            planId: 'plan-1',
+            planName: '重构用户认证模块',
+            description: '将现有的用户认证模块从 Session 迁移到 JWT，支持多端登录和 Token 刷新',
+            cliType: 'CLAUDE',
+            status: 'KANBAN',
+            minTasks: 5,
+            createdAt: Date.now() - 3600000
+        };
+
+        var origSend = EABridge.send.bind(EABridge);
+        EABridge.send = function(action, data) {
+            console.log('[DEV] EABridge.send', action, data);
+            switch(action) {
+                case 'listPlans':
+                    setTimeout(function() {
+                        window.__ea_onPlanList([kanbanPlan]);
+                    }, 100);
+                    break;
+                case 'getPlanDetail':
+                    setTimeout(function() {
+                        window.__ea_onPlanDetail({
+                            plan: kanbanPlan,
+                            tasks: mockKanbanTasks,
+                            stats: null
+                        });
+                    }, 100);
+                    break;
+                case 'deletePlan':
+                    if (data) window.__ea_onPlanDeleted({ planId: data.planId, success: true });
+                    break;
+                case 'createPlan':
+                    setTimeout(function() {
+                        window.__ea_onPlanCreated({
+                            planId: 'plan-new-' + Date.now(),
+                            planName: data.planName, description: data.description,
+                            cliType: data.cliType, status: 'DRAFT', minTasks: data.minTaskCount,
+                            createdAt: Date.now()
+                        });
+                    }, 200);
+                    break;
+                case 'savePlanTasks':
+                    console.log('[DEV] savePlanTasks', data.planId, JSON.parse(data.tasksJson).length + ' tasks');
+                    break;
+                case 'executePlanTask':
+                    console.log('[DEV] executePlanTask', data.taskId);
+                    var vm = document.querySelector('#app > div')?.__vueParentComponent?.proxy;
+                    var currentRunning = vm ? vm.currentTasks.filter(function(t) { return t.status === 'RUNNING'; }).length : 0;
+                    var maxConcurrent = window.EAStore.planConcurrentTasks || 2;
+                    if (currentRunning >= maxConcurrent) {
+                        setTimeout(function() {
+                            window.__ea_onPlanTaskStatus({ taskId: data.taskId, status: 'REJECTED', reason: 'concurrent_limit' });
+                        }, 100);
+                        break;
+                    }
+                    setTimeout(function() {
+                        window.__ea_onPlanTaskStatus({ taskId: data.taskId, status: 'RUNNING', executeSessionId: 'plan-' + data.taskId });
+                    }, 200);
+                    setTimeout(function() {
+                        window.__ea_onPlanTaskStatus({ taskId: data.taskId, type: 'MESSAGE', text: '正在分析代码结构...\n' });
+                    }, 2000);
+                    setTimeout(function() {
+                        window.__ea_onPlanTaskStatus({ taskId: data.taskId, type: 'MESSAGE', text: '执行中，请稍候...\n' });
+                    }, 5000);
+                    setTimeout(function() {
+                        window.__ea_onPlanTaskStatus({ taskId: data.taskId, type: 'MESSAGE', text: '完成了代码审查。' });
+                    }, 8000);
+                    setTimeout(function() {
+                        window.__ea_onPlanTaskStatus({ taskId: data.taskId, status: 'COMPLETED', executeSessionId: 'plan-' + data.taskId });
+                    }, 10000);
+                    break;
+                case 'stopPlanTask':
+                    console.log('[DEV] stopPlanTask', data.taskId);
+                    setTimeout(function() {
+                        window.__ea_onPlanTaskStatus({ taskId: data.taskId, status: 'STOPPED' });
+                    }, 100);
+                    break;
+                case 'updatePlanTask':
+                    console.log('[DEV] updatePlanTask', data.taskId, data);
+                    setTimeout(function() {
+                        var taskIdx = mockKanbanTasks.findIndex(function(t) { return t.taskId === data.taskId; });
+                        if (taskIdx >= 0) {
+                            Object.assign(mockKanbanTasks[taskIdx], data);
+                            window.__ea_onPlanTaskUpdated(mockKanbanTasks[taskIdx]);
+                        }
+                    }, 100);
+                    break;
+                case 'getPlanConfig':
+                    break;
+                case 'loadHistory':
+                    console.log('[DEV] loadHistory', data.sessionId);
+                    setTimeout(function() {
+                        window.__ea_onHistoryLoaded({
+                            sessionId: data.sessionId,
+                            messages: [
+                                { role: 'USER', type: 'TEXT', content: '请执行任务：实现多端登录控制', timestamp: Date.now() - 1800000 },
+                                { role: 'ASSISTANT', type: 'TEXT', content: '好的，我来分析多端登录控制的需求并实现。\n\n## 分析\n\n多端登录控制需要考虑以下场景：\n1. 同一用户在不同设备上登录\n2. 限制最大并发登录数\n3. 设备绑定机制\n\n## 实现\n\n我将使用 Redis 来管理用户会话映射...\n\n已完成实现，包括设备注册、并发限制和踢出逻辑。', timestamp: Date.now() - 1790000 }
+                            ]
+                        });
+                    }, 200);
+                    break;
+                default:
+                    console.log('[DEV] unhandled action', action, data);
+            }
+        };
+
+        EAStore.appMode = 'plan';
+        EAStore.cliType = 'CLAUDE';
+        EAStore.sessionId = 'plan-demo-001';
+        EAStore.planConcurrentTasks = 2;
+
+        var app = Vue.createApp({
+            data() { return { store: window.EAStore }; },
+            template: '<plan-view></plan-view>'
+        });
+
+        await EATemplateLoader.loadAll(app);
+        var vm = app.mount('#app');
+
+        setTimeout(function() {
+            window.__ea_onPlanList([kanbanPlan]);
+
+            setTimeout(function() {
+                var el = document.querySelector('#app > div');
+                if (el && el.__vueParentComponent) {
+                    var proxy = el.__vueParentComponent.proxy;
+                    proxy.currentPlan = kanbanPlan;
+                    proxy.currentTasks = mockKanbanTasks.slice();
+                    proxy.viewMode = 'kanban';
+                    proxy.$nextTick(function() { proxy._initSortable(); });
+                }
+            }, 300);
+        }, 300);
+    })();
+    </script>
+
+    <div class="dev-banner">DEV MODE — Kanban View @ 460px (IDEA Plugin Width)</div>
+</body>
+</html>

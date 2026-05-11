@@ -129,7 +129,48 @@ public enum JsAction implements ValueEnum<String> {
     DELETE_SKILL("deleteSkill"),
 
     /** 读取 Skill 详情内容。 */
-    READ_SKILL_CONTENT("readSkillContent");
+    READ_SKILL_CONTENT("readSkillContent"),
+
+    // ========== 计划模式 ==========
+
+    /** 创建计划。 */
+    CREATE_PLAN("createPlan"),
+
+    /** 列出项目下的计划。 */
+    LIST_PLANS("listPlans"),
+
+    /** 获取计划详情（含任务列表）。 */
+    GET_PLAN_DETAIL("getPlanDetail"),
+
+    /** 更新计划信息。 */
+    UPDATE_PLAN("updatePlan"),
+
+    /** 删除计划。 */
+    DELETE_PLAN("deletePlan"),
+
+    /** 更新计划任务。 */
+    UPDATE_PLAN_TASK("updatePlanTask"),
+
+    /** 执行计划任务。 */
+    EXECUTE_PLAN_TASK("executePlanTask"),
+
+    /** 停止计划任务执行。 */
+    STOP_PLAN_TASK("stopPlanTask"),
+
+    /** AI 编辑任务列表。 */
+    AI_EDIT_TASKS("aiEditTasks"),
+
+    /** 保存计划任务列表变更。 */
+    SAVE_PLAN_TASKS("savePlanTasks"),
+
+    /** 获取计划并发执行数配置。 */
+    GET_PLAN_CONFIG("getPlanConfig"),
+
+    /** 保存计划并发执行数配置。 */
+    SAVE_PLAN_CONFIG("savePlanConfig"),
+
+    /** 开始计划拆分（启动 CLI 会话）。 */
+    START_PLAN_SPLIT("startPlanSplit");
 
     /** 动作标识值。 */
     private final String value;

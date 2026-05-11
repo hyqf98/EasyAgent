@@ -37,7 +37,10 @@
         EABridge.init();
 
         const app = Vue.createApp({
-            template: '<chat-view></chat-view>'
+            data() {
+                return { store: window.EAStore };
+            },
+            template: '<chat-view v-if="store.appMode !== \'plan\'"></chat-view><plan-view v-if="store.appMode === \'plan\'"></plan-view>'
         });
 
         await EATemplateLoader.loadAll(app);

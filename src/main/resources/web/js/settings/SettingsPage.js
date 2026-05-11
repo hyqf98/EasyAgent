@@ -63,6 +63,7 @@ window.EARegisterComponent('settings-page', 'SettingsPage', {
             timeoutSeconds: 0,
             models: [],
             modelFilter: 'CLAUDE',
+            modelSearch: '',
             isSyncing: false,
             cliModelsLoading: false,
             editingIndex: -1,
@@ -117,20 +118,44 @@ window.EARegisterComponent('settings-page', 'SettingsPage', {
         store() { return window.EAStore; },
         i18n() { void this.store.i18nVersion; void this.store.currentLocale; return window.EAi18n; },
         filteredModels() {
-            return this.models.filter(function (m) { return m.cliType === this.modelFilter; }.bind(this));
+            var filter = this.modelFilter;
+            var search = (this.modelSearch || '').toLowerCase().trim();
+            return this.models.filter(function (m) {
+                if (m.cliType !== filter) return false;
+                if (!search) return true;
+                return (m.modelId || '').toLowerCase().indexOf(search) >= 0
+                    || (m.displayName || '').toLowerCase().indexOf(search) >= 0
+                    || (m.provider || '').toLowerCase().indexOf(search) >= 0;
+            });
         },
         modelRows() {
             var rows = [{
                 rowType: 'default',
                 cliType: this.modelFilter
             }];
-            this.filteredModels.forEach(function (model, index) {
-                rows.push({
-                    rowType: 'model',
-                    modelIndex: index,
-                    model: model
+            var models = this.filteredModels;
+
+            if (this.modelFilter === 'OPENCODE') {
+                var groups = {};
+                models.forEach(function (model) {
+                    var provider = model.provider || 'other';
+                    if (!groups[provider]) groups[provider] = [];
+                    groups[provider].push(model);
                 });
-            });
+                var groupKeys = Object.keys(groups).sort();
+                var globalIdx = 0;
+                groupKeys.forEach(function (key) {
+                    rows.push({ rowType: 'provider-header', provider: key });
+                    groups[key].forEach(function (model) {
+                        rows.push({ rowType: 'model', modelIndex: globalIdx, model: model });
+                        globalIdx++;
+                    });
+                });
+            } else {
+                models.forEach(function (model, index) {
+                    rows.push({ rowType: 'model', modelIndex: index, model: model });
+                });
+            }
             return rows;
         },
         ctxOptions() {
@@ -352,6 +377,16 @@ window.EARegisterComponent('settings-page', 'SettingsPage', {
             var timeoutMs = Math.max(0, (this.timeoutSeconds || 0)) * 1000;
             this.store.retryTimeoutMs = timeoutMs;
             EABridge.saveRetryConfig(this.store.retryMaxCount, timeoutMs);
+        },
+        incrementPlanConcurrent() {
+            if (this.store.planConcurrentTasks >= 5) return;
+            this.store.planConcurrentTasks++;
+            EABridge.savePlanConfig(this.store.planConcurrentTasks);
+        },
+        decrementPlanConcurrent() {
+            if (this.store.planConcurrentTasks <= 1) return;
+            this.store.planConcurrentTasks--;
+            EABridge.savePlanConfig(this.store.planConcurrentTasks);
         },
         onOpenModels() {
             this.activeTab = 'models';

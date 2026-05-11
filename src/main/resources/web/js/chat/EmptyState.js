@@ -8,7 +8,7 @@
  * @component empty-state
  */
 window.EARegisterComponent('empty-state', 'EmptyState', {
-    emits: ['select-cli'],
+    emits: ['select-cli', 'open-plan-mode'],
     data() {
         return {
             availableCLIs: [],
@@ -55,6 +55,7 @@ window.EARegisterComponent('empty-state', 'EmptyState', {
         }
     },
     methods: {
-        selectCLI(type) { this.$emit('select-cli', type); }
+        selectCLI(type) { this.$emit('select-cli', type); },
+        openPlanMode() { this.$emit('open-plan-mode'); }
     }
 });

@@ -68,6 +68,7 @@ public class ChatManager {
         if (messages == null) {
             messages = List.of();
         }
+        log.info("[PLAN-DEBUG] ChatManager.loadHistory: sessionId={}, cliType={}, messageCount={}", sessionId, cliType, messages.size());
         return MessageConverter.toHistoryJson(sessionId, messages, projectPath);
     }
 
@@ -163,6 +164,24 @@ public class ChatManager {
      */
     private AIProvider getOrCreateProvider(CLIType cliType) {
         return this.providers.computeIfAbsent(cliType, this::createProvider);
+    }
+
+    /**
+     * 获取或创建指定 CLI 类型的 AI Provider（带自定义工作目录）。
+     *
+     * @param cliType      CLI 类型
+     * @param projectPath  工作目录
+     * @param retryConfig  重试配置（未使用，保留兼容）
+     * @param listener     流式事件监听器（未使用，保留兼容）
+     * @return AI Provider 实例
+     */
+    public AIProvider getOrCreateProvider(CLIType cliType, String projectPath,
+                                          RetryConfig retryConfig, StreamEventListener listener) {
+        AIProvider provider = this.providers.computeIfAbsent(cliType, this::createProvider);
+        if (provider instanceof AbstractCLIProvider cliProvider) {
+            cliProvider.setWorkingDirectory(projectPath);
+        }
+        return provider;
     }
 
     /**

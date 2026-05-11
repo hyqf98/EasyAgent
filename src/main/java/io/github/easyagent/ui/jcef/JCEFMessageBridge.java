@@ -10,8 +10,12 @@ import io.github.easyagent.ai.entity.AIResponse;
 import io.github.easyagent.ai.entity.MessageContent;
 import io.github.easyagent.ai.entity.ToolCallContent;
 import io.github.easyagent.enums.CLIType;
+import io.github.easyagent.enums.PlanStatus;
 import io.github.easyagent.enums.ResponseType;
 import io.github.easyagent.enums.ValueEnum;
+import io.github.easyagent.plan.PlanService;
+import io.github.easyagent.plan.entity.Plan;
+import io.github.easyagent.plan.entity.PlanTask;
 import io.github.easyagent.session.SessionService;
 import io.github.easyagent.session.entity.SessionMessage;
 import io.github.easyagent.session.entity.SessionInfo;
@@ -109,6 +113,8 @@ public class JCEFMessageBridge {
 
     private final SlashCommandService slashCommandService;
 
+    private final PlanService planService;
+
     /** JS 请求处理器映射。 */
     private final Map<JsAction, QueryHandler<? extends JsRequest>> queryHandlers = new EnumMap<>(JsAction.class);
 
@@ -145,6 +151,7 @@ public class JCEFMessageBridge {
         this.fileEditService = new FileEditService(project, project != null ? project.getBasePath() : null,
                 this.sessionService);
         this.slashCommandService = new SlashCommandService();
+        this.planService = project != null ? new PlanService(project) : null;
         if (this.chatUiBridgeService != null) {
             this.chatUiBridgeService.registerBridge(this);
         }
@@ -237,6 +244,34 @@ public class JCEFMessageBridge {
                 this::handleDeleteSkill);
         this.registerHandler(JsAction.READ_SKILL_CONTENT, ReadSkillContentRequest.class,
                 this::handleReadSkillContent);
+
+        // 计划模式
+        this.registerHandler(JsAction.CREATE_PLAN, CreatePlanRequest.class,
+                this::handleCreatePlan);
+        this.registerHandler(JsAction.LIST_PLANS, ActionRequest.class,
+                request -> this.handleListPlans());
+        this.registerHandler(JsAction.GET_PLAN_DETAIL, PlanIdRequest.class,
+                this::handleGetPlanDetail);
+        this.registerHandler(JsAction.UPDATE_PLAN, UpdatePlanRequest.class,
+                this::handleUpdatePlan);
+        this.registerHandler(JsAction.DELETE_PLAN, PlanIdRequest.class,
+                this::handleDeletePlan);
+        this.registerHandler(JsAction.UPDATE_PLAN_TASK, UpdatePlanTaskRequest.class,
+                this::handleUpdatePlanTask);
+        this.registerHandler(JsAction.EXECUTE_PLAN_TASK, ExecutePlanTaskRequest.class,
+                this::handleExecutePlanTask);
+        this.registerHandler(JsAction.STOP_PLAN_TASK, StopPlanTaskRequest.class,
+                this::handleStopPlanTask);
+        this.registerHandler(JsAction.AI_EDIT_TASKS, AiEditTasksRequest.class,
+                this::handleAiEditTasks);
+        this.registerHandler(JsAction.SAVE_PLAN_TASKS, SavePlanTasksRequest.class,
+                this::handleSavePlanTasks);
+        this.registerHandler(JsAction.GET_PLAN_CONFIG, ActionRequest.class,
+                request -> this.handleGetPlanConfig());
+        this.registerHandler(JsAction.SAVE_PLAN_CONFIG, SavePlanConfigRequest.class,
+                this::handleSavePlanConfig);
+        this.registerHandler(JsAction.START_PLAN_SPLIT, PlanIdRequest.class,
+                this::handleStartPlanSplit);
     }
 
     /**
@@ -383,10 +418,12 @@ public class JCEFMessageBridge {
      * @param forceReload  是否强制重新读取
      */
     private void loadHistory(String sessionId, String cliType, boolean forceReload) {
+        log.info("[PLAN-DEBUG] loadHistory: sessionId={}, cliType={}, forceReload={}", sessionId, cliType, forceReload);
         this.currentSessionId = sessionId;
         if (!forceReload) {
             String cached = this.historyCache.get(sessionId);
             if (cached != null) {
+                log.info("[PLAN-DEBUG] loadHistory cache HIT: sessionId={}", sessionId);
                 this.invokeJSCallback(JsCallback.HISTORY_LOADED, cached);
                 this.persistCurrentSession(sessionId, cliType);
                 this.asyncExecutor.submit(() -> this.rehydrateHistoricalFileEdits(sessionId, cliType));
@@ -397,12 +434,13 @@ public class JCEFMessageBridge {
             try {
                 CLIType type = CLIType.valueOf(cliType);
                 String json = this.chatManager.loadHistory(sessionId, type, this.currentProjectPath);
+                log.info("[PLAN-DEBUG] loadHistory from file: sessionId={}, msgCount={}", sessionId, json != null ? json.length() : -1);
                 this.rehydrateHistoricalFileEdits(sessionId, cliType);
                 this.historyCache.put(sessionId, json);
                 this.invokeJSCallback(JsCallback.HISTORY_LOADED, json);
                 this.persistCurrentSession(sessionId, cliType);
             } catch (Exception e) {
-                log.warn("Failed to load history for session {}", sessionId, e);
+                log.warn("[PLAN-DEBUG] loadHistory failed: sessionId={}", sessionId, e);
             }
         });
     }
@@ -451,9 +489,7 @@ public class JCEFMessageBridge {
                                  List<FileReferencePayload> fileReferences) {
         try {
             CLIType type = CLIType.valueOf(cliType);
-            String effectiveSessionId = StringUtil.isNotEmpty(sessionId)
-                    ? sessionId
-                    : "new-" + System.currentTimeMillis();
+            String effectiveSessionId = resolveEffectiveSessionId(sessionId);
             String prompt = this.fileReferenceService != null
                     ? this.fileReferenceService.enrichPrompt(text, fileReferences)
                     : text;
@@ -498,6 +534,27 @@ public class JCEFMessageBridge {
         } catch (Exception e) {
             log.warn("Failed to send message", e);
         }
+    }
+
+    /**
+     * 解析有效的会话 ID。对于以 "plan-" 前缀开头的会话 ID，从计划数据中查找真实的 CLI 会话 ID。
+     *
+     * @param sessionId 前端传入的会话 ID
+     * @return 可直接传递给 CLI 的会话 ID
+     */
+    private String resolveEffectiveSessionId(String sessionId) {
+        if (StringUtil.isEmpty(sessionId)) {
+            return "new-" + System.currentTimeMillis();
+        }
+        if (sessionId.startsWith("plan-")) {
+            String planId = sessionId.substring("plan-".length());
+            Plan plan = this.planService != null ? this.planService.getPlan(planId) : null;
+            if (plan != null && plan.sessionId() != null) {
+                return plan.sessionId();
+            }
+            return "new-" + System.currentTimeMillis();
+        }
+        return sessionId;
     }
 
     /**
@@ -1906,5 +1963,607 @@ public class JCEFMessageBridge {
      * @param content   SKILL.md 完整内容
      */
     private record SkillContentPayload(String skillPath, String content) {
+    }
+
+    // ==================== Plan Mode Handlers ====================
+
+    private void handleCreatePlan(CreatePlanRequest request) {
+        if (this.planService == null) {
+            return;
+        }
+        this.asyncExecutor.submit(() -> {
+            try {
+                CLIType cliType = ValueEnum.fromValue(CLIType.class, request.cliType());
+                if (cliType == null) {
+                    cliType = CLIType.CLAUDE;
+                }
+                Plan plan = this.planService.createPlan(
+                        request.planName(), request.description(), cliType, request.minTaskCount());
+                this.invokeJSCallback(JsCallback.PLAN_CREATED, GsonUtils.toJson(plan));
+            } catch (Exception e) {
+                log.warn("Failed to create plan", e);
+            }
+        });
+    }
+
+    private void handleListPlans() {
+        if (this.planService == null) {
+            this.invokeJSCallback(JsCallback.PLAN_LIST, JS_EMPTY_ARRAY);
+            return;
+        }
+        this.asyncExecutor.submit(() -> {
+            try {
+                List<Plan> plans = this.planService.listPlans();
+                this.invokeJSCallback(JsCallback.PLAN_LIST, GsonUtils.toJson(plans));
+            } catch (Exception e) {
+                log.warn("Failed to list plans", e);
+                this.invokeJSCallback(JsCallback.PLAN_LIST, JS_EMPTY_ARRAY);
+            }
+        });
+    }
+
+    private void handleGetPlanDetail(PlanIdRequest request) {
+        if (this.planService == null) {
+            return;
+        }
+        this.asyncExecutor.submit(() -> {
+            try {
+                Plan plan = this.planService.getPlan(request.planId());
+                log.info("[PLAN-DEBUG] getPlanDetail: planId={}, status={}, sessionId={}",
+                        request.planId(),
+                        plan != null ? plan.status() : "NULL",
+                        plan != null ? plan.sessionId() : "NULL");
+                List<PlanTask> tasks = this.planService.getTasks(request.planId());
+                Map<String, Integer> stats = this.planService.getTaskStats(request.planId());
+                Map<String, Object> detail = Map.of(
+                        "plan", plan != null ? GsonUtils.toJsonTree(plan) : "",
+                        "tasks", GsonUtils.toJsonTree(tasks),
+                        "stats", stats
+                );
+                this.invokeJSCallback(JsCallback.PLAN_DETAIL, GsonUtils.toJson(detail));
+            } catch (Exception e) {
+                log.warn("Failed to get plan detail", e);
+            }
+        });
+    }
+
+    private void handleUpdatePlan(UpdatePlanRequest request) {
+        if (this.planService == null) {
+            return;
+        }
+        this.asyncExecutor.submit(() -> {
+            try {
+                Plan existing = this.planService.getPlan(request.planId());
+                if (existing == null) {
+                    return;
+                }
+                Plan updated = Plan.builder()
+                        .planId(existing.planId())
+                        .projectId(existing.projectId())
+                        .planName(request.planName() != null ? request.planName() : existing.planName())
+                        .description(request.description() != null ? request.description() : existing.description())
+                        .cliType(existing.cliType())
+                        .sessionId(existing.sessionId())
+                        .minTaskCount(existing.minTaskCount())
+                        .status(existing.status())
+                        .createdAt(existing.createdAt())
+                        .updatedAt(System.currentTimeMillis())
+                        .build();
+                this.planService.updatePlan(updated);
+                this.invokeJSCallback(JsCallback.PLAN_DETAIL, GsonUtils.toJson(Map.of(
+                        "plan", GsonUtils.toJsonTree(updated),
+                        "tasks", GsonUtils.toJsonTree(this.planService.getTasks(request.planId())),
+                        "stats", this.planService.getTaskStats(request.planId())
+                )));
+            } catch (Exception e) {
+                log.warn("Failed to update plan", e);
+            }
+        });
+    }
+
+    private void handleDeletePlan(PlanIdRequest request) {
+        if (this.planService == null) {
+            return;
+        }
+        this.asyncExecutor.submit(() -> {
+            try {
+                boolean success = this.planService.deletePlan(request.planId());
+                this.invokeJSCallback(JsCallback.PLAN_DELETED, GsonUtils.toJson(Map.of(
+                        "planId", request.planId(), "success", success
+                )));
+            } catch (Exception e) {
+                log.warn("Failed to delete plan", e);
+            }
+        });
+    }
+
+    private void handleUpdatePlanTask(UpdatePlanTaskRequest request) {
+        if (this.planService == null) {
+            return;
+        }
+        this.asyncExecutor.submit(() -> {
+            try {
+                PlanTask existing = null;
+                List<PlanTask> tasks = this.planService.getTasks(request.planId());
+                for (PlanTask t : tasks) {
+                    if (t.taskId().equals(request.taskId())) {
+                        existing = t;
+                        break;
+                    }
+                }
+                if (existing == null) {
+                    return;
+                }
+                io.github.easyagent.enums.TaskStatus newStatus = request.status() != null
+                        ? ValueEnum.fromValue(io.github.easyagent.enums.TaskStatus.class, request.status())
+                        : existing.status();
+                boolean statusChanged = newStatus != existing.status();
+                long startedAt = existing.startedAt() != null ? existing.startedAt() : 0L;
+                long completedAt = existing.completedAt() != null ? existing.completedAt() : 0L;
+                if (statusChanged && newStatus == io.github.easyagent.enums.TaskStatus.RUNNING) {
+                    startedAt = System.currentTimeMillis();
+                }
+                if (statusChanged && (newStatus == io.github.easyagent.enums.TaskStatus.COMPLETED
+                        || newStatus == io.github.easyagent.enums.TaskStatus.FAILED)) {
+                    completedAt = System.currentTimeMillis();
+                }
+                if (statusChanged && (newStatus == io.github.easyagent.enums.TaskStatus.PENDING
+                        || newStatus == io.github.easyagent.enums.TaskStatus.STOPPED)) {
+                    completedAt = 0L;
+                }
+                PlanTask updated = PlanTask.builder()
+                        .taskId(existing.taskId())
+                        .planId(existing.planId())
+                        .title(request.title() != null ? request.title() : existing.title())
+                        .description(request.description() != null ? request.description() : existing.description())
+                        .priority(request.priority() != null ? ValueEnum.fromValue(
+                                io.github.easyagent.enums.TaskPriority.class, request.priority()) : existing.priority())
+                        .status(newStatus)
+                        .cliType(request.cliType() != null ? ValueEnum.fromValue(
+                                CLIType.class, request.cliType()) : existing.cliType())
+                        .modelId(request.modelId() != null ? request.modelId() : existing.modelId())
+                        .executeSessionId(existing.executeSessionId())
+                        .executePrompt(existing.executePrompt())
+                        .sortOrder(existing.sortOrder())
+                        .startedAt(startedAt)
+                        .completedAt(completedAt)
+                        .build();
+                this.planService.updateTask(request.planId(), updated);
+                this.invokeJSCallback(JsCallback.PLAN_TASK_UPDATED, GsonUtils.toJson(updated));
+            } catch (Exception e) {
+                log.warn("Failed to update plan task", e);
+            }
+        });
+    }
+
+    private void handleExecutePlanTask(ExecutePlanTaskRequest request) {
+        if (this.planService == null) {
+            return;
+        }
+        this.asyncExecutor.submit(() -> {
+            try {
+                int maxConcurrent = EasyAgentAppState.getInstance().getPlanConcurrentTasks();
+                if (!this.planService.canStartTask(request.planId(), maxConcurrent)) {
+                    this.invokeJSCallback(JsCallback.PLAN_TASK_STATUS, GsonUtils.toJson(Map.of(
+                            "taskId", request.taskId(),
+                            "status", "REJECTED",
+                            "reason", "concurrent_limit"
+                    )));
+                    return;
+                }
+
+                PlanTask task = null;
+                List<PlanTask> tasks = this.planService.getTasks(request.planId());
+                for (PlanTask t : tasks) {
+                    if (t.taskId().equals(request.taskId())) {
+                        task = t;
+                        break;
+                    }
+                }
+                if (task == null) {
+                    return;
+                }
+
+                Plan plan = this.planService.getPlan(request.planId());
+                CLIType cliType = task.cliType() != null ? task.cliType() :
+                        (plan != null ? plan.cliType() : CLIType.CLAUDE);
+
+                boolean hasExistingSession = task.executeSessionId() != null
+                        && task.status() == io.github.easyagent.enums.TaskStatus.STOPPED;
+                String sessionId = hasExistingSession
+                        ? task.executeSessionId()
+                        : "new-" + System.currentTimeMillis();
+                String prompt = hasExistingSession
+                        ? "Please continue with the previous task."
+                        : this.planService.buildTaskExecutionPrompt(task);
+
+                PlanTask updated = this.planService.updateTaskStatus(
+                        request.planId(), request.taskId(), io.github.easyagent.enums.TaskStatus.RUNNING);
+                if (updated != null) {
+                    PlanTask withSession = PlanTask.builder()
+                            .taskId(updated.taskId())
+                            .planId(updated.planId())
+                            .title(updated.title())
+                            .description(updated.description())
+                            .priority(updated.priority())
+                            .status(updated.status())
+                            .cliType(cliType)
+                            .modelId(updated.modelId())
+                            .executeSessionId(sessionId)
+                            .executePrompt(prompt)
+                            .sortOrder(updated.sortOrder())
+                            .startedAt(updated.startedAt())
+                            .completedAt(updated.completedAt())
+                            .build();
+                    this.planService.updateTask(request.planId(), withSession);
+                    this.invokeJSCallback(JsCallback.PLAN_TASK_STATUS, GsonUtils.toJson(withSession));
+                }
+
+                String planId = request.planId();
+                String taskId = request.taskId();
+                final PlanTask taskRef = task;
+
+                this.chatManager.sendMessage(prompt, sessionId, cliType, this.currentProjectPath,
+                        task.modelId(), null, new StreamEventListener() {
+                    private String resolvedSid = sessionId;
+
+                    @Override
+                    public void onResponse(AIResponse response) {
+                        if (response.sessionId() != null) {
+                            resolvedSid = response.sessionId();
+                            if (!resolvedSid.equals(sessionId)) {
+                                JCEFMessageBridge.this.planService.updateTask(planId, PlanTask.builder()
+                                        .taskId(taskRef.taskId()).planId(taskRef.planId())
+                                        .title(taskRef.title()).description(taskRef.description())
+                                        .priority(taskRef.priority())
+                                        .status(io.github.easyagent.enums.TaskStatus.RUNNING)
+                                        .cliType(cliType).modelId(taskRef.modelId())
+                                        .executeSessionId(resolvedSid)
+                                        .executePrompt(taskRef.executePrompt())
+                                        .sortOrder(taskRef.sortOrder())
+                                        .startedAt(taskRef.startedAt())
+                                        .completedAt(taskRef.completedAt())
+                                        .build());
+                            }
+                        }
+                        Map<String, Object> eventMap = new java.util.HashMap<>();
+                        eventMap.put("type", response.type().getValue());
+                        eventMap.put("planId", planId);
+                        eventMap.put("taskId", taskId);
+                        if (response.message() != null && response.message().text() != null) {
+                            eventMap.put("text", response.message().text());
+                        }
+                        if (response.message() != null && response.message().messageType() != null) {
+                            eventMap.put("messageType", response.message().messageType().getValue());
+                        }
+                        JCEFMessageBridge.this.invokeJSCallback(JsCallback.PLAN_TASK_STATUS,
+                                GsonUtils.toJson(eventMap));
+                    }
+
+                    @Override
+                    public void onComplete() {
+                        PlanTask completed = JCEFMessageBridge.this.planService.updateTaskStatus(
+                                planId, taskId, io.github.easyagent.enums.TaskStatus.COMPLETED);
+                        if (completed != null) {
+                            JCEFMessageBridge.this.invokeJSCallback(JsCallback.PLAN_TASK_STATUS,
+                                    GsonUtils.toJson(completed));
+                        }
+                    }
+
+                    @Override
+                    public void onError(Exception e) {
+                        List<PlanTask> currentTasks = JCEFMessageBridge.this.planService.getTasks(planId);
+                        for (PlanTask t : currentTasks) {
+                            if (t.taskId().equals(taskId)) {
+                                if (t.status() == io.github.easyagent.enums.TaskStatus.STOPPED) {
+                                    return;
+                                }
+                                break;
+                            }
+                        }
+                        JCEFMessageBridge.this.planService.updateTaskStatus(
+                                planId, taskId, io.github.easyagent.enums.TaskStatus.FAILED);
+                        JCEFMessageBridge.this.invokeJSCallback(JsCallback.PLAN_TASK_STATUS,
+                                GsonUtils.toJson(Map.of("taskId", taskId, "status", "FAILED",
+                                        "error", e.getMessage() != null ? e.getMessage() : "Unknown error")));
+                    }
+                });
+            } catch (Exception e) {
+                log.warn("Failed to execute plan task", e);
+                this.planService.updateTaskStatus(
+                        request.planId(), request.taskId(), io.github.easyagent.enums.TaskStatus.FAILED);
+                this.invokeJSCallback(JsCallback.PLAN_TASK_STATUS, GsonUtils.toJson(Map.of(
+                        "taskId", request.taskId(), "status", "FAILED",
+                        "error", e.getMessage() != null ? e.getMessage() : "Unknown error"
+                )));
+            }
+        });
+    }
+
+    private void handleStopPlanTask(StopPlanTaskRequest request) {
+        if (this.planService == null) {
+            return;
+        }
+        this.asyncExecutor.submit(() -> {
+            try {
+                List<PlanTask> tasks = this.planService.getTasks(request.planId());
+                String executeSessionId = null;
+                for (PlanTask t : tasks) {
+                    if (t.taskId().equals(request.taskId())) {
+                        executeSessionId = t.executeSessionId();
+                        break;
+                    }
+                }
+                if (executeSessionId != null) {
+                    this.chatManager.stopGeneration(executeSessionId);
+                }
+                PlanTask updated = this.planService.updateTaskStatus(
+                        request.planId(), request.taskId(), io.github.easyagent.enums.TaskStatus.STOPPED);
+                if (updated != null) {
+                    this.invokeJSCallback(JsCallback.PLAN_TASK_STATUS, GsonUtils.toJson(updated));
+                }
+            } catch (Exception e) {
+                log.warn("Failed to stop plan task", e);
+            }
+        });
+    }
+
+    private void handleAiEditTasks(AiEditTasksRequest request) {
+        if (this.planService == null) {
+            return;
+        }
+        this.asyncExecutor.submit(() -> {
+            try {
+                List<PlanTask> currentTasks = this.planService.getTasks(request.planId());
+                String currentJson = GsonUtils.toJson(currentTasks);
+                String prompt = this.planService.buildTaskEditPrompt(currentJson, request.instruction());
+
+                Plan plan = this.planService.getPlan(request.planId());
+                CLIType cliType = plan != null ? plan.cliType() : CLIType.CLAUDE;
+                String sessionId = "plan-edit-" + request.planId();
+                String planId = request.planId();
+
+                StringBuilder responseBuilder = new StringBuilder();
+                this.chatManager.sendMessage(prompt, sessionId, cliType, this.currentProjectPath,
+                        null, null, new StreamEventListener() {
+                    @Override
+                    public void onResponse(AIResponse response) {
+                        if (response.message() != null && response.message().text() != null) {
+                            responseBuilder.append(response.message().text());
+                        }
+                    }
+
+                    @Override
+                    public void onComplete() {
+                        String fullResponse = responseBuilder.toString();
+                        int startIdx = fullResponse.indexOf("[");
+                        int endIdx = fullResponse.lastIndexOf("]");
+                        if (startIdx >= 0 && endIdx > startIdx) {
+                            String tasksJson = fullResponse.substring(startIdx, endIdx + 1);
+                            List<PlanTask> parsed = JCEFMessageBridge.this.planService.parseAndCreateTasks(planId, tasksJson);
+                            JCEFMessageBridge.this.invokeJSCallback(JsCallback.PLAN_TASK_UPDATED, GsonUtils.toJson(Map.of(
+                                    "planId", planId, "tasks", parsed
+                            )));
+                        }
+                    }
+
+                    @Override
+                    public void onError(Exception e) {
+                        log.warn("Failed to AI edit tasks", e);
+                    }
+                });
+            } catch (Exception e) {
+                log.warn("Failed to AI edit tasks", e);
+            }
+        });
+    }
+
+    private void handleSavePlanTasks(SavePlanTasksRequest request) {
+        if (this.planService == null) {
+            return;
+        }
+        this.asyncExecutor.submit(() -> {
+            try {
+                List<PlanTask> tasks = GsonUtils.fromJson(request.tasksJson(),
+                        new com.google.gson.reflect.TypeToken<List<PlanTask>>() {}.getType());
+                boolean success = this.planService.saveTasks(request.planId(), tasks);
+                this.invokeJSCallback(JsCallback.PLAN_DETAIL, GsonUtils.toJson(Map.of(
+                        "plan", GsonUtils.toJsonTree(this.planService.getPlan(request.planId())),
+                        "tasks", GsonUtils.toJsonTree(this.planService.getTasks(request.planId())),
+                        "stats", this.planService.getTaskStats(request.planId())
+                )));
+            } catch (Exception e) {
+                log.warn("Failed to save plan tasks", e);
+            }
+        });
+    }
+
+    private void handleGetPlanConfig() {
+        EasyAgentAppState appState = EasyAgentAppState.getInstance();
+        this.invokeJSCallback(JsCallback.PLAN_CONFIG, GsonUtils.toJson(Map.of(
+                "planConcurrentTasks", appState.getPlanConcurrentTasks()
+        )));
+    }
+
+    private void handleSavePlanConfig(SavePlanConfigRequest request) {
+        EasyAgentAppState appState = EasyAgentAppState.getInstance();
+        int value = Math.max(1, Math.min(5, request.planConcurrentTasks()));
+        appState.setPlanConcurrentTasks(value);
+        this.invokeJSCallback(JsCallback.PLAN_CONFIG_SAVED, GsonUtils.toJson(Map.of(
+                "success", true, "planConcurrentTasks", value
+        )));
+    }
+
+    private void handleStartPlanSplit(PlanIdRequest request) {
+        if (this.planService == null) {
+            return;
+        }
+        this.asyncExecutor.submit(() -> {
+            try {
+                Plan plan = this.planService.getPlan(request.planId());
+                if (plan == null) {
+                    return;
+                }
+
+                Plan updated = Plan.builder()
+                        .planId(plan.planId())
+                        .projectId(plan.projectId())
+                        .planName(plan.planName())
+                        .description(plan.description())
+                        .cliType(plan.cliType())
+                        .sessionId(plan.sessionId())
+                        .minTaskCount(plan.minTaskCount())
+                        .status(PlanStatus.TASK_SPLITTING)
+                        .createdAt(plan.createdAt())
+                        .updatedAt(System.currentTimeMillis())
+                        .build();
+                this.planService.updatePlan(updated);
+
+                this.invokeJSCallback(JsCallback.PLAN_DETAIL, GsonUtils.toJson(Map.of(
+                        "plan", GsonUtils.toJsonTree(updated),
+                        "tasks", GsonUtils.toJsonTree(this.planService.getTasks(request.planId())),
+                        "stats", this.planService.getTaskStats(request.planId())
+                )));
+
+                String prompt = this.planService.buildRequirementPrompt(plan);
+                String effectiveSessionId = "new-" + System.currentTimeMillis();
+                String planId = plan.planId();
+                StringBuilder responseBuilder = new StringBuilder();
+
+                this.chatManager.sendMessage(prompt, effectiveSessionId, plan.cliType(), this.currentProjectPath,
+                        null, null, new StreamEventListener() {
+                    @Override
+                    public void onResponse(AIResponse response) {
+                        JCEFMessageBridge.this.logAIResponse(response);
+                        String resolvedSessionId = response.sessionId() != null
+                                ? response.sessionId() : effectiveSessionId;
+                        if (resolvedSessionId != null
+                                && (plan.sessionId() == null || plan.sessionId().startsWith("plan-"))) {
+                            Plan withSession = Plan.builder()
+                                    .planId(plan.planId())
+                                    .projectId(plan.projectId())
+                                    .planName(plan.planName())
+                                    .description(plan.description())
+                                    .cliType(plan.cliType())
+                                    .sessionId(resolvedSessionId)
+                                    .minTaskCount(plan.minTaskCount())
+                                    .status(PlanStatus.TASK_SPLITTING)
+                                    .createdAt(plan.createdAt())
+                                    .updatedAt(System.currentTimeMillis())
+                                    .build();
+                            JCEFMessageBridge.this.planService.updatePlan(withSession);
+                        }
+                        if (response.message() != null && response.message().text() != null) {
+                            responseBuilder.append(response.message().text());
+                        }
+                        if (response.toolCall() != null) {
+                            JCEFMessageBridge.this.fileEditService.trackToolCall(resolvedSessionId, response.toolCall());
+                        }
+                        String eventJson = MessageConverter.toStreamEventJson(response, resolvedSessionId,
+                                JCEFMessageBridge.this.currentProjectPath);
+                        JCEFMessageBridge.this.invokeJSCallback(JsCallback.STREAM_EVENT, eventJson);
+                    }
+
+                    @Override
+                    public void onComplete() {
+                        String fullResponse = responseBuilder.toString();
+                        String tasksJson = JCEFMessageBridge.this.extractTaskListJson(fullResponse);
+                        if (tasksJson != null) {
+                            List<PlanTask> parsed = JCEFMessageBridge.this.planService.parseAndCreateTasks(planId, tasksJson);
+                            Plan kanbanPlan = Plan.builder()
+                                    .planId(plan.planId())
+                                    .projectId(plan.projectId())
+                                    .planName(plan.planName())
+                                    .description(plan.description())
+                                    .cliType(plan.cliType())
+                                    .sessionId(plan.sessionId())
+                                    .minTaskCount(plan.minTaskCount())
+                                    .status(PlanStatus.KANBAN)
+                                    .createdAt(plan.createdAt())
+                                    .updatedAt(System.currentTimeMillis())
+                                    .build();
+                            JCEFMessageBridge.this.planService.updatePlan(kanbanPlan);
+                            JCEFMessageBridge.this.invokeJSCallback(JsCallback.PLAN_TASK_UPDATED, GsonUtils.toJson(Map.of(
+                                    "planId", planId, "tasks", parsed
+                            )));
+                            JCEFMessageBridge.this.invokeJSCallback(JsCallback.PLAN_DETAIL, GsonUtils.toJson(Map.of(
+                                    "plan", GsonUtils.toJsonTree(kanbanPlan),
+                                    "tasks", GsonUtils.toJsonTree(parsed),
+                                    "stats", JCEFMessageBridge.this.planService.getTaskStats(planId)
+                            )));
+                        }
+                        JCEFMessageBridge.this.invokeJSCallback(JsCallback.STREAM_COMPLETE,
+                                new StreamCompletePayload(effectiveSessionId));
+                    }
+
+                    @Override
+                    public void onError(Exception e) {
+                        String errJson = MessageConverter.toErrorJson(e.getMessage(), effectiveSessionId);
+                        JCEFMessageBridge.this.invokeJSCallback(JsCallback.STREAM_EVENT, errJson);
+                    }
+                });
+            } catch (Exception e) {
+                log.warn("Failed to start plan split", e);
+            }
+        });
+    }
+
+    private String extractTaskListJson(String text) {
+        if (text == null) {
+            return null;
+        }
+        int startMarker = text.indexOf("---TASK_LIST_START---");
+        int endMarker = text.indexOf("---TASK_LIST_END---");
+        if (startMarker < 0 || endMarker < 0 || endMarker <= startMarker) {
+            int startBracket = text.indexOf("[");
+            int endBracket = text.lastIndexOf("]");
+            if (startBracket >= 0 && endBracket > startBracket) {
+                return text.substring(startBracket, endBracket + 1);
+            }
+            return null;
+        }
+        String json = text.substring(startMarker + "---TASK_LIST_START---".length(), endMarker).trim();
+        if (json.startsWith("[") && json.endsWith("]")) {
+            return json;
+        }
+        int startBracket = json.indexOf("[");
+        int endBracket = json.lastIndexOf("]");
+        if (startBracket >= 0 && endBracket > startBracket) {
+            return json.substring(startBracket, endBracket + 1);
+        }
+        return null;
+    }
+
+    // ==================== Plan Mode Request DTOs ====================
+
+    private record CreatePlanRequest(String action, String planName, String description,
+                                      String cliType, int minTaskCount) implements JsRequest {
+    }
+
+    private record PlanIdRequest(String action, String planId) implements JsRequest {
+    }
+
+    private record UpdatePlanRequest(String action, String planId,
+                                      String planName, String description) implements JsRequest {
+    }
+
+    private record UpdatePlanTaskRequest(String action, String planId, String taskId,
+                                          String title, String description, String priority,
+                                          String cliType, String modelId, String status) implements JsRequest {
+    }
+
+    private record ExecutePlanTaskRequest(String action, String planId, String taskId) implements JsRequest {
+    }
+
+    private record StopPlanTaskRequest(String action, String planId, String taskId) implements JsRequest {
+    }
+
+    private record AiEditTasksRequest(String action, String planId, String instruction) implements JsRequest {
+    }
+
+    private record SavePlanTasksRequest(String action, String planId, String tasksJson) implements JsRequest {
+    }
+
+    private record SavePlanConfigRequest(String action, int planConcurrentTasks) implements JsRequest {
     }
 }

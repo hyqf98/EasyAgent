@@ -17,6 +17,7 @@
     <empty-state
         v-if="!inChat && !showSettings"
         @select-cli="onSelectCLI"
+        @open-plan-mode="onOpenPlanMode"
         @open-settings="showSettings = true"
     ></empty-state>
 

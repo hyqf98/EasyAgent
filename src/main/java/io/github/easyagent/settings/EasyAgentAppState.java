@@ -43,6 +43,9 @@ public class EasyAgentAppState implements PersistentStateComponent<EasyAgentAppS
     /** CLI 配置档案：cliType -> JSON 数组字符串（List<CliProfile>）。 */
     private Map<String, String> cliProfiles = new HashMap<>();
 
+    /** 计划模式并发执行任务数，默认 1，范围 1-5。 */
+    private int planConcurrentTasks = 1;
+
     /**
      * 获取应用级别的 EasyAgentAppState 实例。
      *

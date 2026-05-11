@@ -1,0 +1,1225 @@
+/* === Plan Mode Panel === */
+.plan-panel {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    width: 100%;
+    background: var(--ea-bg);
+    color: var(--ea-text);
+    position: relative;
+}
+
+/* === Plan Header === */
+.plan-header {
+    display: flex;
+    align-items: center;
+    padding: 8px 16px;
+    background: var(--ea-header-bg);
+    backdrop-filter: blur(16px);
+    border-bottom: 1px solid var(--ea-border);
+    height: 46px;
+    flex-shrink: 0;
+    gap: 10px;
+    user-select: none;
+}
+.plan-header-title {
+    flex: 1;
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--ea-text);
+    min-width: 0;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.plan-header-actions {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    flex-shrink: 0;
+}
+
+/* === Status Badge === */
+.plan-status-badge {
+    display: inline-flex;
+    align-items: center;
+    padding: 2px 10px;
+    border-radius: 999px;
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+}
+.plan-status-badge.draft { background: var(--ea-bg-hover); color: var(--ea-text-secondary); }
+.plan-status-badge.task_splitting { background: rgba(245, 158, 11, 0.12); color: #F59E0B; }
+.plan-status-badge.kanban { background: rgba(59, 130, 246, 0.12); color: #3B82F6; }
+.plan-status-badge.completed { background: rgba(16, 185, 129, 0.12); color: #10B981; }
+
+/* === Plan Buttons === */
+.plan-btn {
+    padding: 5px 14px;
+    border-radius: var(--ea-radius-sm);
+    border: 1px solid var(--ea-border);
+    background: transparent;
+    color: var(--ea-text-secondary);
+    font-size: 12px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all var(--ea-transition);
+    white-space: nowrap;
+}
+.plan-btn:hover { background: var(--ea-bg-hover); color: var(--ea-text); }
+.plan-btn-primary {
+    background: var(--ea-accent);
+    color: #fff;
+    border-color: var(--ea-accent);
+}
+.plan-btn-primary:hover { background: var(--ea-accent-hover); border-color: var(--ea-accent-hover); }
+.plan-btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
+.plan-btn-danger {
+    background: #EF4444;
+    color: #fff;
+    border-color: #EF4444;
+}
+.plan-btn-danger:hover { background: #DC2626; border-color: #DC2626; }
+
+/* === Plan List Page === */
+.plan-list-page {
+    flex: 1;
+    overflow-y: auto;
+    padding: 16px;
+}
+.plan-empty {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 60px 24px;
+    text-align: center;
+    gap: 8px;
+}
+.plan-empty-icon { font-size: 40px; opacity: 0.5; }
+.plan-empty-title { font-size: 16px; font-weight: 600; color: var(--ea-text-secondary); }
+.plan-empty-desc { font-size: 13px; color: var(--ea-text-muted); max-width: 280px; }
+
+/* === Plan Card Grid === */
+.plan-card-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+    gap: 12px;
+}
+.plan-card {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 14px;
+    border-radius: var(--ea-radius-md);
+    border: 1px solid var(--ea-border);
+    background: var(--ea-bg-secondary);
+    cursor: pointer;
+    transition: all var(--ea-transition);
+    animation: fadeIn .2s ease;
+}
+.plan-card:hover {
+    border-color: color-mix(in srgb, var(--ea-input-focus) 40%, var(--ea-border));
+    transform: translateY(-1px);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08);
+}
+.plan-card-header {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+}
+.plan-card-name {
+    flex: 1;
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--ea-text);
+    min-width: 0;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.plan-card-actions {
+    display: flex;
+    gap: 2px;
+    flex-shrink: 0;
+}
+.plan-card-delete {
+    opacity: 0;
+    transition: opacity var(--ea-transition);
+    font-size: 12px;
+}
+.plan-card:hover .plan-card-delete { opacity: 1; }
+.plan-card-actions .plan-status-badge {
+    opacity: 1;
+}
+.plan-card-desc {
+    font-size: 12px;
+    color: var(--ea-text-secondary);
+    line-height: 1.5;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+}
+.plan-card-meta {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: auto;
+}
+.plan-card-time {
+    font-size: 11px;
+    color: var(--ea-text-muted);
+}
+.plan-card-meta .plan-split-btn {
+    margin-left: auto;
+}
+.plan-cli-badge {
+    display: inline-flex;
+    align-items: center;
+    padding: 2px 8px;
+    border-radius: 999px;
+    font-size: 10px;
+    font-weight: 600;
+}
+.plan-cli-badge.claude { background: rgba(139, 92, 246, 0.12); color: var(--ea-claude); }
+.plan-cli-badge.opencode { background: rgba(16, 185, 129, 0.12); color: var(--ea-opencode); }
+.plan-cli-badge.codex { background: rgba(59, 130, 246, 0.12); color: var(--ea-codex); }
+
+/* === Split Layout: Chat + Task List === */
+.plan-split-btn {
+    padding: 3px 10px;
+    border-radius: var(--ea-radius-sm);
+    border: 1px solid var(--ea-accent);
+    background: transparent;
+    color: var(--ea-accent);
+    font-size: 11px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all var(--ea-transition);
+    white-space: nowrap;
+    line-height: 1.4;
+}
+.plan-split-btn:hover {
+    background: var(--ea-accent);
+    color: #fff;
+}
+
+/* === Split Layout: Chat + Task List === */
+.plan-split-layout {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    min-height: 0;
+    position: relative;
+}
+.plan-split-layout.has-tasks {
+    flex-direction: row;
+}
+.plan-split-chat {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    min-height: 0;
+    overflow: hidden;
+}
+.plan-split-layout .plan-messages-area {
+    flex: 1;
+    min-height: 0;
+}
+.plan-split-resize-handle {
+    width: 4px;
+    cursor: col-resize;
+    background: transparent;
+    flex-shrink: 0;
+    transition: background var(--ea-transition);
+    z-index: 2;
+}
+.plan-split-resize-handle:hover,
+.plan-split-resize-handle:active {
+    background: var(--ea-accent);
+    opacity: 0.4;
+}
+.plan-split-tasks {
+    flex-shrink: 0;
+    display: flex;
+    flex-direction: column;
+    background: var(--ea-bg-secondary);
+    border-left: 1px solid var(--ea-border);
+    overflow: hidden;
+}
+.plan-split-tasks-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 12px;
+    border-bottom: 1px solid var(--ea-border);
+    flex-shrink: 0;
+}
+.plan-split-tasks-title {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--ea-text);
+}
+.plan-split-tasks-actions {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+.plan-split-tasks-count {
+    font-size: 11px;
+    color: var(--ea-text-muted);
+    background: var(--ea-bg-hover);
+    padding: 2px 8px;
+    border-radius: 999px;
+    margin-right: 2px;
+}
+.plan-task-action-btn {
+    width: 24px;
+    height: 24px;
+    border: none;
+    background: transparent;
+    color: var(--ea-text-secondary);
+    font-size: 13px;
+    cursor: pointer;
+    border-radius: var(--ea-radius-sm);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all var(--ea-transition);
+}
+.plan-task-action-btn:hover {
+    background: var(--ea-bg-hover);
+    color: var(--ea-text);
+}
+.plan-split-expand-btn {
+    position: absolute;
+    right: 0;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 22px;
+    height: 48px;
+    border: 1px solid var(--ea-border);
+    border-right: none;
+    border-radius: var(--ea-radius-sm) 0 0 var(--ea-radius-sm);
+    background: var(--ea-bg-secondary);
+    color: var(--ea-text-secondary);
+    font-size: 11px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 2;
+    transition: all var(--ea-transition);
+}
+.plan-split-expand-btn:hover {
+    background: var(--ea-bg-hover);
+    color: var(--ea-text);
+    width: 28px;
+}
+.plan-split-tasks-list {
+    flex: 1;
+    overflow-y: auto;
+    padding: 4px 6px;
+}
+.plan-result-task {
+    display: flex;
+    align-items: flex-start;
+    gap: 6px;
+    padding: 7px 6px;
+    border-radius: var(--ea-radius-sm);
+    transition: background var(--ea-transition);
+}
+.plan-result-task:hover {
+    background: var(--ea-bg-hover);
+}
+.plan-result-task-index {
+    flex-shrink: 0;
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    background: var(--ea-accent);
+    color: #fff;
+    font-size: 10px;
+    font-weight: 600;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-top: 2px;
+}
+.plan-result-task-body {
+    flex: 1;
+    min-width: 0;
+}
+.plan-result-task-name {
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--ea-text);
+    line-height: 1.4;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+.plan-result-task-cli {
+    font-size: 9px;
+    font-weight: 600;
+    padding: 1px 5px;
+    border-radius: 3px;
+}
+.plan-result-task-cli.claude { background: rgba(139, 92, 246, 0.1); color: #8B5CF6; }
+.plan-result-task-cli.opencode { background: rgba(16, 185, 129, 0.1); color: #10B981; }
+.plan-result-task-cli.codex { background: rgba(59, 130, 246, 0.1); color: #3B82F6; }
+.plan-result-task-desc {
+    font-size: 11px;
+    color: var(--ea-text-secondary);
+    line-height: 1.4;
+    margin-top: 1px;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+}
+.plan-result-task-side {
+    flex-shrink: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 3px;
+}
+.plan-result-task-priority {
+    font-size: 9px;
+    font-weight: 600;
+    padding: 1px 5px;
+    border-radius: 3px;
+    text-transform: uppercase;
+}
+.plan-result-task-priority.high { background: rgba(239, 68, 68, 0.1); color: #EF4444; }
+.plan-result-task-priority.medium { background: rgba(245, 158, 11, 0.1); color: #F59E0B; }
+.plan-result-task-priority.low { background: rgba(34, 197, 94, 0.1); color: #22C55E; }
+.plan-result-task-btns {
+    display: flex;
+    gap: 1px;
+    opacity: 0;
+    transition: opacity var(--ea-transition);
+}
+.plan-result-task:hover .plan-result-task-btns {
+    opacity: 1;
+}
+.plan-task-row-btn {
+    width: 18px;
+    height: 18px;
+    border: none;
+    background: transparent;
+    color: var(--ea-text-muted);
+    font-size: 10px;
+    cursor: pointer;
+    border-radius: 3px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all var(--ea-transition);
+}
+.plan-task-row-btn:hover {
+    background: var(--ea-bg-hover);
+    color: var(--ea-text);
+}
+.plan-task-row-btn-danger:hover {
+    background: rgba(239, 68, 68, 0.1);
+    color: #EF4444;
+}
+
+/* === Task Dialog === */
+.plan-dialog-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.35);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+    animation: fadeIn .15s ease;
+}
+.plan-dialog {
+    width: 400px;
+    max-width: 90%;
+    background: var(--ea-bg);
+    border: 1px solid var(--ea-border);
+    border-radius: var(--ea-radius-lg);
+    box-shadow: 0 16px 48px rgba(0, 0, 0, 0.2);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    animation: slideUp .2s ease;
+}
+@keyframes slideUp {
+    from { opacity: 0; transform: translateY(12px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+.plan-dialog-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 14px 16px;
+    border-bottom: 1px solid var(--ea-border);
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--ea-text);
+}
+.plan-dialog-body {
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+.plan-dialog-label {
+    font-size: 11px;
+    font-weight: 500;
+    color: var(--ea-text-secondary);
+    margin-bottom: -4px;
+}
+.plan-dialog-row {
+    display: flex;
+    gap: 10px;
+}
+.plan-dialog-field {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+.plan-dialog-textarea {
+    resize: vertical;
+    min-height: 56px;
+    font-family: inherit;
+}
+.plan-dialog-footer {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+    padding: 12px 16px;
+    border-top: 1px solid var(--ea-border);
+}
+.plan-delete-msg {
+    font-size: 13px;
+    color: var(--ea-text);
+    line-height: 1.6;
+}
+.plan-dialog-dropdown {
+    position: relative;
+    display: block;
+}
+.plan-dialog-dropdown-trigger {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    width: 100%;
+    padding: 6px 10px;
+    font-size: 12px;
+    color: var(--ea-text);
+    background: var(--ea-bg-secondary);
+    border: 1px solid var(--ea-border);
+    border-radius: 6px;
+    cursor: pointer;
+    transition: all var(--ea-transition);
+    line-height: 1.4;
+}
+.plan-dialog-dropdown-trigger:hover {
+    border-color: var(--ea-input-focus);
+    background: var(--ea-bg-hover);
+}
+.plan-dialog-dropdown.open .plan-dialog-dropdown-trigger {
+    border-color: var(--ea-input-focus);
+}
+.plan-dialog-dropdown-text {
+    flex: 1;
+    text-align: left;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.plan-dialog-dropdown-arrow {
+    flex-shrink: 0;
+    opacity: 0.5;
+    transition: transform 0.2s;
+}
+.plan-dialog-dropdown.open .plan-dialog-dropdown-arrow {
+    transform: rotate(180deg);
+}
+.plan-dialog-dropdown-list {
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: calc(100% + 2px);
+    max-height: 200px;
+    overflow-y: auto;
+    background: var(--ea-popup-bg);
+    border: 1px solid var(--ea-border);
+    border-radius: 6px;
+    box-shadow: var(--ea-popup-shadow);
+    z-index: 200;
+    padding: 4px;
+}
+.plan-dialog-dropdown-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 5px 10px;
+    font-size: 12px;
+    color: var(--ea-text);
+    border-radius: 4px;
+    cursor: pointer;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    transition: background var(--ea-transition);
+}
+.plan-dialog-dropdown-item:hover {
+    background: var(--ea-bg-hover);
+}
+.plan-dialog-dropdown-item.active {
+    color: var(--ea-input-focus);
+    font-weight: 600;
+    background: var(--ea-bg-secondary);
+}
+.plan-dialog-dropdown-cli-dot {
+    display: inline-block;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    flex-shrink: 0;
+}
+.plan-dialog-dropdown-cli-dot.claude { background: #8B5CF6; }
+.plan-dialog-dropdown-cli-dot.opencode { background: #10B981; }
+.plan-dialog-dropdown-cli-dot.codex { background: #3B82F6; }
+.plan-dialog-model-dropdown {
+    margin-bottom: 4px;
+}
+.plan-detail-page {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+.plan-messages-area {
+    flex: 1;
+    overflow-y: auto;
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+.plan-message-row {
+    display: flex;
+    animation: fadeIn .15s ease;
+}
+.plan-message-row.user { justify-content: flex-end; }
+.plan-message-row.assistant { justify-content: flex-start; }
+.plan-message-bubble {
+    max-width: 85%;
+    padding: 10px 14px;
+    border-radius: var(--ea-radius-lg);
+    font-size: 13px;
+    line-height: 1.6;
+    word-break: break-word;
+}
+.plan-message-bubble.user {
+    background: var(--ea-user-bubble);
+    border-bottom-right-radius: var(--ea-radius-sm);
+}
+.plan-message-bubble.assistant {
+    background: var(--ea-ai-bubble);
+    border-bottom-left-radius: var(--ea-radius-sm);
+}
+.plan-message-bubble.streaming {
+    color: var(--ea-text-secondary);
+}
+
+/* === Kanban View Session Button === */
+.kanban-view-session {
+    font-size: 12px;
+    cursor: pointer;
+    opacity: 0.6;
+    transition: opacity var(--ea-transition);
+}
+.kanban-card:hover .kanban-view-session {
+    opacity: 1;
+}
+
+/* === Plan Task List (in collect view) === */
+.plan-task-list {
+    flex-shrink: 0;
+    border-top: 1px solid var(--ea-border);
+    padding: 12px 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    max-height: 280px;
+    overflow-y: auto;
+}
+.plan-task-list-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--ea-text-secondary);
+}
+.plan-task-card {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 10px;
+    border-radius: var(--ea-radius-sm);
+    border: 1px solid var(--ea-border);
+    background: var(--ea-bg-secondary);
+    transition: background var(--ea-transition);
+}
+.plan-task-card:hover { background: var(--ea-bg-hover); }
+.plan-task-priority {
+    width: 4px;
+    height: 28px;
+    border-radius: 2px;
+    flex-shrink: 0;
+}
+.plan-task-priority.high { background: #EF4444; }
+.plan-task-priority.medium { background: #F59E0B; }
+.plan-task-priority.low { background: #10B981; }
+.plan-task-info {
+    flex: 1;
+    min-width: 0;
+}
+.plan-task-title {
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--ea-text);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.plan-task-desc {
+    font-size: 11px;
+    color: var(--ea-text-muted);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    margin-top: 2px;
+}
+.plan-task-edit-bar {
+    display: flex;
+    gap: 6px;
+    margin-top: 4px;
+}
+
+/* === Plan Input Bar === */
+.plan-input-bar {
+    flex-shrink: 0;
+    display: flex;
+    gap: 8px;
+    padding: 12px 16px;
+    border-top: 1px solid var(--ea-border);
+    background: var(--ea-bg);
+}
+.plan-input {
+    flex: 1;
+    padding: 8px 12px;
+    border-radius: var(--ea-radius-sm);
+    border: 1px solid var(--ea-input-border);
+    background: var(--ea-input-bg);
+    color: var(--ea-text);
+    font-family: var(--ea-font-sans);
+    font-size: 13px;
+    outline: none;
+    transition: border-color var(--ea-transition);
+}
+.plan-input:focus { border-color: var(--ea-input-focus); }
+.plan-input::placeholder { color: var(--ea-text-muted); }
+.plan-input-sm { width: 80px; flex: none; }
+
+/* === Kanban Board === */
+.plan-kanban-page {
+    flex: 1;
+    overflow: hidden;
+    padding: 8px;
+}
+.kanban-board {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    grid-template-rows: 1fr 1fr;
+    gap: 8px;
+    height: 100%;
+    overflow: hidden;
+}
+.kanban-column {
+    display: flex;
+    flex-direction: column;
+    border-radius: var(--ea-radius-md);
+    background: var(--ea-bg-secondary);
+    border: 1px solid var(--ea-border);
+    overflow: hidden;
+    min-height: 0;
+}
+.kanban-column-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 8px 10px;
+    font-size: 11px;
+    font-weight: 600;
+    flex-shrink: 0;
+    border-bottom: 1px solid var(--ea-border);
+}
+.kanban-column-header.pending { color: var(--ea-text-secondary); }
+.kanban-column-header.running { color: #F59E0B; }
+.kanban-column-header.completed { color: #10B981; }
+.kanban-column-header.failed { color: #EF4444; }
+.kanban-column-header-actions {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+.kanban-add-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 22px;
+    height: 22px;
+    border: 1px solid var(--ea-border);
+    border-radius: var(--ea-radius-sm);
+    background: var(--ea-bg);
+    color: var(--ea-text-secondary);
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all var(--ea-transition);
+    padding: 0;
+    line-height: 1;
+}
+.kanban-add-btn:hover {
+    background: var(--ea-bg-hover);
+    color: var(--ea-text);
+    border-color: var(--ea-input-focus);
+}
+.kanban-start-all-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 22px;
+    height: 22px;
+    border: 1px solid var(--ea-border);
+    border-radius: var(--ea-radius-sm);
+    background: var(--ea-bg);
+    color: #22c55e;
+    font-size: 10px;
+    cursor: pointer;
+    transition: all var(--ea-transition);
+    padding: 0;
+    line-height: 1;
+}
+.kanban-start-all-btn:hover {
+    background: rgba(34, 197, 94, 0.1);
+    border-color: #22c55e;
+}
+.kanban-auto-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 22px;
+    height: 22px;
+    border: 1px solid var(--ea-border);
+    border-radius: var(--ea-radius-sm);
+    background: var(--ea-bg);
+    color: var(--ea-text-secondary);
+    font-size: 11px;
+    cursor: pointer;
+    transition: all var(--ea-transition);
+    padding: 0;
+    line-height: 1;
+}
+.kanban-auto-btn.active {
+    color: #22c55e;
+    border-color: rgba(34, 197, 94, 0.3);
+}
+.kanban-auto-btn:hover {
+    background: var(--ea-bg-hover);
+}
+.kanban-column-count {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 20px;
+    height: 20px;
+    border-radius: 10px;
+    background: var(--ea-bg-hover);
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--ea-text-secondary);
+}
+.kanban-column-body {
+    flex: 1;
+    overflow-y: auto;
+    padding: 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    min-height: 60px;
+}
+
+/* === Kanban Card === */
+.kanban-card {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    padding: 8px;
+    border-radius: var(--ea-radius-sm);
+    border: 1px solid var(--ea-border);
+    background: var(--ea-bg);
+    cursor: grab;
+    transition: all var(--ea-transition);
+    animation: fadeIn .15s ease;
+    -webkit-user-select: none;
+    user-select: none;
+}
+.kanban-card:hover {
+    border-color: color-mix(in srgb, var(--ea-input-focus) 30%, var(--ea-border));
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.06);
+}
+.kanban-card.sortable-ghost {
+    opacity: 0.25;
+    border-style: dashed;
+    background: var(--ea-bg-hover);
+    transform: none;
+    animation: none;
+}
+.kanban-card.sortable-chosen {
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
+}
+.kanban-fallback {
+    box-shadow: 0 12px 32px rgba(0, 0, 0, 0.25) !important;
+    opacity: 0.95 !important;
+    cursor: grabbing !important;
+    z-index: 9999 !important;
+    transition: none !important;
+    animation: none !important;
+    transform: none !important;
+}
+.kanban-card.editing {
+    border-color: var(--ea-input-focus);
+    cursor: default;
+}
+.kanban-card.running {
+    border-left: 3px solid #F59E0B;
+}
+.kanban-card.completed {
+    border-left: 3px solid #10B981;
+    opacity: 0.8;
+}
+.kanban-card.failed {
+    border-left: 3px solid #EF4444;
+}
+.kanban-card-priority {
+    display: none;
+}
+.kanban-card-priority.high { background: #EF4444; }
+.kanban-card-priority.medium { background: #F59E0B; }
+.kanban-card-priority.low { background: #10B981; }
+.kanban-card-content {
+    flex: 1;
+    min-width: 0;
+}
+.kanban-card-title {
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--ea-text);
+    line-height: 1.4;
+    word-break: break-word;
+}
+.kanban-card-desc {
+    font-size: 11px;
+    color: var(--ea-text-muted);
+    margin-top: 4px;
+    line-height: 1.4;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+}
+.kanban-card-output {
+    font-size: 11px;
+    color: var(--ea-text-secondary);
+    margin-top: 4px;
+    font-family: var(--ea-font-mono);
+    white-space: pre-wrap;
+    word-break: break-word;
+    max-height: 80px;
+    overflow-y: auto;
+    background: var(--ea-code-bg);
+    padding: 6px 8px;
+    border-radius: var(--ea-radius-sm);
+}
+.kanban-card.queued {
+    border-left: 3px solid var(--ea-warning, #f59e0b);
+}
+.kanban-card-queued {
+    font-size: 11px;
+    color: var(--ea-warning, #f59e0b);
+    margin-top: 4px;
+    font-weight: 500;
+}
+.kanban-card.stopped {
+    opacity: 0.7;
+    border-left: 3px solid var(--ea-text-secondary);
+}
+.kanban-card-stopped {
+    font-size: 11px;
+    color: var(--ea-text-secondary);
+    margin-top: 4px;
+    font-weight: 500;
+}
+.kanban-card-footer {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-top: 4px;
+}
+.kanban-card-btns {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    opacity: 0;
+    transition: opacity var(--ea-transition);
+}
+.kanban-card:hover .kanban-card-btns { opacity: 1; }
+.kanban-card.running .kanban-card-btns,
+.kanban-card.queued .kanban-card-btns,
+.kanban-card.stopped .kanban-card-btns { opacity: 1; }
+.kanban-del-btn {
+    color: var(--ea-text-muted);
+}
+.kanban-del-btn:hover {
+    color: #EF4444;
+}
+.kanban-card-cli {
+    font-size: 10px;
+    padding: 1px 6px;
+    border-radius: 999px;
+    font-weight: 600;
+}
+.kanban-card-cli.claude { background: rgba(139, 92, 246, 0.1); color: var(--ea-claude); }
+.kanban-card-cli.opencode { background: rgba(16, 185, 129, 0.1); color: var(--ea-opencode); }
+.kanban-card-cli.codex { background: rgba(59, 130, 246, 0.1); color: var(--ea-codex); }
+.kanban-edit-btn {
+    font-size: 12px !important;
+    width: 24px !important;
+    height: 24px !important;
+    color: var(--ea-text-secondary, #888);
+}
+.kanban-card:hover .kanban-edit-btn { opacity: 1; }
+.kanban-card.running .kanban-edit-btn,
+.kanban-card.queued .kanban-edit-btn,
+.kanban-card.stopped .kanban-edit-btn { opacity: 1; color: var(--ea-text-secondary, #888); }
+.kanban-edit-btn:hover { color: var(--ea-text, #333); background: var(--ea-bg-hover, rgba(0,0,0,0.05)); }
+
+/* Kanban Card Edit Mode */
+.kanban-edit-input {
+    width: 100%;
+    padding: 4px 6px;
+    border: 1px solid var(--ea-input-focus);
+    border-radius: 4px;
+    background: var(--ea-input-bg);
+    color: var(--ea-text);
+    font-size: 13px;
+    outline: none;
+    font-family: var(--ea-font-sans);
+}
+.kanban-save-btn {
+    color: #10B981;
+}
+
+/* Kanban Spinner */
+.kanban-card-spinner {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    margin-top: 6px;
+}
+.spinner-dot {
+    width: 5px;
+    height: 5px;
+    border-radius: 50%;
+    background: #F59E0B;
+    animation: response-loading-pulse 1.2s ease-in-out infinite;
+}
+.spinner-dot:nth-child(2) { animation-delay: 0.15s; }
+.spinner-dot:nth-child(3) { animation-delay: 0.3s; }
+
+/* === Task Detail Header (read-only session view) === */
+.task-detail-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 12px;
+    border-bottom: 1px solid var(--ea-border);
+    flex-shrink: 0;
+}
+.task-detail-title {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--ea-text);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.task-detail-status-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    flex-shrink: 0;
+}
+.task-detail-status-dot.running { background: #F59E0B; }
+.task-detail-status-dot.completed { background: #10B981; }
+.task-detail-status-dot.failed { background: #EF4444; }
+
+/* === Plan Dialog === */
+.plan-dialog-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.35);
+    z-index: 90;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    animation: fadeIn .15s ease;
+}
+.plan-dialog {
+    width: 380px;
+    max-width: 92%;
+    background: var(--ea-popup-bg);
+    border: 1px solid var(--ea-border);
+    border-radius: var(--ea-radius-lg);
+    box-shadow: var(--ea-popup-shadow);
+    animation: fadeIn .2s ease;
+}
+.plan-dialog-title {
+    padding: 16px 20px 0;
+    font-size: 16px;
+    font-weight: 600;
+    color: var(--ea-text);
+}
+.plan-dialog-body {
+    padding: 16px 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+.plan-dialog-row {
+    display: flex;
+    gap: 12px;
+}
+.plan-dialog-field {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+.plan-label {
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--ea-text-secondary);
+}
+.plan-textarea {
+    width: 100%;
+    padding: 8px 12px;
+    border-radius: var(--ea-radius-sm);
+    border: 1px solid var(--ea-input-border);
+    background: var(--ea-input-bg);
+    color: var(--ea-text);
+    font-family: var(--ea-font-sans);
+    font-size: 13px;
+    outline: none;
+    resize: vertical;
+    transition: border-color var(--ea-transition);
+}
+.plan-textarea:focus { border-color: var(--ea-input-focus); }
+.plan-textarea::placeholder { color: var(--ea-text-muted); }
+.plan-select {
+    width: 100%;
+    padding: 8px 12px;
+    border-radius: var(--ea-radius-sm);
+    border: 1px solid var(--ea-input-border);
+    background: var(--ea-input-bg);
+    color: var(--ea-text);
+    font-size: 13px;
+    outline: none;
+    cursor: pointer;
+    transition: border-color var(--ea-transition);
+}
+.plan-select:focus { border-color: var(--ea-input-focus); }
+.plan-dialog-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+    padding: 12px 20px 16px;
+}
+
+/* === Plan Toast (reuses global-toast from chat.css) === */
+.plan-panel .global-toast {
+    position: absolute;
+    top: 12px;
+    right: 16px;
+    z-index: 80;
+    max-width: 320px;
+    padding: 8px 14px;
+    border: 1px solid color-mix(in srgb, var(--ea-input-focus) 26%, var(--ea-border));
+    border-radius: 10px;
+    background: color-mix(in srgb, var(--ea-bg) 92%, transparent);
+    color: var(--ea-text);
+    box-shadow: 0 10px 28px rgba(0, 0, 0, 0.18);
+    backdrop-filter: blur(12px);
+    font-size: 12px;
+    animation: fadeIn .15s ease;
+}
+
+/* === Plan Settings Field (in SettingsPage general) === */
+.settings-plan-concurrent {
+    margin-top: 4px;
+}
+.settings-plan-hint {
+    font-size: 11px;
+    color: var(--ea-text-muted);
+    margin-top: 4px;
+}
+
+/* === Empty State: Plan Mode Entry === */
+.empty-state-divider {
+    display: flex;
+    align-items: center;
+    width: 100%;
+    max-width: 360px;
+    gap: 12px;
+    margin: 4px 0;
+}
+.empty-state-divider::before,
+.empty-state-divider::after {
+    content: '';
+    flex: 1;
+    height: 1px;
+    background: var(--ea-border);
+}
+.divider-text {
+    font-size: 12px;
+    color: var(--ea-text-muted);
+    white-space: nowrap;
+}
+.plan-mode-card {
+    border-style: dashed;
+}
+.plan-mode-card:hover {
+    border-color: var(--ea-accent);
+}

@@ -14,6 +14,13 @@
                 <span v-if="!cli.available" class="cli-unavailable">—</span>
             </div>
         </div>
+        <div class="empty-state-divider">
+            <span class="divider-text">{{ i18n.t('welcome.or') }}</span>
+        </div>
+        <div class="empty-cli-card plan-mode-card" @click="openPlanMode">
+            <span class="cli-emoji">📋</span>
+            <span class="cli-label">{{ i18n.t('welcome.planMode') }}</span>
+        </div>
         <div class="empty-state-hint">{{ i18n.t('welcome.hint') }}</div>
     </template>
     <template v-if="cliChecked && !hasCLIs">

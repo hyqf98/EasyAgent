@@ -138,6 +138,21 @@ public class GsonUtils {
     }
 
     /**
+     * 将 JSON 数组字符串反序列化为 Java List。
+     *
+     * @param json  JSON 数组字符串
+     * @param clazz 列表元素类型
+     * @param <T>   泛型
+     * @return 反序列化后的列表
+     * @since 1.0.0
+     */
+    public static <T> List<T> listFromJson(String json, Class<T> clazz) {
+        Type type = TypeToken.getParameterized(List.class, clazz).getType();
+        List<T> result = gson.fromJson(json, type);
+        return result != null ? result : new ArrayList<>();
+    }
+
+    /**
      * 将 JSON 字符串反序列化为泛型 Java 对象。
      * <p>
      * 用于解决泛型擦除问题，通过 {@link TypeToken} 保留完整泛型类型信息。

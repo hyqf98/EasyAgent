@@ -64,7 +64,7 @@ var EA_STATE_COMPLETED = 'completed';
  * @returns {boolean} 是否为临时会话
  */
 function EAIsProvisionalSessionId(sessionId) {
-    return !!sessionId && sessionId.indexOf('new-') === 0;
+    return !!sessionId && (sessionId.indexOf('new-') === 0 || sessionId.indexOf('plan-') === 0);
 }
 
 /**
@@ -207,6 +207,9 @@ window.EAStore = Vue.reactive({
     reasoningLevelsMap: {},
     selectedReasoningLevel: '',
     defaultModelInfoMap: {},
+    appMode: 'welcome',
+    planConcurrentTasks: 1,
+    pendingOpenSettings: false,
 
     get isStreaming() {
         return !!EA_STREAMING_MAP[this.sessionId];

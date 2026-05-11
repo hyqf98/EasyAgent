@@ -20,6 +20,7 @@
     <extensions defaultExtensionNs="com.intellij">
         <applicationService serviceImplementation="io.github.easyagent.settings.EasyAgentAppState"/>
         <projectService serviceImplementation="io.github.easyagent.settings.EasyAgentState"/>
+        <projectService serviceImplementation="io.github.easyagent.settings.EasyAgentPlanState"/>
     </extensions>
 
     <actions>

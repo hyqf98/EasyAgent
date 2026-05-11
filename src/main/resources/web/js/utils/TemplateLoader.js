@@ -35,7 +35,7 @@ window.EATemplateLoader = {
     _cache: {},
 
     /** 模块搜索路径列表。 */
-    searchPaths: ['js/chat/', 'js/message/', 'js/settings/'],
+    searchPaths: ['js/chat/', 'js/message/', 'js/settings/', 'js/plan/'],
 
     /**
      * 批量加载所有注册组件的模板并注册到 Vue 应用。

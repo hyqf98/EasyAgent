@@ -1,0 +1,394 @@
+<template>
+<div class="plan-panel">
+    <div v-if="toastMessage" class="global-toast">{{ toastMessage }}</div>
+
+    <div v-if="!taskDetailView" class="plan-header">
+        <button class="icon-btn" @click="onBack" :title="i18n.t('plan.back')">←</button>
+        <div class="plan-header-title">
+            <template v-if="viewMode === 'list'">{{ i18n.t('plan.title') }}</template>
+            <template v-else-if="currentPlan">{{ currentPlan.planName }}</template>
+        </div>
+        <div class="plan-header-actions">
+            <button v-if="viewMode === 'list'" class="plan-btn plan-btn-primary" @click="onNewPlan">+ {{ i18n.t('plan.newPlan') }}</button>
+            <span v-if="currentPlan" class="plan-status-badge" :class="(currentPlan.status || '').toLowerCase()">{{ getStatusLabel(currentPlan.status) }}</span>
+            <button class="icon-btn" @click="onGoSettings" :title="i18n.t('plan.nav.settings')">⚙</button>
+            <button class="icon-btn" @click="onGoHome" :title="i18n.t('plan.nav.home')">⌂</button>
+        </div>
+    </div>
+
+    <!-- Plan List -->
+    <div v-if="viewMode === 'list'" class="plan-list-page">
+        <div v-if="plans.length === 0" class="plan-empty">
+            <div class="plan-empty-icon">📋</div>
+            <div class="plan-empty-title">{{ i18n.t('plan.emptyTitle') }}</div>
+            <div class="plan-empty-desc">{{ i18n.t('plan.emptyDesc') }}</div>
+        </div>
+        <div class="plan-card-grid">
+            <div v-for="plan in plans" :key="plan.planId" class="plan-card" @click="onOpenPlan(plan)">
+                <div class="plan-card-header">
+                    <div class="plan-card-name">{{ plan.planName }}</div>
+                    <div class="plan-card-actions" @click.stop>
+                        <span class="plan-status-badge" :class="(plan.status || '').toLowerCase()">{{ getStatusLabel(plan.status) }}</span>
+                        <button class="icon-btn plan-card-delete" @click="onDeletePlan(plan.planId)">✕</button>
+                    </div>
+                </div>
+                <div class="plan-card-desc">{{ (plan.description || '').substring(0, 120) }}</div>
+                <div class="plan-card-meta">
+                    <span class="plan-cli-badge" :class="(plan.cliType || '').toLowerCase()">{{ getCliLabelFromEnum(plan.cliType) }}</span>
+                    <span class="plan-card-time">{{ formatTime(plan.createdAt) }}</span>
+                    <button v-if="plan.status === 'DRAFT'" class="plan-split-btn" @click.stop="onStartPlanSplitting(plan)">{{ i18n.t('plan.startSplit') }} →</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Requirement Collection - Split View: Chat + Task List -->
+    <template v-if="viewMode === 'collect' && currentPlan && !taskDetailView">
+        <div class="plan-split-layout" :class="{ 'has-tasks': currentTasks.length > 0 && !taskPanelCollapsed }">
+            <div class="plan-split-chat">
+                <div class="messages-area plan-messages-area" ref="messagesArea" @scroll="onMessagesScroll">
+                    <div v-if="store.isLoading" class="loading-skeleton">
+                        <div class="skeleton-row" v-for="i in 3" :key="'sk-'+i">
+                            <div class="skeleton-avatar"></div>
+                            <div class="skeleton-content">
+                                <div class="skeleton-line" :style="{ width: (80 - i * 15) + '%' }"></div>
+                                <div class="skeleton-line short" :style="{ width: (60 - i * 10) + '%' }"></div>
+                            </div>
+                        </div>
+                    </div>
+                    <div v-if="!store.isLoading && store.messages.length === 0 && !store.isStreaming" class="chat-welcome">
+                        <div class="chat-welcome-emoji">💬</div>
+                        <div class="chat-welcome-title">{{ i18n.t('chat.welcomeTitle') }}</div>
+                        <div class="chat-welcome-desc">{{ i18n.t('chat.welcomeDesc') }}</div>
+                    </div>
+                    <template v-if="!store.isLoading && store.messages.length > 0">
+                    <message-bubble
+                        v-for="(msg, idx) in store.messages"
+                        :key="idx"
+                        :message="msg"
+                        :is-last="idx === store.messages.length - 1"
+                        :show-retry="false"
+                        @stop="onStopGeneration"
+                    ></message-bubble>
+                    </template>
+                </div>
+                <div v-if="showScrollBottom" class="scroll-bottom-btn" @click="scrollToBottom">
+                    <span class="scroll-bottom-inner"><span class="scroll-bottom-arrow">↓</span></span>
+                </div>
+                <input-bar
+                    :is-streaming="store.isStreaming"
+                    :disabled="false"
+                    @send="onPlanSend"
+                    @stop="onStopGeneration"
+                ></input-bar>
+            </div>
+
+            <template v-if="currentTasks.length > 0">
+                <div v-if="!taskPanelCollapsed" class="plan-split-resize-handle" @mousedown="onResizeStart"></div>
+                <div v-if="!taskPanelCollapsed" class="plan-split-tasks" :style="{ width: taskPanelWidth + 'px' }">
+                    <div class="plan-split-tasks-header">
+                        <span class="plan-split-tasks-title">{{ i18n.t('plan.splitResult.title') }}</span>
+                        <div class="plan-split-tasks-actions">
+                            <span class="plan-split-tasks-count">{{ currentTasks.length }} {{ i18n.t('plan.splitResult.tasks') }}</span>
+                            <button class="plan-task-action-btn" @click="onAddTask" :title="i18n.t('plan.task.add')">+</button>
+                            <button class="plan-task-action-btn" @click="taskPanelCollapsed = true" :title="i18n.t('plan.task.collapse')">◁</button>
+                        </div>
+                    </div>
+                    <div class="plan-split-tasks-list">
+                        <div v-for="(task, idx) in currentTasks" :key="task.taskId" class="plan-result-task">
+                            <div class="plan-result-task-index">{{ idx + 1 }}</div>
+                            <div class="plan-result-task-body">
+                                <div class="plan-result-task-name">
+                                    {{ task.title }}
+                                    <span v-if="task.cliType" class="plan-result-task-cli" :class="(task.cliType || '').toLowerCase()">{{ getCliLabelFromEnum(task.cliType) }}</span>
+                                </div>
+                                <div class="plan-result-task-desc">{{ task.description }}</div>
+                            </div>
+                            <div class="plan-result-task-side">
+                                <span class="plan-result-task-priority" :class="(task.priority || 'medium').toLowerCase()">{{ task.priority || 'medium' }}</span>
+                                <div class="plan-result-task-btns">
+                                    <button class="plan-task-row-btn" @click="onOpenTaskDialog(task)" :title="i18n.t('plan.task.edit')">✎</button>
+                                    <button class="plan-task-row-btn plan-task-row-btn-danger" @click="onDeleteTask(task.taskId)" :title="i18n.t('plan.task.delete')">✕</button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <button v-if="taskPanelCollapsed" class="plan-split-expand-btn" @click="taskPanelCollapsed = false" :title="i18n.t('plan.task.expand')">
+                    ▷
+                </button>
+            </template>
+        </div>
+    </template>
+
+    <!-- Task Detail Session View - Reuses Chat UI (read-only, no input bar) -->
+    <template v-if="taskDetailView">
+        <div class="task-detail-header">
+            <button class="icon-btn" @click="onCloseTaskDetail" :title="i18n.t('plan.back')">←</button>
+            <div class="task-detail-title">
+                <span class="task-detail-status-dot" :class="(taskDetailView.status || '').toLowerCase()"></span>
+                {{ taskDetailView.title }}
+            </div>
+        </div>
+        <div class="messages-area plan-messages-area" ref="messagesArea" @scroll="onMessagesScroll">
+            <div v-if="store.isLoading" class="loading-skeleton">
+                <div class="skeleton-row" v-for="i in 3" :key="'sk-'+i">
+                    <div class="skeleton-avatar"></div>
+                    <div class="skeleton-content">
+                        <div class="skeleton-line" :style="{ width: (80 - i * 15) + '%' }"></div>
+                        <div class="skeleton-line short" :style="{ width: (60 - i * 10) + '%' }"></div>
+                    </div>
+                </div>
+            </div>
+            <template v-if="!store.isLoading && store.messages.length === 0">
+                <div class="chat-welcome">
+                    <div class="chat-welcome-emoji">📋</div>
+                    <div class="chat-welcome-title">{{ i18n.t('plan.task.noSession') || '暂无会话记录' }}</div>
+                </div>
+            </template>
+            <template v-if="!store.isLoading && store.messages.length > 0">
+            <message-bubble
+                v-for="(msg, idx) in store.messages"
+                :key="idx"
+                :message="msg"
+                :is-last="idx === store.messages.length - 1"
+                :show-retry="false"
+                @stop="onStopGeneration"
+            ></message-bubble>
+            </template>
+        </div>
+        <div v-if="showScrollBottom" class="scroll-bottom-btn" @click="scrollToBottom">
+            <span class="scroll-bottom-inner"><span class="scroll-bottom-arrow">↓</span></span>
+        </div>
+    </template>
+
+    <!-- Kanban Board -->
+    <div v-if="viewMode === 'kanban' && currentPlan && !taskDetailView" class="plan-kanban-page">
+        <div class="kanban-board">
+            <div class="kanban-column" data-column="PENDING">
+                <div class="kanban-column-header pending">
+                    <span class="kanban-column-title">{{ i18n.t('plan.kanban.todo') }}</span>
+                    <div class="kanban-column-header-actions">
+                        <button v-if="pendingTasks.length > 0" class="kanban-start-all-btn" @click="onStartAll" :title="i18n.t('plan.task.startAll') || '全部开始'">
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M5 3l14 9-14 9V3z"/></svg>
+                        </button>
+                        <button class="kanban-add-btn" @click="onAddTask" :title="i18n.t('plan.task.add')">+</button>
+                        <span class="kanban-column-count">{{ pendingTasks.length }}</span>
+                    </div>
+                </div>
+                <div class="kanban-column-body" data-column="PENDING">
+                    <div v-for="task in pendingTasks" :key="task.taskId"
+                         class="kanban-card" :data-task-id="task.taskId">
+                        <div class="kanban-card-priority" :class="(task.priority || 'medium').toLowerCase()"></div>
+                        <div class="kanban-card-content">
+                            <div class="kanban-card-title">{{ task.title }}</div>
+                            <div class="kanban-card-desc">{{ (task.description || '').substring(0, 80) }}</div>
+                        </div>
+                        <div class="kanban-card-footer">
+                            <span class="kanban-card-cli" :class="(task.cliType || '').toLowerCase()">{{ getCliLabelFromEnum(task.cliType) }}</span>
+                            <div class="kanban-card-btns">
+                                <button class="icon-btn kanban-edit-btn" @click.stop="onOpenTaskDialog(task)" :title="i18n.t('plan.task.edit')">✎</button>
+                                <button class="icon-btn kanban-edit-btn kanban-del-btn" @click.stop="onDeleteTask(task.taskId)" :title="i18n.t('plan.task.delete')">✕</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="kanban-column" data-column="RUNNING">
+                <div class="kanban-column-header running">
+                    <span class="kanban-column-title">{{ i18n.t('plan.kanban.running') }}</span>
+                    <div class="kanban-column-header-actions">
+                        <button class="kanban-auto-btn" :class="{ active: autoStart }" @click="onToggleAutoStart" :title="autoStart ? (i18n.t('plan.task.autoOn') || '自动开始中，点击全部停止') : (i18n.t('plan.task.autoOff') || '自动开始已关闭，点击全部开始')">
+                            <svg v-if="autoStart" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>
+                            <svg v-else width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M5 3l14 9-14 9V3z"/></svg>
+                        </button>
+                        <span class="kanban-column-count">{{ runningTasks.length }}</span>
+                    </div>
+                </div>
+                <div class="kanban-column-body" data-column="RUNNING">
+                    <div v-for="task in runningTasks" :key="task.taskId"
+                         class="kanban-card running" :class="{ queued: task.status === 'QUEUED', stopped: task.status === 'STOPPED', 'no-drag': task.status === 'RUNNING' }" :data-task-id="task.taskId"
+                         @click="task.status === 'RUNNING' && task.executeSessionId ? onViewTaskSession(task) : null">
+                        <div class="kanban-card-priority" :class="(task.priority || 'medium').toLowerCase()"></div>
+                        <div class="kanban-card-content">
+                            <div class="kanban-card-title">{{ task.title }}</div>
+                            <div v-if="task.status === 'QUEUED'" class="kanban-card-queued">{{ i18n.t('plan.kanban.queued') || '排队中' }}</div>
+                            <div v-else-if="task.status === 'STOPPED'" class="kanban-card-stopped">{{ i18n.t('plan.kanban.stopped') || '已停止' }}</div>
+                            <div v-else-if="task._output" class="kanban-card-output">{{ task._output.substring(0, 200) }}</div>
+                            <div v-else class="kanban-card-spinner">
+                                <span class="spinner-dot"></span><span class="spinner-dot"></span><span class="spinner-dot"></span>
+                            </div>
+                        </div>
+                        <div class="kanban-card-footer">
+                            <span class="kanban-card-cli" :class="(task.cliType || '').toLowerCase()">{{ getCliLabelFromEnum(task.cliType) }}</span>
+                            <div class="kanban-card-btns">
+                                <button v-if="task.status === 'RUNNING'" class="icon-btn kanban-edit-btn" @click.stop="onStopTask(task)" :title="i18n.t('plan.task.stop') || '停止'">■</button>
+                                <button v-if="task.status === 'STOPPED'" class="icon-btn kanban-edit-btn" @click.stop="onResumeTask(task)" :title="i18n.t('plan.task.resume') || '继续'">⟳</button>
+                                <button v-if="task.status !== 'RUNNING'" class="icon-btn kanban-edit-btn" @click.stop="onEditTask(task)" :title="i18n.t('plan.task.edit') || '编辑'">✎</button>
+                                <button v-if="task.status !== 'RUNNING'" class="icon-btn kanban-edit-btn kanban-del-btn" @click.stop="onDeleteTask(task.taskId)" :title="i18n.t('plan.task.delete')">✕</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="kanban-column" data-column="COMPLETED">
+                <div class="kanban-column-header completed">
+                    <span class="kanban-column-title">{{ i18n.t('plan.kanban.done') }}</span>
+                    <span class="kanban-column-count">{{ completedTasks.length }}</span>
+                </div>
+                <div class="kanban-column-body" data-column="COMPLETED">
+                    <div v-for="task in completedTasks" :key="task.taskId"
+                         class="kanban-card completed" :data-task-id="task.taskId"
+                         @click="task.executeSessionId ? onViewTaskSession(task) : null">
+                        <div class="kanban-card-priority" :class="(task.priority || 'medium').toLowerCase()"></div>
+                        <div class="kanban-card-content">
+                            <div class="kanban-card-title">{{ task.title }}</div>
+                        </div>
+                        <div class="kanban-card-footer">
+                            <span class="kanban-card-cli" :class="(task.cliType || '').toLowerCase()">{{ getCliLabelFromEnum(task.cliType) }}</span>
+                            <div class="kanban-card-btns">
+                                <button class="icon-btn kanban-edit-btn" @click.stop="onEditTask(task)" :title="i18n.t('plan.task.edit') || '编辑'">✎</button>
+                                <button class="icon-btn kanban-edit-btn kanban-del-btn" @click.stop="onDeleteTask(task.taskId)" :title="i18n.t('plan.task.delete')">✕</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="kanban-column" data-column="FAILED">
+                <div class="kanban-column-header failed">
+                    <span class="kanban-column-title">{{ i18n.t('plan.kanban.failed') }}</span>
+                    <span class="kanban-column-count">{{ failedTasks.length }}</span>
+                </div>
+                <div class="kanban-column-body" data-column="FAILED">
+                    <div v-for="task in failedTasks" :key="task.taskId"
+                         class="kanban-card failed" :data-task-id="task.taskId"
+                         @click="task.executeSessionId ? onViewTaskSession(task) : null">
+                        <div class="kanban-card-priority" :class="(task.priority || 'medium').toLowerCase()"></div>
+                        <div class="kanban-card-content">
+                            <div class="kanban-card-title">{{ task.title }}</div>
+                        </div>
+                        <div class="kanban-card-footer">
+                            <span class="kanban-card-cli" :class="(task.cliType || '').toLowerCase()">{{ getCliLabelFromEnum(task.cliType) }}</span>
+                            <div class="kanban-card-btns">
+                                <button class="icon-btn kanban-edit-btn" @click.stop="onEditTask(task)" :title="i18n.t('plan.task.edit') || '编辑'">✎</button>
+                                <button class="icon-btn kanban-edit-btn kanban-del-btn" @click.stop="onDeleteTask(task.taskId)" :title="i18n.t('plan.task.delete')">✕</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Task Edit/Add Dialog (shared by collect + kanban views) -->
+    <div v-if="showTaskDialog" class="plan-dialog-overlay" @click.self="showTaskDialog = false">
+        <div class="plan-dialog">
+            <div class="plan-dialog-header">
+                <span>{{ isAddTask ? i18n.t('plan.task.add') : i18n.t('plan.task.edit') }}</span>
+                <button class="plan-task-action-btn" @click="showTaskDialog = false">✕</button>
+            </div>
+            <div class="plan-dialog-body" @click="showTaskCliDropdown = false; showTaskModelDropdown = false">
+                <label class="plan-dialog-label">{{ i18n.t('plan.task.titleLabel') }}</label>
+                <input type="text" class="plan-input" v-model="editTaskTitle" :placeholder="i18n.t('plan.task.titlePlaceholder')">
+                <label class="plan-dialog-label">{{ i18n.t('plan.task.descLabel') }}</label>
+                <textarea class="plan-input plan-dialog-textarea" v-model="editTaskDesc" rows="3" :placeholder="i18n.t('plan.task.descPlaceholder')"></textarea>
+                <div class="plan-dialog-row">
+                    <div class="plan-dialog-field">
+                        <label class="plan-dialog-label">{{ i18n.t('plan.task.priorityLabel') }}</label>
+                        <select class="plan-input" v-model="editTaskPriority">
+                            <option value="HIGH">High</option>
+                            <option value="MEDIUM">Medium</option>
+                            <option value="LOW">Low</option>
+                        </select>
+                    </div>
+                    <div class="plan-dialog-field">
+                        <label class="plan-dialog-label">{{ i18n.t('plan.task.cliLabel') }}</label>
+                        <div class="plan-dialog-dropdown" :class="{ open: showTaskCliDropdown }" @click.stop>
+                            <button class="plan-dialog-dropdown-trigger" type="button" @click="showTaskCliDropdown = !showTaskCliDropdown; showTaskModelDropdown = false">
+                                <span class="plan-dialog-dropdown-cli-dot" :class="(editTaskCliType || '').toLowerCase()"></span>
+                                <span class="plan-dialog-dropdown-text">{{ taskDialogCliLabel }}</span>
+                                <svg class="plan-dialog-dropdown-arrow" width="8" height="5" viewBox="0 0 8 5"><path d="M0 0l4 5 4-5z" fill="currentColor"/></svg>
+                            </button>
+                            <div class="plan-dialog-dropdown-list" v-if="showTaskCliDropdown">
+                                <div class="plan-dialog-dropdown-item" :class="{ active: editTaskCliType === 'CLAUDE' }" @click="selectTaskCli('CLAUDE')">
+                                    <span class="plan-dialog-dropdown-cli-dot claude"></span> Claude
+                                </div>
+                                <div class="plan-dialog-dropdown-item" :class="{ active: editTaskCliType === 'OPENCODE' }" @click="selectTaskCli('OPENCODE')">
+                                    <span class="plan-dialog-dropdown-cli-dot opencode"></span> OpenCode
+                                </div>
+                                <div class="plan-dialog-dropdown-item" :class="{ active: editTaskCliType === 'CODEX' }" @click="selectTaskCli('CODEX')">
+                                    <span class="plan-dialog-dropdown-cli-dot codex"></span> Codex
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <label class="plan-dialog-label">{{ i18n.t('plan.task.modelLabel') }}</label>
+                <div class="plan-dialog-dropdown plan-dialog-model-dropdown" :class="{ open: showTaskModelDropdown }" @click.stop>
+                    <button class="plan-dialog-dropdown-trigger" type="button" @click="showTaskModelDropdown = !showTaskModelDropdown; showTaskCliDropdown = false">
+                        <span class="plan-dialog-dropdown-text">{{ taskDialogModelLabel }}</span>
+                        <svg class="plan-dialog-dropdown-arrow" width="8" height="5" viewBox="0 0 8 5"><path d="M0 0l4 5 4-5z" fill="currentColor"/></svg>
+                    </button>
+                    <div class="plan-dialog-dropdown-list" v-if="showTaskModelDropdown">
+                        <div class="plan-dialog-dropdown-item" :class="{ active: !editTaskModelId }" @click="selectTaskModel('')">{{ i18n.t('plan.task.modelPlaceholder') }}</div>
+                        <div class="plan-dialog-dropdown-item" :class="{ active: editTaskModelId === m.modelId }" v-for="m in taskDialogModels" :key="m.modelId" @click="selectTaskModel(m.modelId)">{{ m.displayName || m.modelId }}</div>
+                    </div>
+                </div>
+            </div>
+            <div class="plan-dialog-footer">
+                <button class="plan-btn" @click="showTaskDialog = false">{{ i18n.t('plan.task.cancel') }}</button>
+                <button class="plan-btn plan-btn-primary" @click="onSaveTaskDialog">{{ i18n.t('plan.task.save') }}</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Delete Plan Confirm Dialog -->
+    <div v-if="showDeleteDialog" class="plan-dialog-overlay" @click.self="onCancelDelete">
+        <div class="plan-dialog">
+            <div class="plan-dialog-header">
+                <span>{{ i18n.t('plan.deleteDialog.title') }}</span>
+                <button class="plan-task-action-btn" @click="onCancelDelete">✕</button>
+            </div>
+            <div class="plan-dialog-body">
+                <div class="plan-delete-msg">{{ i18n.t('plan.deleteDialog.message') }}<strong>{{ deleteTargetPlan ? deleteTargetPlan.planName : '' }}</strong>？</div>
+            </div>
+            <div class="plan-dialog-footer">
+                <button class="plan-btn" @click="onCancelDelete">{{ i18n.t('plan.deleteDialog.cancel') }}</button>
+                <button class="plan-btn plan-btn-danger" @click="onConfirmDelete">{{ i18n.t('plan.deleteDialog.confirm') }}</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Create Plan Dialog -->
+    <div v-if="showCreateDialog" class="plan-dialog-overlay" @click.self="showCreateDialog = false">
+        <div class="plan-dialog">
+            <div class="plan-dialog-title">{{ i18n.t('plan.dialogTitle') }}</div>
+            <div class="plan-dialog-body">
+                <label class="plan-label">{{ i18n.t('plan.dialogName') }}</label>
+                <input ref="planNameInput" type="text" class="plan-input" v-model="newPlanName" :placeholder="i18n.t('plan.dialogNamePlaceholder')">
+                <label class="plan-label">{{ i18n.t('plan.dialogDesc') }}</label>
+                <textarea class="plan-textarea" v-model="newPlanDesc" :placeholder="i18n.t('plan.dialogDescPlaceholder')" rows="4"></textarea>
+                <div class="plan-dialog-row">
+                    <div class="plan-dialog-field">
+                        <label class="plan-label">{{ i18n.t('plan.dialogCliType') }}</label>
+                        <select class="plan-select" v-model="newPlanCli">
+                            <option value="CLAUDE">Claude</option>
+                            <option value="OPENCODE">OpenCode</option>
+                            <option value="CODEX">Codex</option>
+                        </select>
+                    </div>
+                    <div class="plan-dialog-field">
+                        <label class="plan-label">{{ i18n.t('plan.dialogMinTasks') }}</label>
+                        <input type="number" class="plan-input plan-input-sm" v-model.number="newPlanMinTasks" min="2" max="20">
+                    </div>
+                </div>
+            </div>
+            <div class="plan-dialog-actions">
+                <button class="plan-btn" @click="showCreateDialog = false">{{ i18n.t('plan.dialogCancel') }}</button>
+                <button class="plan-btn plan-btn-primary" @click="onCreatePlan({ planName: newPlanName, description: newPlanDesc, cliType: newPlanCli, minTaskCount: newPlanMinTasks })"
+                        :disabled="!newPlanName.trim()">{{ i18n.t('plan.dialogCreate') }}</button>
+            </div>
+        </div>
+    </div>
+</div>
+</template>

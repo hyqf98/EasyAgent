@@ -243,6 +243,42 @@ window.EABridge = {
             }));
         };
 
+        // Plan mode callbacks
+        window.__ea_onPlanCreated = (data) => {
+            window.dispatchEvent(new CustomEvent('ea-plan-created', { detail: data || {} }));
+        };
+
+        window.__ea_onPlanList = (data) => {
+            window.dispatchEvent(new CustomEvent('ea-plan-list', { detail: data || {} }));
+        };
+
+        window.__ea_onPlanDetail = (data) => {
+            window.dispatchEvent(new CustomEvent('ea-plan-detail', { detail: data || {} }));
+        };
+
+        window.__ea_onPlanTaskUpdated = (data) => {
+            window.dispatchEvent(new CustomEvent('ea-plan-task-updated', { detail: data || {} }));
+        };
+
+        window.__ea_onPlanTaskStatus = (data) => {
+            window.dispatchEvent(new CustomEvent('ea-plan-task-status', { detail: data || {} }));
+        };
+
+        window.__ea_onPlanDeleted = (data) => {
+            window.dispatchEvent(new CustomEvent('ea-plan-deleted', { detail: data || {} }));
+        };
+
+        window.__ea_onPlanConfig = (data) => {
+            if (window.EAStore && data) {
+                EAStore.planConcurrentTasks = data.planConcurrentTasks || 1;
+            }
+            window.dispatchEvent(new CustomEvent('ea-plan-config', { detail: data || {} }));
+        };
+
+        window.__ea_onPlanConfigSaved = (data) => {
+            window.dispatchEvent(new CustomEvent('ea-plan-config-saved', { detail: data || {} }));
+        };
+
         if (window.cefQuery) {
             this.send('pageReady');
         }
@@ -603,6 +639,70 @@ window.EABridge = {
         * @param {string} skillPath - skill 目录路径
         */
        readSkillContent(skillPath) {
-           this.send('readSkillContent', { skillPath: skillPath });
+            this.send('readSkillContent', { skillPath: skillPath });
+       },
+
+       // ========== Plan Mode APIs ==========
+
+       createPlan(planName, description, cliType, minTaskCount) {
+           this.send('createPlan', {
+               planName: planName,
+               description: description,
+               cliType: cliType || 'CLAUDE',
+               minTaskCount: minTaskCount || 5
+           });
+       },
+
+       listPlans() {
+           this.send('listPlans');
+       },
+
+       getPlanDetail(planId) {
+           this.send('getPlanDetail', { planId: planId });
+       },
+
+       updatePlan(planId, planName, description) {
+           this.send('updatePlan', {
+               planId: planId,
+               planName: planName,
+               description: description
+           });
+       },
+
+       deletePlan(planId) {
+           this.send('deletePlan', { planId: planId });
+       },
+
+       updatePlanTask(planId, taskId, updates) {
+           var data = Object.assign({ planId: planId, taskId: taskId }, updates || {});
+           this.send('updatePlanTask', data);
+       },
+
+       executePlanTask(planId, taskId) {
+           this.send('executePlanTask', { planId: planId, taskId: taskId });
+       },
+
+       stopPlanTask(planId, taskId) {
+           this.send('stopPlanTask', { planId: planId, taskId: taskId });
+       },
+
+       aiEditTasks(planId, instruction) {
+           this.send('aiEditTasks', { planId: planId, instruction: instruction });
+       },
+
+        savePlanTasks(planId, tasksJson) {
+            this.send('savePlanTasks', { planId: planId, tasksJson: tasksJson });
+        },
+
+        startPlanSplit(planId) {
+            this.send('startPlanSplit', { planId: planId });
+        },
+
+        getPlanConfig() {
+           this.send('getPlanConfig');
+       },
+
+       savePlanConfig(planConcurrentTasks) {
+           this.send('savePlanConfig', { planConcurrentTasks: planConcurrentTasks });
        }
    };
