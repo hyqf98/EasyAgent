@@ -2045,6 +2045,7 @@ public class JCEFMessageBridge {
                         .cliType(existing.cliType())
                         .sessionId(existing.sessionId())
                         .minTaskCount(existing.minTaskCount())
+                        .executionOverview(existing.executionOverview())
                         .status(existing.status())
                         .createdAt(existing.createdAt())
                         .updatedAt(System.currentTimeMillis())
@@ -2142,8 +2143,27 @@ public class JCEFMessageBridge {
         }
         this.asyncExecutor.submit(() -> {
             try {
+                log.info("[PLAN-DEBUG] executePlanTask: planId={}, taskId={}", request.planId(), request.taskId());
                 int maxConcurrent = EasyAgentAppState.getInstance().getPlanConcurrentTasks();
-                if (!this.planService.canStartTask(request.planId(), maxConcurrent)) {
+
+                PlanTask targetTask = null;
+                List<PlanTask> tasks = this.planService.getTasks(request.planId());
+                for (PlanTask t : tasks) {
+                    if (t.taskId().equals(request.taskId())) {
+                        targetTask = t;
+                        break;
+                    }
+                }
+                if (targetTask == null) {
+                    log.warn("[PLAN-DEBUG] executePlanTask: task not found, taskId={}", request.taskId());
+                    return;
+                }
+
+                int runningCount = (int) tasks.stream()
+                        .filter(t -> t.status() == io.github.easyagent.enums.TaskStatus.RUNNING
+                                && !t.taskId().equals(request.taskId()))
+                        .count();
+                if (runningCount >= maxConcurrent) {
                     this.invokeJSCallback(JsCallback.PLAN_TASK_STATUS, GsonUtils.toJson(Map.of(
                             "taskId", request.taskId(),
                             "status", "REJECTED",
@@ -2152,30 +2172,19 @@ public class JCEFMessageBridge {
                     return;
                 }
 
-                PlanTask task = null;
-                List<PlanTask> tasks = this.planService.getTasks(request.planId());
-                for (PlanTask t : tasks) {
-                    if (t.taskId().equals(request.taskId())) {
-                        task = t;
-                        break;
-                    }
-                }
-                if (task == null) {
-                    return;
-                }
-
                 Plan plan = this.planService.getPlan(request.planId());
-                CLIType cliType = task.cliType() != null ? task.cliType() :
+                CLIType cliType = targetTask.cliType() != null ? targetTask.cliType() :
                         (plan != null ? plan.cliType() : CLIType.CLAUDE);
 
-                boolean hasExistingSession = task.executeSessionId() != null
-                        && task.status() == io.github.easyagent.enums.TaskStatus.STOPPED;
+                boolean hasExistingSession = targetTask.executeSessionId() != null
+                        && targetTask.status() == io.github.easyagent.enums.TaskStatus.STOPPED;
                 String sessionId = hasExistingSession
-                        ? task.executeSessionId()
+                        ? targetTask.executeSessionId()
                         : "new-" + System.currentTimeMillis();
+                String executionOverview = plan != null ? plan.executionOverview() : null;
                 String prompt = hasExistingSession
                         ? "Please continue with the previous task."
-                        : this.planService.buildTaskExecutionPrompt(task);
+                        : this.planService.buildTaskExecutionPrompt(targetTask, executionOverview);
 
                 PlanTask updated = this.planService.updateTaskStatus(
                         request.planId(), request.taskId(), io.github.easyagent.enums.TaskStatus.RUNNING);
@@ -2191,20 +2200,26 @@ public class JCEFMessageBridge {
                             .modelId(updated.modelId())
                             .executeSessionId(sessionId)
                             .executePrompt(prompt)
+                            .executionSummary(updated.executionSummary())
                             .sortOrder(updated.sortOrder())
                             .startedAt(updated.startedAt())
                             .completedAt(updated.completedAt())
                             .build();
                     this.planService.updateTask(request.planId(), withSession);
                     this.invokeJSCallback(JsCallback.PLAN_TASK_STATUS, GsonUtils.toJson(withSession));
+                } else {
+                    log.warn("[PLAN-DEBUG] executePlanTask: updateTaskStatus returned null, taskId={}", request.taskId());
                 }
 
                 String planId = request.planId();
                 String taskId = request.taskId();
-                final PlanTask taskRef = task;
+                final PlanTask taskRef = targetTask;
+                final StringBuilder taskOutputBuilder = new StringBuilder();
 
+                log.info("[PLAN-DEBUG] executePlanTask: calling sendMessage, planId={}, taskId={}, sessionId={}, cliType={}",
+                        planId, taskId, sessionId, cliType);
                 this.chatManager.sendMessage(prompt, sessionId, cliType, this.currentProjectPath,
-                        task.modelId(), null, new StreamEventListener() {
+                        targetTask.modelId(), null, new StreamEventListener() {
                     private String resolvedSid = sessionId;
 
                     @Override
@@ -2220,11 +2235,15 @@ public class JCEFMessageBridge {
                                         .cliType(cliType).modelId(taskRef.modelId())
                                         .executeSessionId(resolvedSid)
                                         .executePrompt(taskRef.executePrompt())
+                                        .executionSummary(taskRef.executionSummary())
                                         .sortOrder(taskRef.sortOrder())
                                         .startedAt(taskRef.startedAt())
                                         .completedAt(taskRef.completedAt())
                                         .build());
                             }
+                        }
+                        if (response.message() != null && response.message().text() != null) {
+                            taskOutputBuilder.append(response.message().text());
                         }
                         Map<String, Object> eventMap = new java.util.HashMap<>();
                         eventMap.put("type", response.type().getValue());
@@ -2248,6 +2267,7 @@ public class JCEFMessageBridge {
                             JCEFMessageBridge.this.invokeJSCallback(JsCallback.PLAN_TASK_STATUS,
                                     GsonUtils.toJson(completed));
                         }
+                        JCEFMessageBridge.this.generateTaskOverview(planId, taskRef, taskOutputBuilder.toString(), true);
                     }
 
                     @Override
@@ -2266,6 +2286,7 @@ public class JCEFMessageBridge {
                         JCEFMessageBridge.this.invokeJSCallback(JsCallback.PLAN_TASK_STATUS,
                                 GsonUtils.toJson(Map.of("taskId", taskId, "status", "FAILED",
                                         "error", e.getMessage() != null ? e.getMessage() : "Unknown error")));
+                        JCEFMessageBridge.this.generateTaskOverview(planId, taskRef, taskOutputBuilder.toString(), false);
                     }
                 });
             } catch (Exception e) {
@@ -2305,7 +2326,130 @@ public class JCEFMessageBridge {
             } catch (Exception e) {
                 log.warn("Failed to stop plan task", e);
             }
+         });
+    }
+
+    /**
+     * 子任务完成后生成执行概要并追加到计划总览。
+     * <p>
+     * 通过计划绑定的主会话（plan.sessionId）调用 AI 生成精简概要，
+     * 追加到 plan.executionOverview 字段中。
+     * </p>
+     *
+     * @param planId      计划 ID
+     * @param task        已完成的任务
+     * @param taskOutput  任务执行输出文本
+     * @param success     是否执行成功
+     */
+    private void generateTaskOverview(String planId, PlanTask task, String taskOutput, boolean success) {
+        if (this.planService == null) {
+            return;
+        }
+        this.asyncExecutor.submit(() -> {
+            try {
+                Plan plan = this.planService.getPlan(planId);
+                if (plan == null || plan.sessionId() == null) {
+                    String fallbackSummary = buildFallbackSummary(task, taskOutput, success);
+                    this.appendOverview(planId, plan, fallbackSummary);
+                    return;
+                }
+
+                String overviewPrompt = this.planService.buildOverviewGenerationPrompt(task, taskOutput, success);
+                String overviewSessionId = "overview-" + planId + "-" + task.taskId();
+                CLIType cliType = plan.cliType();
+                StringBuilder overviewBuilder = new StringBuilder();
+
+                this.chatManager.sendMessage(overviewPrompt, overviewSessionId, cliType, this.currentProjectPath,
+                        null, null, new StreamEventListener() {
+                    @Override
+                    public void onResponse(AIResponse response) {
+                        if (response.message() != null && response.message().text() != null) {
+                            overviewBuilder.append(response.message().text());
+                        }
+                    }
+
+                    @Override
+                    public void onComplete() {
+                        String summary = overviewBuilder.toString().trim();
+                        if (summary.isEmpty()) {
+                            summary = buildFallbackSummary(task, taskOutput, success);
+                        }
+                        JCEFMessageBridge.this.appendOverview(planId, plan, summary);
+                    }
+
+                    @Override
+                    public void onError(Exception e) {
+                        log.warn("Failed to generate task overview, using fallback", e);
+                        String fallbackSummary = buildFallbackSummary(task, taskOutput, success);
+                        JCEFMessageBridge.this.appendOverview(planId, plan, fallbackSummary);
+                    }
+                });
+            } catch (Exception e) {
+                log.warn("Failed to generate task overview", e);
+            }
         });
+    }
+
+    /**
+     * 构建降级版概要（AI 生成失败时使用）。
+     */
+    private String buildFallbackSummary(PlanTask task, String taskOutput, boolean success) {
+        long duration = 0;
+        if (task.startedAt() != null && task.startedAt() > 0) {
+            duration = (System.currentTimeMillis() - task.startedAt()) / 1000;
+        }
+        StringBuilder sb = new StringBuilder();
+        sb.append("### ").append(success ? "✅" : "❌").append(" ").append(task.title()).append("\n");
+        sb.append("- 状态: ").append(success ? "成功" : "失败").append("\n");
+        sb.append("- 耗时: ").append(duration).append("s\n");
+        if (!success && taskOutput != null && !taskOutput.isEmpty()) {
+            String snippet = taskOutput.length() > 200 ? taskOutput.substring(taskOutput.length() - 200) : taskOutput;
+            sb.append("- 原因: ").append(snippet.replace("\n", " ")).append("\n");
+        }
+        return sb.toString();
+    }
+
+    /**
+     * 追加概要到计划的 executionOverview 字段。
+     */
+    private void appendOverview(String planId, Plan plan, String summary) {
+        String existing = plan != null ? plan.executionOverview() : null;
+        String newOverview;
+        if (existing != null && !existing.isBlank()) {
+            newOverview = existing + "\n" + summary;
+        } else {
+            newOverview = summary;
+        }
+        if (newOverview.length() > 10000) {
+            newOverview = newOverview.substring(newOverview.length() - 10000);
+        }
+        Plan updatedPlan = Plan.builder()
+                .planId(plan.planId())
+                .projectId(plan.projectId())
+                .planName(plan.planName())
+                .description(plan.description())
+                .cliType(plan.cliType())
+                .sessionId(plan.sessionId())
+                .minTaskCount(plan.minTaskCount())
+                .executionOverview(newOverview)
+                .status(plan.status())
+                .createdAt(plan.createdAt())
+                .updatedAt(System.currentTimeMillis())
+                .build();
+        this.planService.updatePlan(updatedPlan);
+
+        List<PlanTask> currentTasks = this.planService.getTasks(planId);
+        for (int i = 0; i < currentTasks.size(); i++) {
+            PlanTask t = currentTasks.get(i);
+            if (t.taskId().equals(planId) || t.executeSessionId() == null) {
+                continue;
+            }
+        }
+
+        this.invokeJSCallback(JsCallback.PLAN_OVERVIEW_UPDATED, GsonUtils.toJson(Map.of(
+                "planId", planId,
+                "executionOverview", newOverview
+        )));
     }
 
     private void handleAiEditTasks(AiEditTasksRequest request) {
@@ -2413,6 +2557,7 @@ public class JCEFMessageBridge {
                         .cliType(plan.cliType())
                         .sessionId(plan.sessionId())
                         .minTaskCount(plan.minTaskCount())
+                        .executionOverview(plan.executionOverview())
                         .status(PlanStatus.TASK_SPLITTING)
                         .createdAt(plan.createdAt())
                         .updatedAt(System.currentTimeMillis())
@@ -2447,6 +2592,7 @@ public class JCEFMessageBridge {
                                     .cliType(plan.cliType())
                                     .sessionId(resolvedSessionId)
                                     .minTaskCount(plan.minTaskCount())
+                                    .executionOverview(plan.executionOverview())
                                     .status(PlanStatus.TASK_SPLITTING)
                                     .createdAt(plan.createdAt())
                                     .updatedAt(System.currentTimeMillis())
@@ -2478,6 +2624,7 @@ public class JCEFMessageBridge {
                                     .cliType(plan.cliType())
                                     .sessionId(plan.sessionId())
                                     .minTaskCount(plan.minTaskCount())
+                                    .executionOverview(plan.executionOverview())
                                     .status(PlanStatus.KANBAN)
                                     .createdAt(plan.createdAt())
                                     .updatedAt(System.currentTimeMillis())

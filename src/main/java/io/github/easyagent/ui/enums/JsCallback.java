@@ -119,7 +119,10 @@ public enum JsCallback implements ValueEnum<String> {
     PLAN_CONFIG("PlanConfig"),
 
     /** 计划配置保存结果推送。 */
-    PLAN_CONFIG_SAVED("PlanConfigSaved");
+    PLAN_CONFIG_SAVED("PlanConfigSaved"),
+
+    /** 计划执行概览更新推送。 */
+    PLAN_OVERVIEW_UPDATED("PlanOverviewUpdated");
 
     /** 回调名称。 */
     private final String value;

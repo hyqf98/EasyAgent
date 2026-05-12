@@ -139,6 +139,7 @@ public class EasyAgentPlanState implements PersistentStateComponent<EasyAgentPla
                 .cliType(plan.cliType())
                 .sessionId(plan.sessionId())
                 .minTaskCount(plan.minTaskCount())
+                .executionOverview(plan.executionOverview())
                 .status(plan.status())
                 .createdAt(plan.createdAt())
                 .updatedAt(System.currentTimeMillis())

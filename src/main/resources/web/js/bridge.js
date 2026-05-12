@@ -279,6 +279,10 @@ window.EABridge = {
             window.dispatchEvent(new CustomEvent('ea-plan-config-saved', { detail: data || {} }));
         };
 
+        window.__ea_onPlanOverviewUpdated = (data) => {
+            window.dispatchEvent(new CustomEvent('ea-plan-overview-updated', { detail: data || {} }));
+        };
+
         if (window.cefQuery) {
             this.send('pageReady');
         }

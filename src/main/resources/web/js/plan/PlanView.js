@@ -188,30 +188,48 @@ window.EARegisterComponent('plan-view', 'PlanView', {
 
         this._onPlanTaskUpdated = function (e) {
             var detail = e.detail;
-            if (!detail || !detail.taskId) return;
+            if (!detail) return;
+            var updatedTaskId = detail.taskId;
+            if (!updatedTaskId) {
+                var tasks = detail.tasks;
+                if (Array.isArray(tasks) && this.currentPlan) {
+                    EABridge.getPlanDetail(this.currentPlan.planId);
+                }
+                return;
+            }
             var found = false;
             for (var i = 0; i < this.currentTasks.length; i++) {
-                if (this.currentTasks[i].taskId === detail.taskId) {
+                if (this.currentTasks[i].taskId === updatedTaskId) {
                     var localStatus = (this.currentTasks[i].status || '').toUpperCase();
                     if (localStatus === 'QUEUED' || localStatus === 'RUNNING') {
                         found = true;
                         break;
                     }
-                    Object.assign(this.currentTasks[i], this.normalizeTask(detail));
+                    var incoming = this.normalizeTask(detail);
+                    if (incoming && incoming.status) {
+                        Object.assign(this.currentTasks[i], incoming);
+                    }
                     found = true;
                     break;
                 }
             }
             if (!found) {
-                this.currentTasks.push(this.normalizeTask(detail));
+                var normalized = this.normalizeTask(detail);
+                if (normalized && normalized.status) {
+                    this.currentTasks.push(normalized);
+                }
             }
         }.bind(this);
 
         this._onPlanTaskStatus = function (e) {
             var detail = e.detail || {};
             var taskId = detail.taskId;
-            var status = (detail.status || '').toUpperCase();
             if (!taskId) return;
+            var status = detail.status;
+            if (!status) return;
+            status = String(status).toUpperCase();
+            if (status !== 'PENDING' && status !== 'RUNNING' && status !== 'QUEUED'
+                && status !== 'COMPLETED' && status !== 'FAILED' && status !== 'STOPPED') return;
             for (var i = 0; i < this.currentTasks.length; i++) {
                 if (this.currentTasks[i].taskId === taskId) {
                     this.currentTasks[i].status = status;
@@ -247,6 +265,13 @@ window.EARegisterComponent('plan-view', 'PlanView', {
             }
         }.bind(this);
 
+        this._onPlanOverviewUpdated = function (e) {
+            var detail = e.detail || {};
+            if (detail.planId && this.currentPlan && this.currentPlan.planId === detail.planId) {
+                this.currentPlan.executionOverview = detail.executionOverview || '';
+            }
+        }.bind(this);
+
         window.addEventListener('ea-plan-created', this._onPlanCreated);
         window.addEventListener('ea-plan-list', this._onPlanList);
         window.addEventListener('ea-plan-detail', this._onPlanDetail);
@@ -254,6 +279,7 @@ window.EARegisterComponent('plan-view', 'PlanView', {
         window.addEventListener('ea-plan-task-status', this._onPlanTaskStatus);
         window.addEventListener('ea-plan-deleted', this._onPlanDeleted);
         window.addEventListener('ea-stream-complete', this._onStreamComplete);
+        window.addEventListener('ea-plan-overview-updated', this._onPlanOverviewUpdated);
 
         EABridge.listPlans();
     },
@@ -265,6 +291,7 @@ window.EARegisterComponent('plan-view', 'PlanView', {
         if (this._onPlanTaskStatus) window.removeEventListener('ea-plan-task-status', this._onPlanTaskStatus);
         if (this._onPlanDeleted) window.removeEventListener('ea-plan-deleted', this._onPlanDeleted);
         if (this._onStreamComplete) window.removeEventListener('ea-stream-complete', this._onStreamComplete);
+        if (this._onPlanOverviewUpdated) window.removeEventListener('ea-plan-overview-updated', this._onPlanOverviewUpdated);
         if (this.toastTimer) clearTimeout(this.toastTimer);
         this._destroySortable();
     },
@@ -313,6 +340,19 @@ window.EARegisterComponent('plan-view', 'PlanView', {
 
         formatTime(ts) { return EATimeFormat.relative(ts); },
 
+        formatOverview(text) {
+            if (!text) return '';
+            return text
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/### (✅|❌)/g, '<strong>$1')
+                .replace(/(\n### )/g, '<br><br>$1')
+                .replace(/\n/g, '<br>')
+                .replace(/- 状态: 成功/g, '<span style="color:var(--ea-success,#22c55e)">- 状态: 成功</span>')
+                .replace(/- 状态: 失败/g, '<span style="color:var(--ea-danger,#ef4444)">- 状态: 失败</span>');
+        },
+
         showToast(message) {
             if (!message) return;
             this.toastMessage = message;
@@ -343,7 +383,8 @@ window.EARegisterComponent('plan-view', 'PlanView', {
         },
 
         onGoSettings() {
-            this.store.appMode = 'settings';
+            this.store.pendingOpenSettings = true;
+            this.store.appMode = 'welcome';
         },
 
         onGoHome() {
@@ -740,9 +781,9 @@ window.EARegisterComponent('plan-view', 'PlanView', {
             if (newStatus === 'RUNNING') {
                 task.startedAt = Date.now();
                 EABridge.executePlanTask(this.currentPlan.planId, taskId);
+            } else {
+                this._persistTasks();
             }
-
-            this._persistTasks();
 
             if (newStatus === 'QUEUED' || newStatus === 'RUNNING') {
                 this.$nextTick(this._tryAutoStartNext);
@@ -797,7 +838,7 @@ window.EARegisterComponent('plan-view', 'PlanView', {
         },
 
         onResumeTask(task) {
-            this._updateTaskStatus(task.taskId, 'QUEUED');
+            this._updateTaskStatus(task.taskId, 'RUNNING');
         },
 
         _tryAutoStartNext() {
@@ -810,7 +851,6 @@ window.EARegisterComponent('plan-view', 'PlanView', {
 
             if (runningCount >= concurrentLimit) return;
 
-            var nextTask = null;
             var sorted = this.currentTasks
                 .filter(function (t) {
                     var s = (t.status || '').toUpperCase();
@@ -818,18 +858,9 @@ window.EARegisterComponent('plan-view', 'PlanView', {
                 })
                 .sort(function (a, b) { return (a.sortOrder || 0) - (b.sortOrder || 0); });
 
-            if (sorted.length > 0) {
-                nextTask = sorted[0];
-            }
+            if (sorted.length === 0) return;
 
-            if (!nextTask) return;
-
-            nextTask.status = 'RUNNING';
-            nextTask.startedAt = Date.now();
-            EABridge.updatePlanTask(this.currentPlan.planId, nextTask.taskId, {
-                status: 'RUNNING'
-            });
-            EABridge.executePlanTask(this.currentPlan.planId, nextTask.taskId);
+            this._updateTaskStatus(sorted[0].taskId, 'RUNNING');
         },
 
         // ========== Task Detail Session ==========

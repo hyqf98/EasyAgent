@@ -164,8 +164,17 @@
 
     <!-- Kanban Board -->
     <div v-if="viewMode === 'kanban' && currentPlan && !taskDetailView" class="plan-kanban-page">
-        <div class="kanban-board">
-            <div class="kanban-column" data-column="PENDING">
+
+        <!-- Plan Execution Overview (fixed above kanban) -->
+        <div class="plan-overview-panel">
+            <span class="plan-overview-text" v-if="currentPlan.executionOverview" v-html="formatOverview(currentPlan.executionOverview)"></span>
+            <span v-else class="plan-overview-empty">暂无执行记录</span>
+        </div>
+
+        <!-- Kanban Board Wrapper -->
+        <div class="plan-kanban-board-wrapper">
+            <div class="kanban-board">
+                <div class="kanban-column" data-column="PENDING">
                 <div class="kanban-column-header pending">
                     <span class="kanban-column-title">{{ i18n.t('plan.kanban.todo') }}</span>
                     <div class="kanban-column-header-actions">
@@ -187,7 +196,8 @@
                         <div class="kanban-card-footer">
                             <span class="kanban-card-cli" :class="(task.cliType || '').toLowerCase()">{{ getCliLabelFromEnum(task.cliType) }}</span>
                             <div class="kanban-card-btns">
-                                <button class="icon-btn kanban-edit-btn" @click.stop="onOpenTaskDialog(task)" :title="i18n.t('plan.task.edit')">✎</button>
+                                <button class="icon-btn kanban-edit-btn" @click.stop="onResumeTask(task)" :title="i18n.t('plan.task.retry') || '重试'">⟳</button>
+                                <button class="icon-btn kanban-edit-btn" @click.stop="onEditTask(task)" :title="i18n.t('plan.task.edit') || '编辑'">✎</button>
                                 <button class="icon-btn kanban-edit-btn kanban-del-btn" @click.stop="onDeleteTask(task.taskId)" :title="i18n.t('plan.task.delete')">✕</button>
                             </div>
                         </div>
@@ -278,6 +288,7 @@
                 </div>
             </div>
         </div>
+    </div>
     </div>
 
     <!-- Task Edit/Add Dialog (shared by collect + kanban views) -->

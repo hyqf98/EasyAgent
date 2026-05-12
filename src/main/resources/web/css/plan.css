@@ -741,9 +741,41 @@
 
 /* === Kanban Board === */
 .plan-kanban-page {
+    display: flex;
+    flex-direction: column;
     flex: 1;
     overflow: hidden;
     padding: 8px;
+    min-height: 0;
+}
+
+/* === Plan Overview === */
+.plan-overview-panel {
+    flex-shrink: 0;
+    padding: 8px 12px;
+    margin-bottom: 8px;
+    border-radius: var(--ea-radius-md);
+    background: var(--ea-bg-secondary);
+    border: 1px solid var(--ea-border);
+    font-size: 11px;
+    line-height: 1.6;
+    color: var(--ea-text-secondary);
+    max-height: 80px;
+    overflow-y: auto;
+    white-space: pre-wrap;
+    word-break: break-all;
+}
+.plan-overview-empty {
+    color: var(--ea-text-muted);
+    font-style: italic;
+}
+
+/* === Kanban Board Wrapper === */
+.plan-kanban-board-wrapper {
+    flex: 1;
+    min-height: 200px;
+    overflow-y: auto;
+    overflow-x: hidden;
 }
 .kanban-board {
     display: grid;
@@ -751,7 +783,7 @@
     grid-template-rows: 1fr 1fr;
     gap: 8px;
     height: 100%;
-    overflow: hidden;
+    min-height: 0;
 }
 .kanban-column {
     display: flex;

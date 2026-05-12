@@ -136,6 +136,7 @@ public class PlanService {
                 .cliType(plan.cliType())
                 .sessionId(plan.sessionId())
                 .minTaskCount(plan.minTaskCount())
+                .executionOverview(plan.executionOverview())
                 .status(PlanStatus.KANBAN)
                 .createdAt(plan.createdAt())
                 .updatedAt(System.currentTimeMillis())
@@ -186,6 +187,7 @@ public class PlanService {
                         .modelId(existing.modelId())
                         .executeSessionId(existing.executeSessionId())
                         .executePrompt(existing.executePrompt())
+                        .executionSummary(existing.executionSummary())
                         .sortOrder(existing.sortOrder())
                         .startedAt(newStatus == TaskStatus.RUNNING ? System.currentTimeMillis() : (existing.startedAt() != null ? existing.startedAt() : 0L))
                         .completedAt(isTerminalStatus(newStatus) ? System.currentTimeMillis() : (existing.completedAt() != null ? existing.completedAt() : 0L))
@@ -302,12 +304,17 @@ public class PlanService {
 
     /**
      * 构建任务执行提示词。
+     * <p>
+     * 将计划执行总览作为上下文注入，使子任务感知已完成任务的情况。
+     * </p>
      *
-     * @param task 任务对象
+     * @param task              任务对象
+     * @param executionOverview 计划执行总览，可为 null
      * @return 执行提示词
      */
-    public String buildTaskExecutionPrompt(PlanTask task) {
-        return """
+    public String buildTaskExecutionPrompt(PlanTask task, String executionOverview) {
+        StringBuilder sb = new StringBuilder();
+        sb.append("""
                 你是一个任务执行专家。请执行以下任务：
 
                 ## 任务信息
@@ -315,11 +322,71 @@ public class PlanService {
                 - 描述：%s
                 - 优先级：%s
 
+                """.formatted(task.title(), task.description(), task.priority().getValue()));
+
+        if (executionOverview != null && !executionOverview.isBlank()) {
+            String trimmed = executionOverview.length() > 5000
+                    ? executionOverview.substring(executionOverview.length() - 5000)
+                    : executionOverview;
+            sb.append("""
+
+                    ## 已完成任务概览（作为上下文参考）
+                    %s
+
+                    请参考上述上下文，确保代码风格和架构与已完成的任务保持一致。
+                    """.formatted(trimmed));
+        }
+
+        sb.append("""
+
                 ## 执行要求
                 1. 严格按照任务描述执行
-                2. 完成后汇报执行结果
+                2. 完成后汇报执行结果，包括：修改/新增了哪些文件
                 3. 如果遇到问题，说明失败原因
-                """.formatted(task.title(), task.description(), task.priority().getValue());
+                """);
+        return sb.toString();
+    }
+
+    /**
+     * 构建任务执行概要生成提示词。
+     * <p>
+     * 用于子任务完成后，通过主会话生成精简的执行概要。
+     * </p>
+     *
+     * @param task       任务对象
+     * @param taskOutput 任务执行输出
+     * @param success    是否执行成功
+     * @return 概要生成提示词
+     */
+    public String buildOverviewGenerationPrompt(PlanTask task, String taskOutput, boolean success) {
+        String outputSnippet = taskOutput != null && taskOutput.length() > 2000
+                ? taskOutput.substring(taskOutput.length() - 2000)
+                : (taskOutput != null ? taskOutput : "");
+        return """
+                请根据以下任务执行结果，生成一段精简的执行概要（不超过150字），严格使用以下格式：
+
+                ### %s %s
+                - 状态: %s
+                %s
+
+                格式说明：
+                - 第一行以 ### 开头，状态图标：成功用 ✅，失败用 ❌
+                - 状态值：成功 或 失败: 原因
+                - 修改文件行：列出所有涉及的文件路径，没有则不写
+
+                ## 任务
+                标题：%s
+
+                ## 执行输出（末尾部分）
+                %s
+                """.formatted(
+                success ? "✅" : "❌",
+                task.title(),
+                success ? "成功" : "失败",
+                "- 修改文件: （列出文件路径）",
+                task.title(),
+                outputSnippet
+        );
     }
 
     /**

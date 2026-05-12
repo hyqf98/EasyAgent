@@ -22,6 +22,7 @@ import lombok.Builder;
  * @param modelId          执行模型 ID（可覆盖计划级别）
  * @param executeSessionId 执行时创建的会话 ID
  * @param executePrompt    执行提示词
+ * @param executionSummary 单个任务的执行结果摘要
  * @param sortOrder        排序序号
  * @param startedAt        开始执行时间戳（毫秒），RUNNING 时设置
  * @param completedAt      完成时间戳（毫秒），COMPLETED/FAILED 时设置
@@ -41,6 +42,7 @@ public record PlanTask(
         String modelId,
         String executeSessionId,
         String executePrompt,
+        String executionSummary,
         int sortOrder,
         Long startedAt,
         Long completedAt

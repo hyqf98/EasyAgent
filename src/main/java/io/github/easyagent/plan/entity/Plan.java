@@ -18,6 +18,7 @@ import lombok.Builder;
  * @param cliType      绑定的 CLI 类型
  * @param sessionId    需求收集阶段的原始会话 ID
  * @param minTaskCount 最小任务拆分数量
+ * @param executionOverview 计划执行总览，记录已完成任务的精简日志
  * @param status       计划状态
  * @param createdAt    创建时间（毫秒时间戳）
  * @param updatedAt    更新时间（毫秒时间戳）
@@ -34,6 +35,7 @@ public record Plan(
         CLIType cliType,
         String sessionId,
         int minTaskCount,
+        String executionOverview,
         PlanStatus status,
         Long createdAt,
         Long updatedAt
