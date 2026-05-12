@@ -21,10 +21,15 @@
         @open-settings="showSettings = true"
     ></empty-state>
 
-    <settings-page
+    <ea-page-error-boundary
         v-if="showSettings"
-        @close="showSettings = false"
-    ></settings-page>
+        page-name="settings-page"
+        :reset-key="'settings-' + store.currentLocale + '-' + store.i18nVersion"
+    >
+        <settings-page
+            @close="showSettings = false"
+        ></settings-page>
+    </ea-page-error-boundary>
 
     <template v-if="inChat && !showSettings">
         <div class="messages-area" ref="messagesArea" @scroll="onMessagesScroll">

@@ -65,6 +65,15 @@ test {
     maxHeapSize = "512m"
 }
 
+processResources {
+    exclude 'web/node_modules/**'
+    exclude 'web/index-dev.html'
+    exclude 'web/index-plan-dev.html'
+    exclude 'web/dev-server.js'
+    exclude 'web/index.generated.html'
+    exclude 'web/.hotreload'
+}
+
 intellijPlatform {
     autoReload = true
 

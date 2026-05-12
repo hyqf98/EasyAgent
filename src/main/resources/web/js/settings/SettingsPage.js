@@ -75,13 +75,12 @@ window.EARegisterComponent('settings-page', 'SettingsPage', {
             configFilter: 'CLAUDE',
             configLoaded: false,
             configSaving: '',
-            claudeForm: { baseUrl: '', apiKey: '', authToken: '', model: '', commandPath: '' },
+            claudeForm: { baseUrl: '', apiKey: '', authToken: '', model: '' },
             claudeKeyVisible: false,
-            opencodeForm: { providerId: 'anthropic', apiKey: '', baseUrl: '', model: '', commandPath: '' },
+            opencodeForm: { providerId: 'anthropic', apiKey: '', baseUrl: '', model: '' },
             opencodeKeyVisible: false,
-            codexForm: { apiKey: '', baseUrl: '', model: '', commandPath: '' },
+            codexForm: { apiKey: '', baseUrl: '', model: '' },
             codexKeyVisible: false,
-            resolvedCommandPaths: {},
             openCodeProviders: [],
             configToast: null,
             cliProfiles: {},
@@ -252,25 +251,21 @@ window.EARegisterComponent('settings-page', 'SettingsPage', {
                 baseUrl: claude.baseUrl || '',
                 apiKey: claude.apiKey || '',
                 authToken: claude.authToken || '',
-                model: claude.model || '',
-                commandPath: claude.commandPath || ''
+                model: claude.model || ''
             };
             this.opencodeForm = {
                 providerId: opencode.providerId || 'anthropic',
                 apiKey: opencode.apiKey || '',
                 baseUrl: opencode.baseUrl || '',
-                model: opencode.model || '',
-                commandPath: opencode.commandPath || ''
+                model: opencode.model || ''
             };
             this.codexForm = {
                 apiKey: codex.apiKey || '',
                 baseUrl: codex.baseUrl || '',
-                model: codex.model || '',
-                commandPath: codex.commandPath || ''
+                model: codex.model || ''
             };
             this.openCodeProviders = detail.providers || [];
             this.cliProfiles = detail.profiles || {};
-            this.resolvedCommandPaths = detail.resolvedCommandPaths || {};
             this.configLoaded = true;
         }.bind(this);
         this._onCliConfigsSaved = function (e) {

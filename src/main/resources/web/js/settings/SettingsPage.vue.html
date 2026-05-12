@@ -29,6 +29,7 @@
         </div>
     </div>
     <div class="settings-content">
+        <ea-page-error-boundary :page-name="'settings-tab-' + activeTab" :reset-key="activeTab">
         <template v-if="activeTab === 'general'">
             <div class="settings-content-header">
                 <h3>{{ i18n.t('settings.general') }}</h3>
@@ -168,7 +169,11 @@
                             class="model-table-row"
                             :class="{ 'default-row': row.rowType === 'default' }"
                             v-for="(row, rowIdx) in modelRows"
-                            :key="row.rowType === 'default' ? 'default-' + modelFilter : row.model.modelId + '-' + row.modelIndex + '-' + rowIdx"
+                            :key="row.rowType === 'default'
+                                ? 'default-' + modelFilter
+                                : row.rowType === 'provider-header'
+                                    ? 'provider-' + row.provider + '-' + rowIdx
+                                    : row.model.modelId + '-' + row.modelIndex + '-' + rowIdx"
                         >
                         <template v-if="row.rowType === 'default' && !editingDefault">
                             <span class="model-col-id model-default-id">-</span>
@@ -298,11 +303,6 @@
                             <label class="config-label">{{ i18n.t('settings.configModel') }} <span class="config-optional">{{ i18n.t('settings.configOptional') }}</span></label>
                             <input class="config-input" v-model="claudeForm.model" placeholder="claude-sonnet-4-5-20250514" />
                         </div>
-                        <div class="config-field">
-                            <label class="config-label">Command Path <span class="config-optional">(Auto-detected)</span></label>
-                            <input class="config-input" v-model="claudeForm.commandPath" :placeholder="resolvedCommandPaths.CLAUDE || 'claude'" />
-                            <div class="config-hint" v-if="resolvedCommandPaths.CLAUDE">Auto-detected: {{ resolvedCommandPaths.CLAUDE }}</div>
-                        </div>
                     </template>
 
                     <!-- OpenCode Default Fields -->
@@ -341,11 +341,6 @@
                             <label class="config-label">{{ i18n.t('settings.configModel') }}</label>
                             <input class="config-input" v-model="opencodeForm.model" placeholder="anthropic/claude-sonnet-4-5" />
                         </div>
-                        <div class="config-field">
-                            <label class="config-label">Command Path <span class="config-optional">(Auto-detected)</span></label>
-                            <input class="config-input" v-model="opencodeForm.commandPath" :placeholder="resolvedCommandPaths.OPENCODE || 'opencode'" />
-                            <div class="config-hint" v-if="resolvedCommandPaths.OPENCODE">Auto-detected: {{ resolvedCommandPaths.OPENCODE }}</div>
-                        </div>
                     </template>
 
                     <!-- Codex Default Fields -->
@@ -364,11 +359,6 @@
                         <div class="config-field">
                             <label class="config-label">{{ i18n.t('settings.configModel') }} <span class="config-optional">{{ i18n.t('settings.configOptional') }}</span></label>
                             <input class="config-input" v-model="codexForm.model" placeholder="gpt-5" />
-                        </div>
-                        <div class="config-field">
-                            <label class="config-label">Command Path <span class="config-optional">(Auto-detected)</span></label>
-                            <input class="config-input" v-model="codexForm.commandPath" :placeholder="resolvedCommandPaths.CODEX || 'codex'" />
-                            <div class="config-hint" v-if="resolvedCommandPaths.CODEX">Auto-detected: {{ resolvedCommandPaths.CODEX }}</div>
                         </div>
                     </template>
 
@@ -794,6 +784,7 @@
                 </div>
             </div>
         </template>
+        </ea-page-error-boundary>
     </div>
 </div>
 </template>

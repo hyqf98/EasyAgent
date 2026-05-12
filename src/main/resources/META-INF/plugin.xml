@@ -2,7 +2,48 @@
     <id>io.github.easyagent</id>
     <name>EasyAgent</name>
     <vendor>EasyAgent</vendor>
-    <description>EasyAgent - IntelliJ IDEA Plugin powered by AI</description>
+    <description><![CDATA[
+    <h1>EasyAgent — AI Coding Assistant for IntelliJ IDEA</h1>
+    <p>Aggregate Claude Code, OpenCode, and Codex CLI tools into one unified IDE experience.</p>
+
+    <h2>🎯 AI Chat</h2>
+    <ul>
+      <li>Connect <b>Claude Code</b>, <b>OpenCode</b>, and <b>Codex</b> simultaneously</li>
+      <li>Browse and manage local CLI session history</li>
+      <li>Real-time streaming of thinking, tool calls, and responses</li>
+      <li><code>@</code> file references, editor selection references, image paste</li>
+      <li>Slash commands: <code>/new</code>, <code>/compact</code>, <code>/init</code></li>
+      <li>View AI file changes as diff and one-click rollback</li>
+      <li>Auto-detect CLI paths with manual override</li>
+    </ul>
+
+    <h2>📋 Plan &amp; Kanban</h2>
+    <ul>
+      <li>Create plans and let AI auto-split into executable tasks</li>
+      <li><b>Kanban board</b>: Pending / Running / Completed / Failed columns</li>
+      <li>Drag &amp; drop across columns to change status, reorder within columns</li>
+      <li>Concurrent task execution with configurable parallelism</li>
+      <li>Auto-start mode or manual control, stop anytime</li>
+      <li>Retry completed/failed tasks (reuses session context)</li>
+      <li>Auto-generated execution overview after each task</li>
+    </ul>
+
+    <h2>⚙️ Settings</h2>
+    <ul>
+      <li>CLI tool configuration (API Key, model, command path)</li>
+      <li>MCP service management</li>
+      <li>AI Skills management</li>
+    </ul>
+
+    <h2>Supported CLI Tools</h2>
+    <table>
+      <tr><td><b>Claude Code</b></td><td>Anthropic official CLI</td><td><code>npm i -g @anthropic-ai/claude-code</code></td></tr>
+      <tr><td><b>OpenCode</b></td><td>Open-source terminal AI</td><td><code>npm i -g opencode</code></td></tr>
+      <tr><td><b>Codex</b></td><td>OpenAI official CLI</td><td><code>npm i -g @openai/codex</code></td></tr>
+    </table>
+
+    <p><b>Requirements:</b> JDK 17+, IntelliJ IDEA 2026.1+, at least one supported CLI tool installed.</p>
+    ]]></description>
 
     <depends>com.intellij.modules.platform</depends>
 
