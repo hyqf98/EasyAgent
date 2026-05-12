@@ -15,15 +15,17 @@ import lombok.Builder;
  * </pre>
  * </p>
  *
- * @param apiKey  API 密钥，对应 {@code OPENAI_API_KEY} 环境变量
- * @param baseUrl API 基础 URL（可选），写入 config.toml 的 model_providers
- * @param model   默认模型 ID，写入 config.toml 的 model 字段
+ * @param apiKey      API 密钥，对应 {@code OPENAI_API_KEY} 环境变量
+ * @param baseUrl     API 基础 URL（可选），写入 config.toml 的 model_providers
+ * @param model       默认模型 ID，写入 config.toml 的 model 字段
+ * @param commandPath CLI 可执行文件路径（可选），为空时使用自动检测或默认路径
  * @author haijun
  * @date 2026/5/8
  * @since 1.0.0
  */
 @Builder
-public record CodexConfig(String apiKey, String baseUrl, String model) {
+public record CodexConfig(String apiKey, String baseUrl, String model,
+                           String commandPath) {
 
     /**
      * 创建空配置。
@@ -31,6 +33,6 @@ public record CodexConfig(String apiKey, String baseUrl, String model) {
      * @return 所有字段为空的配置
      */
     public static CodexConfig empty() {
-        return new CodexConfig("", "", "");
+        return new CodexConfig("", "", "", "");
     }
 }

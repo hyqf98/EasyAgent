@@ -40,6 +40,13 @@ public interface ValueEnum<V> {
                 return constant;
             }
         }
+        if (value instanceof String strValue) {
+            for (E constant : enumClass.getEnumConstants()) {
+                if (constant.name().equalsIgnoreCase(strValue)) {
+                    return constant;
+                }
+            }
+        }
         return null;
     }
 }

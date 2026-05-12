@@ -283,9 +283,44 @@ window.EABridge = {
             window.dispatchEvent(new CustomEvent('ea-plan-overview-updated', { detail: data || {} }));
         };
 
+        // ========== Hot Reload (dev only) ==========
+        if (window.__EA_DEV_MODE__) {
+            this._initHotReload();
+        }
+
         if (window.cefQuery) {
             this.send('pageReady');
         }
+    },
+
+    _hotReloadLastTs: '',
+    _hotReloadTimer: null,
+
+    _initHotReload() {
+        var self = this;
+        var baseUrl = window.location.href.substring(0, window.location.href.lastIndexOf('/') + 1);
+        var markerUrl = baseUrl + '.hotreload';
+        function poll() {
+            var xhr = new XMLHttpRequest();
+            xhr.open('GET', markerUrl + '?t=' + Date.now(), true);
+            xhr.onload = function () {
+                if (xhr.status === 200) {
+                    var ts = xhr.responseText.trim();
+                    if (self._hotReloadLastTs && self._hotReloadLastTs !== ts) {
+                        console.log('[hot-reload] Change detected, reloading...');
+                        location.reload();
+                        return;
+                    }
+                    self._hotReloadLastTs = ts;
+                }
+                self._hotReloadTimer = setTimeout(poll, 1000);
+            };
+            xhr.onerror = function () {
+                self._hotReloadTimer = setTimeout(poll, 3000);
+            };
+            xhr.send();
+        }
+        poll();
     },
 
     /**

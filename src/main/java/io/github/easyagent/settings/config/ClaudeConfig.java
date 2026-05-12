@@ -15,16 +15,18 @@ import lombok.Builder;
  * 这些环境变量写入用户的 shell profile 文件（{@code ~/.zshrc} 或 {@code ~/.bashrc}）。
  * </p>
  *
- * @param baseUrl   API 基础 URL，对应 {@code ANTHROPIC_BASE_URL}
- * @param apiKey    API 密钥，对应 {@code ANTHROPIC_API_KEY}
- * @param authToken 自定义授权令牌，对应 {@code ANTHROPIC_AUTH_TOKEN}
- * @param model     默认模型 ID，对应 {@code ANTHROPIC_MODEL}
+ * @param baseUrl     API 基础 URL，对应 {@code ANTHROPIC_BASE_URL}
+ * @param apiKey      API 密钥，对应 {@code ANTHROPIC_API_KEY}
+ * @param authToken   自定义授权令牌，对应 {@code ANTHROPIC_AUTH_TOKEN}
+ * @param model       默认模型 ID，对应 {@code ANTHROPIC_MODEL}
+ * @param commandPath CLI 可执行文件路径（可选），为空时使用自动检测或默认路径
  * @author haijun
  * @date 2026/5/8
  * @since 1.0.0
  */
 @Builder
-public record ClaudeConfig(String baseUrl, String apiKey, String authToken, String model) {
+public record ClaudeConfig(String baseUrl, String apiKey, String authToken, String model,
+                           String commandPath) {
 
     /**
      * 创建空配置。
@@ -32,6 +34,6 @@ public record ClaudeConfig(String baseUrl, String apiKey, String authToken, Stri
      * @return 所有字段为空的配置
      */
     public static ClaudeConfig empty() {
-        return new ClaudeConfig("", "", "", "");
+        return new ClaudeConfig("", "", "", "", "");
     }
 }

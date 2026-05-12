@@ -46,6 +46,9 @@ public class EasyAgentAppState implements PersistentStateComponent<EasyAgentAppS
     /** 计划模式并发执行任务数，默认 1，范围 1-5。 */
     private int planConcurrentTasks = 1;
 
+    /** CLI 命令路径覆盖：cliType 名称（如 "CLAUDE"）-> 用户手动设置的绝对路径。 */
+    private Map<String, String> cliCommandPaths = new HashMap<>();
+
     /**
      * 获取应用级别的 EasyAgentAppState 实例。
      *

@@ -218,7 +218,7 @@
                 <div class="kanban-column-body" data-column="RUNNING">
                     <div v-for="task in runningTasks" :key="task.taskId"
                          class="kanban-card running" :class="{ queued: task.status === 'QUEUED', stopped: task.status === 'STOPPED', 'no-drag': task.status === 'RUNNING' }" :data-task-id="task.taskId"
-                         @click="task.status === 'RUNNING' && task.executeSessionId ? onViewTaskSession(task) : null">
+                         @click="task.executeSessionId ? onViewTaskSession(task) : null">
                         <div class="kanban-card-priority" :class="(task.priority || 'medium').toLowerCase()"></div>
                         <div class="kanban-card-content">
                             <div class="kanban-card-title">{{ task.title }}</div>
@@ -256,7 +256,8 @@
                         </div>
                         <div class="kanban-card-footer">
                             <span class="kanban-card-cli" :class="(task.cliType || '').toLowerCase()">{{ getCliLabelFromEnum(task.cliType) }}</span>
-                            <div class="kanban-card-btns">
+                             <div class="kanban-card-btns">
+                                <button class="icon-btn kanban-edit-btn" @click.stop="onResumeTask(task)" :title="i18n.t('plan.task.retry') || '重试'">⟳</button>
                                 <button class="icon-btn kanban-edit-btn" @click.stop="onEditTask(task)" :title="i18n.t('plan.task.edit') || '编辑'">✎</button>
                                 <button class="icon-btn kanban-edit-btn kanban-del-btn" @click.stop="onDeleteTask(task.taskId)" :title="i18n.t('plan.task.delete')">✕</button>
                             </div>
@@ -280,6 +281,7 @@
                         <div class="kanban-card-footer">
                             <span class="kanban-card-cli" :class="(task.cliType || '').toLowerCase()">{{ getCliLabelFromEnum(task.cliType) }}</span>
                             <div class="kanban-card-btns">
+                                <button class="icon-btn kanban-edit-btn" @click.stop="onResumeTask(task)" :title="i18n.t('plan.task.retry') || '重试'">⟳</button>
                                 <button class="icon-btn kanban-edit-btn" @click.stop="onEditTask(task)" :title="i18n.t('plan.task.edit') || '编辑'">✎</button>
                                 <button class="icon-btn kanban-edit-btn kanban-del-btn" @click.stop="onDeleteTask(task.taskId)" :title="i18n.t('plan.task.delete')">✕</button>
                             </div>

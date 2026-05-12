@@ -146,6 +146,20 @@ public class ChatBrowserComponent {
      * </p>
      */
     private void loadIndexHTML() {
+        String projectDir = System.getProperty("easyagent.project.dir");
+        if (projectDir != null) {
+            Path buildWebDir = Path.of(projectDir, "build/resources/main/web");
+            if (Files.isDirectory(buildWebDir)) {
+                try {
+                    this.loadWithInlineTemplates(buildWebDir);
+                    log.info("Dev mode: loaded from build dir {}", buildWebDir);
+                    return;
+                } catch (Exception e) {
+                    log.warn("Failed to load from build dir, falling back", e);
+                }
+            }
+        }
+
         try {
             URL directUrl = this.getClass().getClassLoader()
                     .getResource(WEB_RESOURCE_PREFIX + PATH_SEPARATOR + INDEX_HTML);
@@ -192,6 +206,10 @@ public class ChatBrowserComponent {
         String replacement = "window.__EA_TEMPLATES = " + templatesJson + ";";
 
         html = html.replace(TEMPLATES_PLACEHOLDER, replacement);
+
+        if (System.getProperty("easyagent.project.dir") != null) {
+            html = html.replace("<body>", "<body>\n    <script>window.__EA_DEV_MODE__ = true;</script>");
+        }
 
         Path generatedIndexFile = tempDir.resolve(GENERATED_INDEX_HTML);
         Files.writeString(generatedIndexFile, html, StandardCharsets.UTF_8,

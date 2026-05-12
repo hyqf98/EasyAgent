@@ -10,6 +10,7 @@ import io.github.easyagent.ai.provider.RetryConfig;
 import io.github.easyagent.enums.CLIType;
 import io.github.easyagent.session.SessionService;
 import io.github.easyagent.session.entity.SessionMessage;
+import io.github.easyagent.settings.EasyAgentAppState;
 import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
 import org.jetbrains.annotations.NotNull;
@@ -120,6 +121,24 @@ public class ChatManager {
     }
 
     /**
+     * 更新 Provider 中活跃进程的会话 ID 映射。
+     * <p>
+     * 当 CLI 返回的真实 session ID 与初始传入的不同时调用，
+     * 确保 stop() 能通过真实 session ID 找到并销毁进程。
+     * </p>
+     *
+     * @param cliType    CLI 类型
+     * @param oldSessionId 旧的会话 ID
+     * @param newSessionId 新的会话 ID
+     */
+    public void remapProviderSessionId(CLIType cliType, String oldSessionId, String newSessionId) {
+        AIProvider provider = this.providers.get(cliType);
+        if (provider instanceof AbstractCLIProvider cliProvider) {
+            cliProvider.remapSessionId(oldSessionId, newSessionId);
+        }
+    }
+
+    /**
      * 获取会话服务实例。
      *
      * @return 会话服务
@@ -186,22 +205,40 @@ public class ChatManager {
 
     /**
      * 创建指定 CLI 类型的 AI Provider。
+     * <p>
+     * 命令路径优先级：用户手动覆盖 > 自动检测 > 枚举默认值。
+     * </p>
      *
      * @param cliType CLI 类型
      * @return 新创建的 AI Provider 实例
      */
     private AIProvider createProvider(CLIType cliType) {
+        String commandPath = this.resolveCommandPath(cliType);
         if (this.currentRetryConfig.isEnabled()) {
             return switch (cliType) {
-                case CLAUDE -> ClaudeProviderFactory.create(null, this.currentRetryConfig);
-                case OPENCODE -> OpenCodeProviderFactory.create(null, this.currentRetryConfig);
-                case CODEX -> CodexProviderFactory.create(null, this.currentRetryConfig);
+                case CLAUDE -> ClaudeProviderFactory.create(commandPath, this.currentRetryConfig);
+                case OPENCODE -> OpenCodeProviderFactory.create(commandPath, this.currentRetryConfig);
+                case CODEX -> CodexProviderFactory.create(commandPath, this.currentRetryConfig);
             };
         }
         return switch (cliType) {
-            case CLAUDE -> ClaudeProviderFactory.create();
-            case OPENCODE -> OpenCodeProviderFactory.create();
-            case CODEX -> CodexProviderFactory.create();
+            case CLAUDE -> ClaudeProviderFactory.create(commandPath);
+            case OPENCODE -> OpenCodeProviderFactory.create(commandPath);
+            case CODEX -> CodexProviderFactory.create(commandPath);
         };
+    }
+
+    /**
+     * 解析 CLI 命令路径。
+     * <p>
+     * 优先使用用户手动覆盖路径（从 AppState 读取），否则使用自动检测路径。
+     * </p>
+     *
+     * @param cliType CLI 类型
+     * @return 解析后的命令路径，为 null 时使用枚举默认值
+     */
+    private String resolveCommandPath(CLIType cliType) {
+        String userOverride = EasyAgentAppState.getInstance().getCliCommandPaths().get(cliType.name());
+        return cliType.resolveCommandPath(userOverride);
     }
 }

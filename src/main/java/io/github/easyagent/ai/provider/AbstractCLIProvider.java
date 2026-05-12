@@ -70,6 +70,9 @@ public abstract class AbstractCLIProvider implements AIProvider {
     /** 按会话 ID 存储的重试中断标志。 */
     private final ConcurrentHashMap<String, Boolean> retryInterruptedFlags = new ConcurrentHashMap<>();
 
+    /** 按会话 ID 存储的手动停止标记（stop() 调用时设置）。 */
+    private final ConcurrentHashMap<String, Boolean> manuallyStoppedFlags = new ConcurrentHashMap<>();
+
     /**
      * 使用指定的 CLI 类型构造（不重试）。
      *
@@ -128,6 +131,32 @@ public abstract class AbstractCLIProvider implements AIProvider {
      */
     public void setWorkingDirectory(@Nullable String workingDirectory) {
         this.workingDirectory = workingDirectory;
+    }
+
+    /**
+     * 更新活跃进程的会话 ID 映射。
+     * <p>
+     * 当 CLI 返回的真实 session ID 与初始传入的不同时，
+     * 需要调用此方法同步更新进程映射表，以便后续 stop() 能正确销毁进程。
+     * </p>
+     *
+     * @param oldSessionId 旧的会话 ID
+     * @param newSessionId 新的会话 ID
+     */
+    public void remapSessionId(String oldSessionId, String newSessionId) {
+        Process process = this.activeProcesses.remove(oldSessionId);
+        if (process != null) {
+            this.activeProcesses.put(newSessionId, process);
+            log.info("[CLI] Remapped session: {} -> {}", oldSessionId, newSessionId);
+        }
+        Boolean stopped = this.manuallyStoppedFlags.remove(oldSessionId);
+        if (stopped != null) {
+            this.manuallyStoppedFlags.put(newSessionId, stopped);
+        }
+        Boolean retryFlag = this.retryInterruptedFlags.remove(oldSessionId);
+        if (retryFlag != null) {
+            this.retryInterruptedFlags.put(newSessionId, retryFlag);
+        }
     }
 
     /**
@@ -273,8 +302,9 @@ public abstract class AbstractCLIProvider implements AIProvider {
         }
 
         this.activeProcesses.remove(sessionId);
+        boolean wasManuallyStopped = this.manuallyStoppedFlags.remove(sessionId) != null;
         int exitCode = process.waitFor();
-        if (exitCode == 137 || exitCode == 143) {
+        if (wasManuallyStopped || exitCode == 137 || exitCode == 143) {
             log.info("[CLI] Process manually stopped (exit code: {}) for session: {}", exitCode, sessionId);
             return;
         }
@@ -538,17 +568,19 @@ public abstract class AbstractCLIProvider implements AIProvider {
     public void stop(@Nullable String sessionId) {
         if (sessionId != null) {
             this.retryInterruptedFlags.put(sessionId, true);
+            this.manuallyStoppedFlags.put(sessionId, true);
             Process process = this.activeProcesses.remove(sessionId);
             if (process != null) {
-                log.debug("Destroying process for session: {}", sessionId);
+                log.info("[CLI] Destroying process for session: {}", sessionId);
                 process.destroyForcibly();
             }
             return;
         }
 
         this.retryInterruptedFlags.clear();
+        this.manuallyStoppedFlags.clear();
         this.activeProcesses.forEach((sid, process) -> {
-            log.debug("Destroying process for session: {}", sid);
+            log.info("[CLI] Destroying process for session: {}", sid);
             process.destroyForcibly();
         });
         this.activeProcesses.clear();

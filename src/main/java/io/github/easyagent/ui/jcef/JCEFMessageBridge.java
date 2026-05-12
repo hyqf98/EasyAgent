@@ -767,16 +767,22 @@ public class JCEFMessageBridge {
             try {
                 CliConfigs configs = this.cliConfigService.readConfigs();
                 var profilesMap = this.loadAllProfiles();
+                var resolvedPaths = new java.util.LinkedHashMap<String, String>();
+                for (CLIType ct : CLIType.values()) {
+                    String detected = ct.detectCommandPath();
+                    resolvedPaths.put(ct.name(), detected != null ? detected : "");
+                }
                 CliConfigsPayload payload = new CliConfigsPayload(
                         configs,
                         this.cliConfigService.getOpenCodeProviders(this.modelConfigService.getDynamicProviders()),
-                        profilesMap
+                        profilesMap,
+                        resolvedPaths
                 );
                 this.invokeJSCallback(JsCallback.CLI_CONFIGS, payload);
             } catch (Exception e) {
                 log.warn("Failed to read CLI configs", e);
                 this.invokeJSCallback(JsCallback.CLI_CONFIGS,
-                        new CliConfigsPayload(CliConfigs.empty(), List.of(), java.util.Map.of()));
+                        new CliConfigsPayload(CliConfigs.empty(), List.of(), java.util.Map.of(), java.util.Map.of()));
             }
         });
     }
@@ -799,6 +805,7 @@ public class JCEFMessageBridge {
                             return;
                         }
                         this.cliConfigService.saveClaudeConfig(config);
+                        this.cliConfigService.saveCommandPath(cliType, config.commandPath());
                     }
                     case "OPENCODE" -> {
                         OpenCodeConfig config = request.opencode();
@@ -808,6 +815,7 @@ public class JCEFMessageBridge {
                             return;
                         }
                         this.cliConfigService.saveOpenCodeConfig(config);
+                        this.cliConfigService.saveCommandPath(cliType, config.commandPath());
                     }
                     case "CODEX" -> {
                         CodexConfig config = request.codex();
@@ -817,6 +825,7 @@ public class JCEFMessageBridge {
                             return;
                         }
                         this.cliConfigService.saveCodexConfig(config);
+                        this.cliConfigService.saveCommandPath(cliType, config.commandPath());
                     }
                     default -> {
                         this.invokeJSCallback(JsCallback.CLI_CONFIGS_SAVED,
@@ -1746,13 +1755,15 @@ public class JCEFMessageBridge {
     /**
      * CLI 配置数据回调载荷。
      *
-     * @param configs   CLI 配置集合
-     * @param providers OpenCode 可用 Provider 列表
-     * @param profiles  CLI 类型到配置档案列表的映射
+     * @param configs             CLI 配置集合
+     * @param providers           OpenCode 可用 Provider 列表
+     * @param profiles            CLI 类型到配置档案列表的映射
+     * @param resolvedCommandPaths CLI 类型到自动检测命令路径的映射
      */
     private record CliConfigsPayload(CliConfigs configs,
                                      List<CliConfigService.ProviderInfo> providers,
-                                     java.util.Map<String, List<CliProfile>> profiles) {
+                                     java.util.Map<String, List<CliProfile>> profiles,
+                                     java.util.Map<String, String> resolvedCommandPaths) {
     }
 
     /**
@@ -1975,6 +1986,7 @@ public class JCEFMessageBridge {
             try {
                 CLIType cliType = ValueEnum.fromValue(CLIType.class, request.cliType());
                 if (cliType == null) {
+                    log.warn("[PLAN] Unknown cliType '{}', falling back to CLAUDE", request.cliType());
                     cliType = CLIType.CLAUDE;
                 }
                 Plan plan = this.planService.createPlan(
@@ -2106,7 +2118,11 @@ public class JCEFMessageBridge {
                 }
                 if (statusChanged && (newStatus == io.github.easyagent.enums.TaskStatus.COMPLETED
                         || newStatus == io.github.easyagent.enums.TaskStatus.FAILED)) {
-                    completedAt = System.currentTimeMillis();
+                    if (request.completedAt() != null) {
+                        completedAt = request.completedAt();
+                    } else {
+                        completedAt = System.currentTimeMillis();
+                    }
                 }
                 if (statusChanged && (newStatus == io.github.easyagent.enums.TaskStatus.PENDING
                         || newStatus == io.github.easyagent.enums.TaskStatus.STOPPED)) {
@@ -2125,7 +2141,7 @@ public class JCEFMessageBridge {
                         .modelId(request.modelId() != null ? request.modelId() : existing.modelId())
                         .executeSessionId(existing.executeSessionId())
                         .executePrompt(existing.executePrompt())
-                        .sortOrder(existing.sortOrder())
+                        .sortOrder(request.sortOrder() != null ? request.sortOrder().intValue() : existing.sortOrder())
                         .startedAt(startedAt)
                         .completedAt(completedAt)
                         .build();
@@ -2176,15 +2192,21 @@ public class JCEFMessageBridge {
                 CLIType cliType = targetTask.cliType() != null ? targetTask.cliType() :
                         (plan != null ? plan.cliType() : CLIType.CLAUDE);
 
-                boolean hasExistingSession = targetTask.executeSessionId() != null
-                        && targetTask.status() == io.github.easyagent.enums.TaskStatus.STOPPED;
+                boolean hasExistingSession = targetTask.executeSessionId() != null;
                 String sessionId = hasExistingSession
                         ? targetTask.executeSessionId()
                         : "new-" + System.currentTimeMillis();
                 String executionOverview = plan != null ? plan.executionOverview() : null;
-                String prompt = hasExistingSession
-                        ? "Please continue with the previous task."
-                        : this.planService.buildTaskExecutionPrompt(targetTask, executionOverview);
+                String prompt;
+                if (hasExistingSession) {
+                    prompt = "请重新执行以下任务：\n\n"
+                            + "## 任务\n- 标题：" + targetTask.title() + "\n"
+                            + (targetTask.description() != null && !targetTask.description().isBlank()
+                            ? "- 描述：" + targetTask.description() + "\n" : "")
+                            + "\n请严格按照任务描述执行，完成后汇报执行结果。";
+                } else {
+                    prompt = this.planService.buildTaskExecutionPrompt(targetTask, executionOverview);
+                }
 
                 PlanTask updated = this.planService.updateTaskStatus(
                         request.planId(), request.taskId(), io.github.easyagent.enums.TaskStatus.RUNNING);
@@ -2225,8 +2247,11 @@ public class JCEFMessageBridge {
                     @Override
                     public void onResponse(AIResponse response) {
                         if (response.sessionId() != null) {
-                            resolvedSid = response.sessionId();
-                            if (!resolvedSid.equals(sessionId)) {
+                            String newSid = response.sessionId();
+                            if (!newSid.equals(resolvedSid)) {
+                                String oldSid = resolvedSid;
+                                resolvedSid = newSid;
+                                JCEFMessageBridge.this.chatManager.remapProviderSessionId(cliType, oldSid, newSid);
                                 JCEFMessageBridge.this.planService.updateTask(planId, PlanTask.builder()
                                         .taskId(taskRef.taskId()).planId(taskRef.planId())
                                         .title(taskRef.title()).description(taskRef.description())
@@ -2240,6 +2265,7 @@ public class JCEFMessageBridge {
                                         .startedAt(taskRef.startedAt())
                                         .completedAt(taskRef.completedAt())
                                         .build());
+                                log.info("[PLAN-DEBUG] SessionId remapped: {} -> {} for taskId={}", oldSid, newSid, taskId);
                             }
                         }
                         if (response.message() != null && response.message().text() != null) {
@@ -2261,6 +2287,16 @@ public class JCEFMessageBridge {
 
                     @Override
                     public void onComplete() {
+                        List<PlanTask> currentTasks = JCEFMessageBridge.this.planService.getTasks(planId);
+                        for (PlanTask t : currentTasks) {
+                            if (t.taskId().equals(taskId)) {
+                                if (t.status() == io.github.easyagent.enums.TaskStatus.STOPPED) {
+                                    log.info("[PLAN-STOP] Task {} already stopped, skipping onComplete", taskId);
+                                    return;
+                                }
+                                break;
+                            }
+                        }
                         PlanTask completed = JCEFMessageBridge.this.planService.updateTaskStatus(
                                 planId, taskId, io.github.easyagent.enums.TaskStatus.COMPLETED);
                         if (completed != null) {
@@ -2315,16 +2351,22 @@ public class JCEFMessageBridge {
                         break;
                     }
                 }
+                log.info("[PLAN-STOP] stopPlanTask: planId={}, taskId={}, executeSessionId={}",
+                        request.planId(), request.taskId(), executeSessionId);
+
                 if (executeSessionId != null) {
                     this.chatManager.stopGeneration(executeSessionId);
+                    log.info("[PLAN-STOP] Called stopGeneration for session: {}", executeSessionId);
                 }
+
                 PlanTask updated = this.planService.updateTaskStatus(
                         request.planId(), request.taskId(), io.github.easyagent.enums.TaskStatus.STOPPED);
                 if (updated != null) {
                     this.invokeJSCallback(JsCallback.PLAN_TASK_STATUS, GsonUtils.toJson(updated));
                 }
             } catch (Exception e) {
-                log.warn("Failed to stop plan task", e);
+                log.warn("[PLAN-STOP] Failed to stop plan task: planId={}, taskId={}",
+                        request.planId(), request.taskId(), e);
             }
          });
     }
@@ -2546,8 +2588,10 @@ public class JCEFMessageBridge {
             try {
                 Plan plan = this.planService.getPlan(request.planId());
                 if (plan == null) {
+                    log.warn("[PLAN] startPlanSplit: plan not found, planId={}", request.planId());
                     return;
                 }
+                log.info("[PLAN] startPlanSplit: planId={}, name={}, cliType={}", request.planId(), plan.planName(), plan.cliType());
 
                 Plan updated = Plan.builder()
                         .planId(plan.planId())
@@ -2574,6 +2618,7 @@ public class JCEFMessageBridge {
                 String effectiveSessionId = "new-" + System.currentTimeMillis();
                 String planId = plan.planId();
                 StringBuilder responseBuilder = new StringBuilder();
+                String[] resolvedSessionIdHolder = new String[]{null};
 
                 this.chatManager.sendMessage(prompt, effectiveSessionId, plan.cliType(), this.currentProjectPath,
                         null, null, new StreamEventListener() {
@@ -2582,6 +2627,7 @@ public class JCEFMessageBridge {
                         JCEFMessageBridge.this.logAIResponse(response);
                         String resolvedSessionId = response.sessionId() != null
                                 ? response.sessionId() : effectiveSessionId;
+                        resolvedSessionIdHolder[0] = resolvedSessionId;
                         if (resolvedSessionId != null
                                 && (plan.sessionId() == null || plan.sessionId().startsWith("plan-"))) {
                             Plan withSession = Plan.builder()
@@ -2614,6 +2660,8 @@ public class JCEFMessageBridge {
                     public void onComplete() {
                         String fullResponse = responseBuilder.toString();
                         String tasksJson = JCEFMessageBridge.this.extractTaskListJson(fullResponse);
+                        String finalSessionId = resolvedSessionIdHolder[0] != null
+                                ? resolvedSessionIdHolder[0] : plan.sessionId();
                         if (tasksJson != null) {
                             List<PlanTask> parsed = JCEFMessageBridge.this.planService.parseAndCreateTasks(planId, tasksJson);
                             Plan kanbanPlan = Plan.builder()
@@ -2622,7 +2670,7 @@ public class JCEFMessageBridge {
                                     .planName(plan.planName())
                                     .description(plan.description())
                                     .cliType(plan.cliType())
-                                    .sessionId(plan.sessionId())
+                                    .sessionId(finalSessionId)
                                     .minTaskCount(plan.minTaskCount())
                                     .executionOverview(plan.executionOverview())
                                     .status(PlanStatus.KANBAN)
@@ -2696,7 +2744,8 @@ public class JCEFMessageBridge {
 
     private record UpdatePlanTaskRequest(String action, String planId, String taskId,
                                           String title, String description, String priority,
-                                          String cliType, String modelId, String status) implements JsRequest {
+                                          String cliType, String modelId, String status,
+                                          Long completedAt, Long sortOrder) implements JsRequest {
     }
 
     private record ExecutePlanTaskRequest(String action, String planId, String taskId) implements JsRequest {

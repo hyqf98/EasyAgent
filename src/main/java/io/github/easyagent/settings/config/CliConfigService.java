@@ -2,6 +2,7 @@ package io.github.easyagent.settings.config;
 
 import com.google.gson.JsonObject;
 import com.google.gson.reflect.TypeToken;
+import io.github.easyagent.enums.CLIType;
 import io.github.easyagent.util.GsonUtils;
 import lombok.extern.slf4j.Slf4j;
 
@@ -54,16 +55,41 @@ public class CliConfigService {
             "^\\s*base_url\\s*=\\s*\"([^\"]+)\"");
 
     /**
-     * 读取所有 CLI 配置。
+     * 读取所有 CLI 配置（包含用户覆盖的命令路径）。
      *
      * @return CLI 配置集合
      */
     public CliConfigs readConfigs() {
+        java.util.Map<String, String> commandPaths = this.readCommandPaths();
         return new CliConfigs(
-                this.readClaudeConfig(),
-                this.readOpenCodeConfig(),
-                this.readCodexConfig()
+                this.readClaudeConfig(commandPaths.get("CLAUDE")),
+                this.readOpenCodeConfig(commandPaths.get("OPENCODE")),
+                this.readCodexConfig(commandPaths.get("CODEX"))
         );
+    }
+
+    /**
+     * 从持久化状态读取用户覆盖的 CLI 命令路径。
+     *
+     * @return cliType -> commandPath 映射
+     */
+    public java.util.Map<String, String> readCommandPaths() {
+        return io.github.easyagent.settings.EasyAgentAppState.getInstance().getCliCommandPaths();
+    }
+
+    /**
+     * 保存用户覆盖的 CLI 命令路径到持久化状态。
+     *
+     * @param cliType     CLI 类型名称
+     * @param commandPath 用户设置的命令路径，为空则清除覆盖
+     */
+    public void saveCommandPath(String cliType, String commandPath) {
+        java.util.Map<String, String> paths = io.github.easyagent.settings.EasyAgentAppState.getInstance().getCliCommandPaths();
+        if (commandPath != null && !commandPath.isBlank()) {
+            paths.put(cliType, commandPath.trim());
+        } else {
+            paths.remove(cliType);
+        }
     }
 
     /**
@@ -95,15 +121,17 @@ public class CliConfigService {
     /**
      * 读取 Claude Code 配置（从 shell profile 环境变量）。
      *
+     * @param commandPath 用户覆盖的命令路径，可为 null
      * @return Claude 配置
      */
-    public ClaudeConfig readClaudeConfig() {
+    public ClaudeConfig readClaudeConfig(String commandPath) {
         java.util.Map<String, String> envVars = this.readShellExports();
         return ClaudeConfig.builder()
                 .baseUrl(envVars.getOrDefault("ANTHROPIC_BASE_URL", ""))
                 .apiKey(envVars.getOrDefault("ANTHROPIC_API_KEY", ""))
                 .authToken(envVars.getOrDefault("ANTHROPIC_AUTH_TOKEN", ""))
                 .model(envVars.getOrDefault("ANTHROPIC_MODEL", ""))
+                .commandPath(commandPath != null ? commandPath : "")
                 .build();
     }
 
@@ -127,9 +155,10 @@ public class CliConfigService {
     /**
      * 读取 OpenCode 配置（从 opencode.json）。
      *
+     * @param commandPath 用户覆盖的命令路径，可为 null
      * @return OpenCode 配置
      */
-    public OpenCodeConfig readOpenCodeConfig() {
+    public OpenCodeConfig readOpenCodeConfig(String commandPath) {
         Path configPath = OPENCODE_CONFIG_PATH;
         if (!Files.exists(configPath)) {
             return OpenCodeConfig.empty();
@@ -171,6 +200,7 @@ public class CliConfigService {
                     .apiKey(apiKey)
                     .baseUrl(baseUrl)
                     .model(model)
+                    .commandPath(commandPath != null ? commandPath : "")
                     .build();
         } catch (Exception e) {
             log.warn("Failed to read OpenCode config", e);
@@ -242,9 +272,10 @@ public class CliConfigService {
      * baseUrl 从 config.toml 的 model_providers 段读取。
      * </p>
      *
+     * @param commandPath 用户覆盖的命令路径，可为 null
      * @return Codex 配置
      */
-    public CodexConfig readCodexConfig() {
+    public CodexConfig readCodexConfig(String commandPath) {
         String apiKey = this.readCodexApiKey();
 
         String model = "";
@@ -280,6 +311,7 @@ public class CliConfigService {
                 .apiKey(apiKey)
                 .baseUrl(baseUrl)
                 .model(model)
+                .commandPath(commandPath != null ? commandPath : "")
                 .build();
     }
 
@@ -580,9 +612,9 @@ public class CliConfigService {
     public CliProfile snapshotCurrentConfig(String name, String cliType) {
         CliProfile profile = this.createProfile(name, cliType);
         switch (cliType) {
-            case "CLAUDE" -> profile.setClaude(this.readClaudeConfig());
-            case "OPENCODE" -> profile.setOpencode(this.readOpenCodeConfig());
-            case "CODEX" -> profile.setCodex(this.readCodexConfig());
+            case "CLAUDE" -> profile.setClaude(this.readClaudeConfig(null));
+            case "OPENCODE" -> profile.setOpencode(this.readOpenCodeConfig(null));
+            case "CODEX" -> profile.setCodex(this.readCodexConfig(null));
             default -> log.warn("Unknown CLI type: {}", cliType);
         }
         return profile;

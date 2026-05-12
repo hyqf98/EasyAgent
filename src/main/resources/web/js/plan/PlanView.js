@@ -54,11 +54,12 @@ window.EARegisterComponent('plan-view', 'PlanView', {
 
             taskPanelCollapsed: false,
             taskPanelWidth: 280,
-            showScrollBottom: false,
-
-            _dragging: false,
-            _sortableInstances: null
+            showScrollBottom: false
         };
+    },
+    created() {
+        this._dragging = false;
+        this._sortableInstances = null;
     },
     computed: {
         store() { return window.EAStore; },
@@ -86,12 +87,12 @@ window.EARegisterComponent('plan-view', 'PlanView', {
         completedTasks() {
             return this.currentTasks
                 .filter(function (t) { return (t.status || '').toUpperCase() === 'COMPLETED'; })
-                .sort(function (a, b) { return (b.completedAt || 0) - (a.completedAt || 0); });
+                .sort(function (a, b) { return (a.sortOrder || 0) - (b.sortOrder || 0); });
         },
         failedTasks() {
             return this.currentTasks
                 .filter(function (t) { return (t.status || '').toUpperCase() === 'FAILED'; })
-                .sort(function (a, b) { return (b.completedAt || 0) - (a.completedAt || 0); });
+                .sort(function (a, b) { return (a.sortOrder || 0) - (b.sortOrder || 0); });
         },
 
         taskDialogCliLabel() {
@@ -142,12 +143,14 @@ window.EARegisterComponent('plan-view', 'PlanView', {
                 var incomingTasks = (detail.tasks || (detail.plan.tasks || [])).map(this.normalizeTask);
                 this.currentPlan = detail.plan;
 
+                if (this.currentPlan.status === 'KANBAN') {
+                    this.viewMode = 'kanban';
+                } else if (this.currentPlan.status === 'TASK_SPLITTING' || this.currentPlan.status === 'DRAFT') {
+                    this.viewMode = 'collect';
+                }
+
                 if (this._dragging || incomingTasks.length === 0) {
-                    if (this.currentPlan.status === 'KANBAN') {
-                        this.viewMode = 'kanban';
-                    } else if (this.currentPlan.status === 'TASK_SPLITTING' || this.currentPlan.status === 'DRAFT') {
-                        this.viewMode = 'collect';
-                    }
+                    this._loadPlanSessionHistory();
                     return;
                 }
 
@@ -178,11 +181,7 @@ window.EARegisterComponent('plan-view', 'PlanView', {
                     this.currentTasks = incomingTasks;
                 }
 
-                if (this.currentPlan.status === 'KANBAN') {
-                    this.viewMode = 'kanban';
-                } else if (this.currentPlan.status === 'TASK_SPLITTING' || this.currentPlan.status === 'DRAFT') {
-                    this.viewMode = 'collect';
-                }
+                this._loadPlanSessionHistory();
             }
         }.bind(this);
 
@@ -207,7 +206,15 @@ window.EARegisterComponent('plan-view', 'PlanView', {
                     }
                     var incoming = this.normalizeTask(detail);
                     if (incoming && incoming.status) {
+                        var preservedSortOrder = this.currentTasks[i].sortOrder;
                         Object.assign(this.currentTasks[i], incoming);
+                        if (this._dragging) {
+                            this.currentTasks[i].sortOrder = preservedSortOrder;
+                        }
+                        console.log('[PlanView] _onPlanTaskUpdated callback: taskId=' + updatedTaskId
+                            + ', sortOrder=' + this.currentTasks[i].sortOrder
+                            + ', completedAt=' + this.currentTasks[i].completedAt
+                            + ', dragging=' + this._dragging);
                     }
                     found = true;
                     break;
@@ -328,6 +335,19 @@ window.EARegisterComponent('plan-view', 'PlanView', {
             if (!task.completedAt) task.completedAt = 0;
             return task;
         },
+
+          _loadPlanSessionHistory() {
+              if (!this.currentPlan) return;
+              if (this.currentPlan.status === 'KANBAN') return;
+              var sessionId = this.currentPlan.sessionId;
+              if (!sessionId || sessionId.startsWith('plan-')) return;
+              var cliType = this.currentPlan.cliType || 'CLAUDE';
+              EAStore.cliType = cliType;
+              delete window.EA_STREAMING_MAP[sessionId];
+              delete window.EA_SESSION_CACHE[sessionId];
+              this.store.sessionId = sessionId;
+              EABridge.loadHistory(sessionId, cliType, true);
+          },
 
         getStatusLabel(status) {
             var key = EA_STATUS_LABELS[status];
@@ -598,6 +618,10 @@ window.EARegisterComponent('plan-view', 'PlanView', {
                         var oldIndex = evt.oldIndex;
                         var newIndex = evt.newIndex;
 
+                        console.log('[PlanView] Sortable onEnd: taskId=' + taskId
+                            + ', from=' + fromColumn + ', to=' + toColumn
+                            + ', oldIndex=' + oldIndex + ', newIndex=' + newIndex);
+
                         self._destroySortable();
 
                         if (fromColumn === toColumn) {
@@ -672,6 +696,8 @@ window.EARegisterComponent('plan-view', 'PlanView', {
 
         _reorderInColumnByIndex(column, taskId, oldIndex, newIndex) {
             if (oldIndex === newIndex) return;
+            console.log('[PlanView] reorderInColumn: column=' + column
+                + ', taskId=' + taskId + ', oldIdx=' + oldIndex + ', newIdx=' + newIndex);
             var statusFilter;
             switch (column) {
                 case 'PENDING': statusFilter = 'PENDING'; break;
@@ -704,6 +730,10 @@ window.EARegisterComponent('plan-view', 'PlanView', {
             var task = this.currentTasks.find(function (t) { return t.taskId === taskId; });
             if (!task || !this.currentPlan) return;
 
+            console.log('[PlanView] onTaskDragEnd: taskId=' + taskId
+                + ', title="' + (task.title || '') + '"'
+                + ', from=' + fromColumn + ', to=' + toColumn);
+
             var newStatus;
             switch (toColumn) {
                 case 'PENDING': newStatus = 'PENDING'; break;
@@ -724,10 +754,10 @@ window.EARegisterComponent('plan-view', 'PlanView', {
                 }
             }
 
-            this._updateTaskStatus(taskId, newStatus);
+            this._updateTaskStatus(taskId, newStatus, true);
         },
 
-        _updateTaskStatus(taskId, newStatus) {
+        _updateTaskStatus(taskId, newStatus, fromDrag) {
             var task = this.currentTasks.find(function (t) { return t.taskId === taskId; });
             if (!task) return;
 
@@ -735,48 +765,41 @@ window.EARegisterComponent('plan-view', 'PlanView', {
             var oldStatus = (task.status || '').toUpperCase();
             task.status = newStatus;
 
+            console.log('[PlanView] _updateTaskStatus: taskId=' + taskId
+                + ', oldStatus=' + oldStatus + ', newStatus=' + newStatus
+                + ', fromDrag=' + !!fromDrag);
+
             if (newStatus === 'PENDING') {
                 task.completedAt = 0;
                 task.startedAt = 0;
-                var pendingCount = 0;
-                this.currentTasks.forEach(function (t) {
-                    if (t.taskId !== taskId && (t.status || '').toUpperCase() === 'PENDING') {
-                        pendingCount++;
-                    }
-                });
-                task.sortOrder = pendingCount;
-                this.currentTasks.forEach(function (t) {
-                    if ((t.status || '').toUpperCase() === 'PENDING') {
-                        t.sortOrder = self._indexOfTask(t.taskId, 'PENDING');
-                    }
-                });
+                this._assignSortOrder(task, taskId, 'PENDING', fromDrag);
             }
             if (newStatus === 'STOPPED') {
                 task.completedAt = 0;
+                this._assignSortOrder(task, taskId, 'RUNNING_GROUP', fromDrag);
             }
             if (newStatus === 'RUNNING' || newStatus === 'QUEUED') {
                 task.startedAt = Date.now();
                 task.completedAt = 0;
-                var runningCount = 0;
-                this.currentTasks.forEach(function (t) {
-                    if (t.taskId !== taskId) {
-                        var s = (t.status || '').toUpperCase();
-                        if (s === 'RUNNING' || s === 'QUEUED' || s === 'STOPPED') {
-                            runningCount++;
-                        }
-                    }
-                });
-                task.sortOrder = runningCount;
+                this._assignSortOrder(task, taskId, 'RUNNING_GROUP', fromDrag);
             }
             if (newStatus === 'COMPLETED' || newStatus === 'FAILED') {
-                task.completedAt = Date.now();
+                task.completedAt = fromDrag ? 0 : Date.now();
+                this._assignSortOrder(task, taskId, newStatus, fromDrag);
             }
 
+            console.log('[PlanView] after sort: taskId=' + taskId
+                + ', sortOrder=' + task.sortOrder + ', completedAt=' + task.completedAt);
+
             var backendStatus = newStatus === 'QUEUED' ? 'PENDING' : newStatus;
-            EABridge.updatePlanTask(this.currentPlan.planId, taskId, {
+            var updateData = {
                 status: backendStatus,
                 sortOrder: task.sortOrder
-            });
+            };
+            if (newStatus === 'COMPLETED' || newStatus === 'FAILED') {
+                updateData.completedAt = task.completedAt;
+            }
+            EABridge.updatePlanTask(this.currentPlan.planId, taskId, updateData);
 
             if (newStatus === 'RUNNING') {
                 task.startedAt = Date.now();
@@ -787,6 +810,33 @@ window.EARegisterComponent('plan-view', 'PlanView', {
 
             if (newStatus === 'QUEUED' || newStatus === 'RUNNING') {
                 this.$nextTick(this._tryAutoStartNext);
+            }
+        },
+
+        _getSortOrderGroup(statusKey) {
+            if (statusKey === 'RUNNING_GROUP') {
+                return function (s) { return s === 'RUNNING' || s === 'QUEUED' || s === 'STOPPED'; };
+            }
+            return function (s) { return s === statusKey; };
+        },
+
+        _assignSortOrder(task, taskId, statusKey, fromDrag) {
+            var matchStatus = this._getSortOrderGroup(statusKey);
+            if (fromDrag) {
+                var maxOrder = -1;
+                this.currentTasks.forEach(function (t) {
+                    if (t.taskId !== taskId && matchStatus((t.status || '').toUpperCase())) {
+                        if ((t.sortOrder || 0) > maxOrder) maxOrder = t.sortOrder || 0;
+                    }
+                });
+                task.sortOrder = maxOrder + 1;
+            } else {
+                this.currentTasks.forEach(function (t) {
+                    if (t.taskId !== taskId && matchStatus((t.status || '').toUpperCase())) {
+                        t.sortOrder = (t.sortOrder || 0) + 1;
+                    }
+                });
+                task.sortOrder = 0;
             }
         },
 
@@ -821,11 +871,12 @@ window.EARegisterComponent('plan-view', 'PlanView', {
             if (this.autoStart) {
                 this.$nextTick(this._tryAutoStartNext);
             } else {
-                var runningTasks = this.currentTasks.filter(function (t) {
-                    return (t.status || '').toUpperCase() === 'RUNNING';
+                var activeTasks = this.currentTasks.filter(function (t) {
+                    var s = (t.status || '').toUpperCase();
+                    return s === 'RUNNING' || s === 'QUEUED';
                 });
                 var self = this;
-                runningTasks.forEach(function (t) {
+                activeTasks.forEach(function (t) {
                     self.onStopTask(t);
                 });
             }
@@ -886,6 +937,8 @@ window.EARegisterComponent('plan-view', 'PlanView', {
             if (!this.currentPlan) return;
             var text = (payload && payload.text) ? payload.text : '';
             if (!text.trim()) return;
+            var planCliType = this.currentPlan.cliType || 'CLAUDE';
+            EAStore.cliType = planCliType;
             this.store.addUserMessage(text, []);
             this.store.beginAssistantTurn();
             this.store.setStreaming(true);
