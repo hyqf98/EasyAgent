@@ -95,6 +95,39 @@ public enum JsCallback implements ValueEnum<String> {
     /** Skill 详情内容推送。 */
     SKILL_CONTENT("SkillContent"),
 
+    /** 已知 GitHub 仓库列表推送（Skills）。 */
+    KNOWN_REPOS("KnownRepos"),
+
+    /** 远程 Skills 列表推送。 */
+    REMOTE_SKILLS("RemoteSkills"),
+
+    /** Plugins 插件列表推送。 */
+    PLUGINS("Plugins"),
+
+    /** Plugin 安装结果推送。 */
+    PLUGIN_INSTALLED("PluginInstalled"),
+
+    /** Plugin 删除结果推送。 */
+    PLUGIN_DELETED("PluginDeleted"),
+
+    /** Plugin 详情内容推送。 */
+    PLUGIN_CONTENT("PluginContent"),
+
+    /** 已知 GitHub 仓库列表推送（Plugins）。 */
+    KNOWN_PLUGIN_REPOS("KnownPluginRepos"),
+
+    /** 远程 Plugins 列表推送。 */
+    REMOTE_PLUGINS("RemotePlugins"),
+
+    /** Plugin 命令列表推送。 */
+    PLUGIN_COMMANDS("PluginCommands"),
+
+    /** Skill 内容保存结果推送。 */
+    SKILL_CONTENT_SAVED("SkillContentSaved"),
+
+    /** Plugin 内容保存结果推送。 */
+    PLUGIN_CONTENT_SAVED("PluginContentSaved"),
+
     // ========== 计划模式 ==========
 
     /** 计划创建成功推送。 */

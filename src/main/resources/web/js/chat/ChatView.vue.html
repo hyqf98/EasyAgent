@@ -101,7 +101,10 @@
                     <template v-if="hasSelectedSessions">
                         <button class="icon-btn drawer-action-btn" @click="selectAllSessions">{{ i18n.t('session.selectAll') }}</button>
                         <button class="icon-btn drawer-action-btn" @click="clearSelection">{{ i18n.t('session.clearSelection') }}</button>
-                        <button class="icon-btn drawer-delete-btn" :disabled="selectedSessions.length === 0" @click="confirmDelete">{{ i18n.t('session.delete') }}</button>
+                        <button class="icon-btn drawer-delete-btn" :disabled="selectedSessions.length === 0 || isDeletingSessions" @click="confirmDelete">
+                            <span v-if="isDeletingSessions" class="delete-spinner"></span>
+                            <span v-else>{{ i18n.t('session.delete') }}</span>
+                        </button>
                     </template>
                     <button class="icon-btn" @click="showDrawer = false">✕</button>
                 </div>

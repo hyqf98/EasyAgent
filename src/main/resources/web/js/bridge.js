@@ -176,6 +176,28 @@ window.EABridge = {
 
         window.__ea_onSkillContent = (data) => { this._forward('ea-skill-content', data || {}); };
 
+        window.__ea_onKnownRepos = (data) => { this._forward('ea-known-repos', data || []); };
+
+        window.__ea_onRemoteSkills = (data) => { this._forward('ea-remote-skills', data || []); };
+
+        window.__ea_onPlugins = (data) => { this._forward('ea-plugins', data || []); };
+
+        window.__ea_onPluginInstalled = (data) => { this._forward('ea-plugin-installed', data || {}); };
+
+        window.__ea_onPluginDeleted = (data) => { this._forward('ea-plugin-deleted', data || {}); };
+
+        window.__ea_onPluginContent = (data) => { this._forward('ea-plugin-content', data || {}); };
+
+        window.__ea_onKnownPluginRepos = (data) => { this._forward('ea-known-plugin-repos', data || []); };
+
+        window.__ea_onRemotePlugins = (data) => { this._forward('ea-remote-plugins', data || []); };
+
+        window.__ea_onPluginCommands = (data) => { this._forward('ea-plugin-commands', data || {}); };
+
+        window.__ea_onSkillContentSaved = (data) => { this._forward('ea-skill-content-saved', data || {}); };
+
+        window.__ea_onPluginContentSaved = (data) => { this._forward('ea-plugin-content-saved', data || {}); };
+
         // Plan mode callbacks
         window.__ea_onPlanCreated = (data) => { this._forward('ea-plan-created', data || {}); };
 
@@ -562,14 +584,14 @@ window.EABridge = {
         *
         * @param {string} cliType - CLI 类型名称
         * @param {string} githubUrl - GitHub 仓库地址
-        * @param {string} [skillPath] - skill 在仓库中的路径
+        * @param {string} [skillName] - 技能名称（安装后的目录名）
         * @param {string} [scope] - 安装作用域：user 或 project
         */
-       installSkill(cliType, githubUrl, skillPath, scope) {
+       installSkill(cliType, githubUrl, skillName, scope) {
            this.send('installSkill', {
                cliType: cliType,
                githubUrl: githubUrl,
-               skillPath: skillPath || '',
+               skillName: skillName || '',
                scope: scope || 'user'
            });
        },
@@ -594,9 +616,62 @@ window.EABridge = {
         *
         * @param {string} skillPath - skill 目录路径
         */
-       readSkillContent(skillPath) {
-            this.send('readSkillContent', { skillPath: skillPath });
-       },
+        readSkillContent(skillPath) {
+             this.send('readSkillContent', { skillPath: skillPath });
+        },
+
+        listKnownRepos(cliType) {
+            this.send('listKnownRepos', { cliType: cliType });
+        },
+
+        listRemoteSkills(ownerRepo) {
+            this.send('listRemoteSkills', { ownerRepo: ownerRepo });
+        },
+
+        getPlugins(cliType) {
+            this.send('getPlugins', { cliType: cliType });
+        },
+
+        installPlugin(cliType, githubUrl, pluginName, scope) {
+            this.send('installPlugin', {
+                cliType: cliType,
+                githubUrl: githubUrl,
+                pluginName: pluginName || '',
+                scope: scope || 'user'
+            });
+        },
+
+        deletePlugin(cliType, pluginName, installPath) {
+            this.send('deletePlugin', {
+                cliType: cliType,
+                pluginName: pluginName,
+                installPath: installPath
+            });
+        },
+
+        readPluginContent(installPath) {
+            this.send('readPluginContent', { installPath: installPath });
+        },
+
+        readPluginCommands(installPath) {
+            this.send('readPluginCommands', { installPath: installPath });
+        },
+
+        saveSkillContent(skillPath, content) {
+            this.send('saveSkillContent', { skillPath: skillPath, content: content });
+        },
+
+        savePluginContent(installPath, content) {
+            this.send('savePluginContent', { installPath: installPath, content: content });
+        },
+
+        listKnownPluginRepos(cliType) {
+            this.send('listKnownPluginRepos', { cliType: cliType });
+        },
+
+        listRemotePlugins(ownerRepo) {
+            this.send('listRemotePlugins', { ownerRepo: ownerRepo });
+        },
 
        // ========== Plan Mode APIs ==========
 

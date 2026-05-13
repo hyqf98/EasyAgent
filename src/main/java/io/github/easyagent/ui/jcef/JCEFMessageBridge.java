@@ -34,6 +34,8 @@ import io.github.easyagent.settings.mcp.McpTestService;
 import io.github.easyagent.settings.models.DefaultModelInfo;
 import io.github.easyagent.settings.models.ModelConfigService;
 import io.github.easyagent.settings.models.ModelInfo;
+import io.github.easyagent.settings.plugins.PluginEntry;
+import io.github.easyagent.settings.plugins.PluginsConfigService;
 import io.github.easyagent.settings.skills.SkillEntry;
 import io.github.easyagent.settings.skills.SkillsConfigService;
 import io.github.easyagent.ui.enums.JsAction;
@@ -104,6 +106,8 @@ public class JCEFMessageBridge {
 
     private final SkillsConfigService skillsConfigService;
 
+    private final PluginsConfigService pluginsConfigService;
+
     private final Project project;
 
     private final FileReferenceService fileReferenceService;
@@ -146,6 +150,7 @@ public class JCEFMessageBridge {
         this.mcpTestService = new McpTestService();
         String basePath = project != null ? project.getBasePath() : null;
         this.skillsConfigService = new SkillsConfigService(basePath);
+        this.pluginsConfigService = new PluginsConfigService(basePath);
         this.project = project;
         this.fileReferenceService = project != null ? project.getService(FileReferenceService.class) : null;
         this.chatUiBridgeService = project != null ? project.getService(ChatUiBridgeService.class) : null;
@@ -245,6 +250,29 @@ public class JCEFMessageBridge {
                 this::handleDeleteSkill);
         this.registerHandler(JsAction.READ_SKILL_CONTENT, ReadSkillContentRequest.class,
                 this::handleReadSkillContent);
+        this.registerHandler(JsAction.LIST_KNOWN_REPOS, ListKnownReposRequest.class,
+                this::handleListKnownRepos);
+        this.registerHandler(JsAction.LIST_REMOTE_SKILLS, ListRemoteSkillsRequest.class,
+                this::handleListRemoteSkills);
+
+        this.registerHandler(JsAction.GET_PLUGINS, GetPluginsRequest.class,
+                this::handleGetPlugins);
+        this.registerHandler(JsAction.INSTALL_PLUGIN, InstallPluginRequest.class,
+                this::handleInstallPlugin);
+        this.registerHandler(JsAction.DELETE_PLUGIN, DeletePluginRequest.class,
+                this::handleDeletePlugin);
+        this.registerHandler(JsAction.READ_PLUGIN_CONTENT, ReadPluginContentRequest.class,
+                this::handleReadPluginContent);
+        this.registerHandler(JsAction.LIST_KNOWN_PLUGIN_REPOS, ListKnownReposRequest.class,
+                this::handleListKnownPluginRepos);
+        this.registerHandler(JsAction.LIST_REMOTE_PLUGINS, ListRemotePluginsRequest.class,
+                this::handleListRemotePlugins);
+        this.registerHandler(JsAction.READ_PLUGIN_COMMANDS, ReadPluginContentRequest.class,
+                this::handleReadPluginCommands);
+        this.registerHandler(JsAction.SAVE_SKILL_CONTENT, SaveSkillContentRequest.class,
+                this::handleSaveSkillContent);
+        this.registerHandler(JsAction.SAVE_PLUGIN_CONTENT, SavePluginContentRequest.class,
+                this::handleSavePluginContent);
 
         // 计划模式
         this.registerHandler(JsAction.CREATE_PLAN, CreatePlanRequest.class,
@@ -705,7 +733,7 @@ public class JCEFMessageBridge {
      * </p>
      */
     private void pushModels() {
-        String json = this.modelConfigService.toJson();
+        String json = this.modelConfigService.toJsonWithDefaults();
         this.invokeJSCallback(JsCallback.MODELS, json);
     }
 
@@ -1155,7 +1183,7 @@ public class JCEFMessageBridge {
             try {
                 String cliType = request.cliType();
                 SkillsConfigService.InstallResult result = this.skillsConfigService.installSkill(
-                        cliType, request.githubUrl(), request.skillPath(), request.scope());
+                        cliType, request.githubUrl(), request.skillName(), request.scope());
                 this.invokeJSCallback(JsCallback.SKILL_INSTALLED,
                         new SkillActionPayload(result.success(), cliType, result.message()));
                 if (result.success()) {
@@ -1210,6 +1238,162 @@ public class JCEFMessageBridge {
                 log.error("读取 Skill 内容失败", e);
                 this.invokeJSCallback(JsCallback.SKILL_CONTENT,
                         new SkillContentPayload(request.skillPath(), ""));
+            }
+        });
+    }
+
+    private void handleListKnownRepos(ListKnownReposRequest request) {
+        this.asyncExecutor.submit(() -> {
+            try {
+                var repos = this.skillsConfigService.listKnownRepos(request.cliType());
+                this.invokeJSCallback(JsCallback.KNOWN_REPOS, repos);
+            } catch (Exception e) {
+                log.error("获取已知仓库列表失败", e);
+                this.invokeJSCallback(JsCallback.KNOWN_REPOS, List.of());
+            }
+        });
+    }
+
+    private void handleListRemoteSkills(ListRemoteSkillsRequest request) {
+        this.asyncExecutor.submit(() -> {
+            try {
+                var skills = this.skillsConfigService.listRemoteSkills(request.ownerRepo());
+                this.invokeJSCallback(JsCallback.REMOTE_SKILLS, skills);
+            } catch (Exception e) {
+                log.error("获取远程 Skills 列表失败", e);
+                this.invokeJSCallback(JsCallback.REMOTE_SKILLS, List.of());
+            }
+        });
+    }
+
+    private void handleGetPlugins(GetPluginsRequest request) {
+        this.asyncExecutor.submit(() -> {
+            try {
+                List<PluginEntry> plugins = this.pluginsConfigService.loadInstalledPlugins(request.cliType());
+                this.invokeJSCallback(JsCallback.PLUGINS, plugins);
+            } catch (Exception e) {
+                log.error("加载 Plugins 列表失败", e);
+                this.invokeJSCallback(JsCallback.PLUGINS, List.of());
+            }
+        });
+    }
+
+    private void handleInstallPlugin(InstallPluginRequest request) {
+        this.asyncExecutor.submit(() -> {
+            try {
+                String cliType = request.cliType();
+                PluginsConfigService.InstallResult result = this.pluginsConfigService.installPlugin(
+                        cliType, request.githubUrl(), request.pluginName(), request.scope());
+                this.invokeJSCallback(JsCallback.PLUGIN_INSTALLED,
+                        new PluginActionPayload(result.success(), cliType, result.message()));
+                if (result.success()) {
+                    List<PluginEntry> plugins = this.pluginsConfigService.loadInstalledPlugins(cliType);
+                    this.invokeJSCallback(JsCallback.PLUGINS, plugins);
+                }
+            } catch (Exception e) {
+                log.error("安装 Plugin 失败", e);
+                this.invokeJSCallback(JsCallback.PLUGIN_INSTALLED,
+                        new PluginActionPayload(false, request.cliType(), e.getMessage()));
+            }
+        });
+    }
+
+    private void handleDeletePlugin(DeletePluginRequest request) {
+        this.asyncExecutor.submit(() -> {
+            try {
+                String cliType = request.cliType();
+                PluginsConfigService.DeleteResult result = this.pluginsConfigService.deletePlugin(
+                        cliType, request.pluginName(), request.installPath());
+                this.invokeJSCallback(JsCallback.PLUGIN_DELETED,
+                        new PluginActionPayload(result.success(), cliType, result.message()));
+                if (result.success()) {
+                    List<PluginEntry> plugins = this.pluginsConfigService.loadInstalledPlugins(cliType);
+                    this.invokeJSCallback(JsCallback.PLUGINS, plugins);
+                }
+            } catch (Exception e) {
+                log.error("删除 Plugin 失败", e);
+                this.invokeJSCallback(JsCallback.PLUGIN_DELETED,
+                        new PluginActionPayload(false, request.cliType(), e.getMessage()));
+            }
+        });
+    }
+
+    private void handleReadPluginContent(ReadPluginContentRequest request) {
+        this.asyncExecutor.submit(() -> {
+            try {
+                String content = this.pluginsConfigService.readPluginContent(request.installPath());
+                this.invokeJSCallback(JsCallback.PLUGIN_CONTENT,
+                        new PluginContentPayload(request.installPath(), content != null ? content : ""));
+            } catch (Exception e) {
+                log.error("读取 Plugin 内容失败", e);
+                this.invokeJSCallback(JsCallback.PLUGIN_CONTENT,
+                        new PluginContentPayload(request.installPath(), ""));
+            }
+        });
+    }
+
+    private void handleReadPluginCommands(ReadPluginContentRequest request) {
+        this.asyncExecutor.submit(() -> {
+            try {
+                var commands = this.pluginsConfigService.readPluginCommands(request.installPath());
+                this.invokeJSCallback(JsCallback.PLUGIN_COMMANDS,
+                        new PluginCommandsPayload(request.installPath(), commands));
+            } catch (Exception e) {
+                log.error("读取 Plugin 命令列表失败", e);
+                this.invokeJSCallback(JsCallback.PLUGIN_COMMANDS,
+                        new PluginCommandsPayload(request.installPath(), List.of()));
+            }
+        });
+    }
+
+    private void handleSaveSkillContent(SaveSkillContentRequest request) {
+        this.asyncExecutor.submit(() -> {
+            try {
+                boolean success = this.skillsConfigService.saveSkillContent(request.skillPath(), request.content());
+                this.invokeJSCallback(JsCallback.SKILL_CONTENT_SAVED,
+                        new SaveContentResultPayload(success, request.skillPath()));
+            } catch (Exception e) {
+                log.error("保存 Skill 内容失败", e);
+                this.invokeJSCallback(JsCallback.SKILL_CONTENT_SAVED,
+                        new SaveContentResultPayload(false, request.skillPath()));
+            }
+        });
+    }
+
+    private void handleSavePluginContent(SavePluginContentRequest request) {
+        this.asyncExecutor.submit(() -> {
+            try {
+                boolean success = this.pluginsConfigService.savePluginContent(request.installPath(), request.content());
+                this.invokeJSCallback(JsCallback.PLUGIN_CONTENT_SAVED,
+                        new SaveContentResultPayload(success, request.installPath()));
+            } catch (Exception e) {
+                log.error("保存 Plugin 内容失败", e);
+                this.invokeJSCallback(JsCallback.PLUGIN_CONTENT_SAVED,
+                        new SaveContentResultPayload(false, request.installPath()));
+            }
+        });
+    }
+
+    private void handleListKnownPluginRepos(ListKnownReposRequest request) {
+        this.asyncExecutor.submit(() -> {
+            try {
+                var repos = this.pluginsConfigService.listKnownRepos(request.cliType());
+                this.invokeJSCallback(JsCallback.KNOWN_PLUGIN_REPOS, repos);
+            } catch (Exception e) {
+                log.error("获取已知插件仓库列表失败", e);
+                this.invokeJSCallback(JsCallback.KNOWN_PLUGIN_REPOS, List.of());
+            }
+        });
+    }
+
+    private void handleListRemotePlugins(ListRemotePluginsRequest request) {
+        this.asyncExecutor.submit(() -> {
+            try {
+                var plugins = this.pluginsConfigService.listRemotePlugins(request.ownerRepo());
+                this.invokeJSCallback(JsCallback.REMOTE_PLUGINS, plugins);
+            } catch (Exception e) {
+                log.error("获取远程 Plugins 列表失败", e);
+                this.invokeJSCallback(JsCallback.REMOTE_PLUGINS, List.of());
             }
         });
     }
@@ -1989,11 +2173,11 @@ public class JCEFMessageBridge {
      * @param action    动作名称
      * @param cliType   CLI 类型
      * @param githubUrl GitHub 仓库地址
-     * @param skillPath skill 在仓库中的路径
+     * @param skillName 技能名称（安装后的目录名）
      * @param scope     安装作用域：user 或 project
      */
     private record InstallSkillRequest(String action, String cliType, String githubUrl,
-                                        String skillPath, String scope) implements JsRequest {
+                                        String skillName, String scope) implements JsRequest {
     }
 
     /**
@@ -2034,6 +2218,47 @@ public class JCEFMessageBridge {
      * @param content   SKILL.md 完整内容
      */
     private record SkillContentPayload(String skillPath, String content) {
+    }
+
+    private record ListKnownReposRequest(String action, String cliType) implements JsRequest {
+    }
+
+    private record ListRemoteSkillsRequest(String action, String ownerRepo) implements JsRequest {
+    }
+
+    private record GetPluginsRequest(String action, String cliType) implements JsRequest {
+    }
+
+    private record InstallPluginRequest(String action, String cliType, String githubUrl,
+                                         String pluginName, String scope) implements JsRequest {
+    }
+
+    private record DeletePluginRequest(String action, String cliType,
+                                        String pluginName, String installPath) implements JsRequest {
+    }
+
+    private record ReadPluginContentRequest(String action, String installPath) implements JsRequest {
+    }
+
+    private record ListRemotePluginsRequest(String action, String ownerRepo) implements JsRequest {
+    }
+
+    private record PluginActionPayload(boolean success, String cliType, String message) {
+    }
+
+    private record PluginContentPayload(String installPath, String content) {
+    }
+
+    private record PluginCommandsPayload(String installPath, List<Map<String, String>> commands) {
+    }
+
+    private record SaveSkillContentRequest(String action, String skillPath, String content) implements JsRequest {
+    }
+
+    private record SavePluginContentRequest(String action, String installPath, String content) implements JsRequest {
+    }
+
+    private record SaveContentResultPayload(boolean success, String path) {
     }
 
     // ==================== Plan Mode Handlers ====================
@@ -2747,8 +2972,9 @@ public class JCEFMessageBridge {
                                     "stats", JCEFMessageBridge.this.planService.getTaskStats(planId)
                             )));
                         }
+                        String completeSid = finalSessionId != null ? finalSessionId : effectiveSessionId;
                         JCEFMessageBridge.this.invokeJSCallback(JsCallback.STREAM_COMPLETE,
-                                new StreamCompletePayload(effectiveSessionId));
+                                new StreamCompletePayload(completeSid));
                     }
 
                     @Override

@@ -131,6 +131,39 @@ public enum JsAction implements ValueEnum<String> {
     /** 读取 Skill 详情内容。 */
     READ_SKILL_CONTENT("readSkillContent"),
 
+    /** 获取已知的 GitHub 仓库列表（Skills 安装下拉）。 */
+    LIST_KNOWN_REPOS("listKnownRepos"),
+
+    /** 浏览指定仓库的远程 Skills 列表。 */
+    LIST_REMOTE_SKILLS("listRemoteSkills"),
+
+    /** 获取 Plugins 插件列表。 */
+    GET_PLUGINS("getPlugins"),
+
+    /** 从 GitHub 安装 Plugin。 */
+    INSTALL_PLUGIN("installPlugin"),
+
+    /** 删除 Plugin。 */
+    DELETE_PLUGIN("deletePlugin"),
+
+    /** 读取 Plugin 详情内容。 */
+    READ_PLUGIN_CONTENT("readPluginContent"),
+
+    /** 获取已知的 GitHub 仓库列表（Plugin 安装下拉）。 */
+    LIST_KNOWN_PLUGIN_REPOS("listKnownPluginRepos"),
+
+    /** 浏览指定仓库的远程 Plugins 列表。 */
+    LIST_REMOTE_PLUGINS("listRemotePlugins"),
+
+    /** 读取 Plugin 命令列表。 */
+    READ_PLUGIN_COMMANDS("readPluginCommands"),
+
+    /** 保存 Skill 内容。 */
+    SAVE_SKILL_CONTENT("saveSkillContent"),
+
+    /** 保存 Plugin 内容。 */
+    SAVE_PLUGIN_CONTENT("savePluginContent"),
+
     // ========== 计划模式 ==========
 
     /** 创建计划。 */

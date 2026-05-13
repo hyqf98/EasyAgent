@@ -1,15 +1,27 @@
 package io.github.easyagent.settings.skills;
 
+import com.google.gson.JsonArray;
+import com.google.gson.JsonElement;
+import com.google.gson.JsonObject;
+import com.google.gson.JsonParser;
 import io.github.easyagent.util.GsonUtils;
 import lombok.extern.slf4j.Slf4j;
 
 import java.io.IOException;
+import java.net.URI;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
 import java.nio.file.DirectoryStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.BasicFileAttributes;
+import java.time.Duration;
 import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.TimeUnit;
 
 /**
@@ -36,6 +48,12 @@ public class SkillsConfigService {
 
     private static final String USER_HOME = System.getProperty("user.home");
     private static final String SKILL_FILE_NAME = "SKILL.md";
+    private static final String GITHUB_API_BASE = "https://api.github.com/repos/";
+    private static final String KNOWN_MARKETPLACES_FILE = "known_marketplaces.json";
+
+    private static final HttpClient HTTP_CLIENT = HttpClient.newBuilder()
+            .connectTimeout(Duration.ofSeconds(10))
+            .build();
 
     /** 当前项目根路径，用于解析项目级 skills 目录。 */
     private final String projectPath;
@@ -77,12 +95,62 @@ public class SkillsConfigService {
      *                    <li>{@code https://github.com/owner/repo/tree/branch/path/to/skill}</li>
      *                    <li>{@code owner/repo}</li>
      *                  </ul>
-     * @param skillPath skill 在仓库中的路径（可选，为空时取 URL 中的 subPath）
+     * @param skillName 技能名称（安装后的目录名，必填）
      * @param scope     安装作用域：user 或 project
      * @return 安装结果
      */
-    public InstallResult installSkill(String cliType, String githubUrl, String skillPath, String scope) {
-        return this.installViaGitClone(cliType.toUpperCase(), githubUrl, skillPath, scope);
+    public InstallResult installSkill(String cliType, String githubUrl, String skillName, String scope) {
+        ParsedGitHubUrl parsed = this.parseGitHubUrl(githubUrl);
+        if (parsed == null) {
+            return new InstallResult(false, "Invalid GitHub URL: " + githubUrl, null);
+        }
+        if (skillName == null || skillName.isBlank()) {
+            return new InstallResult(false, "Skill name is required", null);
+        }
+        String effectiveSkillPath = parsed.subPath;
+        if (effectiveSkillPath == null || effectiveSkillPath.isBlank()) {
+            effectiveSkillPath = this.resolveSkillPathInRepo(parsed, skillName);
+        }
+        if (effectiveSkillPath == null || effectiveSkillPath.isBlank()) {
+            effectiveSkillPath = skillName;
+        }
+        return this.installViaGitClone(cliType.toUpperCase(), githubUrl, effectiveSkillPath, scope);
+    }
+
+    /**
+     * 获取指定 CLI 已知的 GitHub 仓库列表（供前端下拉选择）。
+     *
+     * @param cliType CLI 类型
+     * @return 仓库信息列表
+     */
+    public List<RepoInfo> listKnownRepos(String cliType) {
+        Set<RepoInfo> repos = new LinkedHashSet<>();
+        switch (cliType.toUpperCase()) {
+            case "CLAUDE" -> this.addClaudeKnownRepos(repos);
+            case "OPENCODE" -> this.addOpenCodeKnownRepos(repos);
+            case "CODEX" -> this.addCodexKnownRepos(repos);
+        }
+        return new ArrayList<>(repos);
+    }
+
+    /**
+     * 浏览指定 GitHub 仓库中的可用 Skills 目录。
+     *
+     * @param ownerRepo owner/repo 格式的仓库标识
+     * @return 远程技能信息列表
+     */
+    public List<RemoteSkillInfo> listRemoteSkills(String ownerRepo) {
+        if (ownerRepo == null || ownerRepo.isBlank() || !ownerRepo.contains("/")) {
+            return List.of();
+        }
+        List<RemoteSkillInfo> result = new ArrayList<>();
+        try {
+            String[] parts = ownerRepo.split("/");
+            this.browseRepoForSkills(parts[0], parts[1], result);
+        } catch (Exception e) {
+            log.warn("浏览远程仓库技能失败: {}", ownerRepo, e);
+        }
+        return result;
     }
 
     /**
@@ -126,6 +194,28 @@ public class SkillsConfigService {
         } catch (IOException e) {
             log.warn("读取 Skill 内容失败: {}", mdFile, e);
             return null;
+        }
+    }
+
+    /**
+     * 保存 Skill 内容到文件。
+     *
+     * @param skillPath skill 目录路径
+     * @param content   要保存的 Markdown 内容
+     * @return 保存结果
+     */
+    public boolean saveSkillContent(String skillPath, String content) {
+        if (skillPath == null || skillPath.isBlank()) {
+            return false;
+        }
+        Path mdFile = Path.of(skillPath, SKILL_FILE_NAME);
+        try {
+            Files.createDirectories(mdFile.getParent());
+            Files.writeString(mdFile, content != null ? content : "");
+            return true;
+        } catch (IOException e) {
+            log.warn("保存 Skill 内容失败: {}", mdFile, e);
+            return false;
         }
     }
 
@@ -279,6 +369,139 @@ public class SkillsConfigService {
             log.warn("Git clone 安装 skill 失败: {}", githubUrl, e);
             return new InstallResult(false, "Install failed: " + e.getMessage(), null);
         }
+    }
+
+    // ==================== Known Repos & Remote Skills ====================
+
+    private void addClaudeKnownRepos(Set<RepoInfo> repos) {
+        Path marketplacesFile = Path.of(USER_HOME, ".claude", "plugins", KNOWN_MARKETPLACES_FILE);
+        if (!Files.isRegularFile(marketplacesFile)) {
+            return;
+        }
+        try {
+            String json = Files.readString(marketplacesFile);
+            JsonObject root = JsonParser.parseString(json).getAsJsonObject();
+            for (Map.Entry<String, JsonElement> entry : root.entrySet()) {
+                JsonObject mp = entry.getValue().getAsJsonObject();
+                JsonObject source = mp.getAsJsonObject("source");
+                if (source == null) {
+                    continue;
+                }
+                String ghRepo = GsonUtils.getString(source, "repo");
+                String gitUrl = GsonUtils.getString(source, "url");
+                String ownerRepo = null;
+                if (ghRepo != null && !ghRepo.isBlank()) {
+                    ownerRepo = ghRepo;
+                } else if (gitUrl != null && gitUrl.contains("github.com")) {
+                    ownerRepo = this.extractOwnerRepoFromUrl(gitUrl);
+                }
+                if (ownerRepo != null && !ownerRepo.isBlank()) {
+                    repos.add(new RepoInfo(ownerRepo, entry.getKey(), ownerRepo));
+                }
+            }
+        } catch (Exception e) {
+            log.debug("读取 Claude known_marketplaces 失败", e);
+        }
+    }
+
+    private void addOpenCodeKnownRepos(Set<RepoInfo> repos) {
+    }
+
+    private void addCodexKnownRepos(Set<RepoInfo> repos) {
+    }
+
+    private String extractOwnerRepoFromUrl(String url) {
+        if (url == null || url.isBlank()) {
+            return null;
+        }
+        String cleaned = url.replace(".git", "");
+        int idx = cleaned.indexOf("github.com/");
+        if (idx >= 0) {
+            String sub = cleaned.substring(idx + "github.com/".length());
+            String[] parts = sub.split("/");
+            if (parts.length >= 2) {
+                return parts[0] + "/" + parts[1];
+            }
+        }
+        return null;
+    }
+
+    private String resolveSkillPathInRepo(ParsedGitHubUrl parsed, String skillName) {
+        String[] candidates = {"skills/" + skillName, "skill/" + skillName, skillName};
+        for (String candidate : candidates) {
+            try {
+                String url = GITHUB_API_BASE + parsed.owner + "/" + parsed.repo + "/contents/" + candidate;
+                HttpRequest request = HttpRequest.newBuilder().uri(URI.create(url))
+                        .header("Accept", "application/vnd.github.v3+json")
+                        .timeout(Duration.ofSeconds(10)).GET().build();
+                HttpResponse<String> response = HTTP_CLIENT.send(request, HttpResponse.BodyHandlers.ofString());
+                if (response.statusCode() == 200) {
+                    JsonObject obj = JsonParser.parseString(response.body()).getAsJsonObject();
+                    if ("dir".equals(GsonUtils.getString(obj, "type"))) {
+                        return candidate;
+                    }
+                }
+            } catch (Exception e) {
+                // skip
+            }
+        }
+        return null;
+    }
+
+    private void browseRepoForSkills(String owner, String repo, List<RemoteSkillInfo> result) {
+        try {
+            JsonArray rootContents = this.githubApiGet(owner, repo, "");
+            if (rootContents == null) {
+                return;
+            }
+            for (JsonElement elem : rootContents) {
+                JsonObject item = elem.getAsJsonObject();
+                if (!"dir".equals(GsonUtils.getString(item, "type"))) {
+                    continue;
+                }
+                String name = GsonUtils.getString(item, "name");
+                if ("skills".equalsIgnoreCase(name) || "skill".equalsIgnoreCase(name)) {
+                    this.browseSkillsSubDirs(owner, repo, name, result);
+                }
+            }
+        } catch (Exception e) {
+            log.warn("浏览仓库 {}/{} 的技能失败", owner, repo, e);
+        }
+    }
+
+    private void browseSkillsSubDirs(String owner, String repo, String skillsDir, List<RemoteSkillInfo> result) {
+        try {
+            JsonArray contents = this.githubApiGet(owner, repo, skillsDir);
+            if (contents == null) {
+                return;
+            }
+            for (JsonElement elem : contents) {
+                JsonObject item = elem.getAsJsonObject();
+                if (!"dir".equals(GsonUtils.getString(item, "type"))) {
+                    continue;
+                }
+                String name = GsonUtils.getString(item, "name");
+                result.add(new RemoteSkillInfo(name, skillsDir + "/" + name, ""));
+            }
+        } catch (Exception e) {
+            log.debug("浏览技能子目录 {} 失败: {}/{}", skillsDir, owner, repo, e);
+        }
+    }
+
+    private JsonArray githubApiGet(String owner, String repo, String path) {
+        try {
+            String url = GITHUB_API_BASE + owner + "/" + repo + "/contents/" + path;
+            HttpRequest request = HttpRequest.newBuilder().uri(URI.create(url))
+                    .header("Accept", "application/vnd.github.v3+json")
+                    .timeout(Duration.ofSeconds(15)).GET().build();
+            HttpResponse<String> response = HTTP_CLIENT.send(request, HttpResponse.BodyHandlers.ofString());
+            if (response.statusCode() == 200) {
+                return JsonParser.parseString(response.body()).getAsJsonArray();
+            }
+        } catch (Exception e) {
+            log.debug("GitHub API 请求失败: {}/{} / {}", owner, repo, path, e);
+        }
+        return null;
     }
 
     // ==================== Path Resolution ====================
@@ -507,5 +730,25 @@ public class SkillsConfigService {
      * @param cloneUrl git clone URL
      */
     private record ParsedGitHubUrl(String owner, String repo, String ref, String subPath, String cloneUrl) {
+    }
+
+    /**
+     * 已知仓库信息。
+     *
+     * @param ownerRepo   owner/repo 格式的仓库标识
+     * @param displayName 显示名称
+     * @param url         仓库 URL 或标识
+     */
+    public record RepoInfo(String ownerRepo, String displayName, String url) {
+    }
+
+    /**
+     * 远程技能信息。
+     *
+     * @param name        技能名称
+     * @param path        技能在仓库中的路径
+     * @param description 技能描述
+     */
+    public record RemoteSkillInfo(String name, String path, String description) {
     }
 }

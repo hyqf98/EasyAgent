@@ -434,8 +434,26 @@ window.EARegisterComponent('plan-view', 'PlanView', {
 
         onStartPlanSplitting(plan) {
             this.currentPlan = plan;
+            this.currentPlan.status = 'TASK_SPLITTING';
             this.currentTasks = (plan.tasks || []).map(this.normalizeTask);
-            EABridge.getPlanDetail(plan.planId);
+            this.viewMode = 'collect';
+            var cliType = plan.cliType || 'CLAUDE';
+            EAStore.cliType = cliType;
+            this.store.messages = [];
+            this.store.sessionId = 'plan-' + plan.planId;
+
+            var planName = plan.planName || '';
+            var planDesc = plan.description || '';
+            var minTasks = plan.minTaskCount || 5;
+            var promptParts = [];
+            promptParts.push(this.i18n.t('plan.splitPrompt.title') + planName);
+            if (planDesc) promptParts.push(this.i18n.t('plan.splitPrompt.content') + planDesc);
+            promptParts.push(this.i18n.t('plan.splitPrompt.granularity').replace('{n}', minTasks));
+            var promptText = promptParts.join('\n');
+            this.store.addUserMessage(promptText, []);
+            this.store.beginAssistantTurn();
+            this.store.messagesVersion++;
+            this.$nextTick(this.scrollToBottom);
             EABridge.startPlanSplit(plan.planId);
         },
 

@@ -6,10 +6,11 @@ import lombok.Builder;
  * 默认模型信息。
  * <p>
  * 当用户不选择特定模型时（不传 {@code --model} 给 CLI），
- * 使用此记录存储默认模型的显示名称和上下文窗口大小。
+ * 使用此记录存储从 CLI 配置文件读取的默认模型信息。
  * </p>
  *
- * @param displayName   前端展示名称（如 {@code 默认模型}）
+ * @param displayName   前端展示名称（如 {@code 默认 (claude-sonnet-4-6)}）
+ * @param modelId       默认模型 ID（从 CLI 配置文件读取）
  * @param contextWindow 上下文窗口大小（token 数量）
  * @author haijun
  * @date 2026/5/9
@@ -18,6 +19,7 @@ import lombok.Builder;
 @Builder
 public record DefaultModelInfo(
         String displayName,
+        String modelId,
         int contextWindow
 ) {
 

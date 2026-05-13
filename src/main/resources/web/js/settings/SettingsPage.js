@@ -60,6 +60,7 @@ window.EARegisterComponent('settings-page', 'SettingsPage', {
     data() {
         return {
             activeTab: 'general',
+            sidebarCollapsed: true,
             timeoutSeconds: 0,
             models: [],
             modelFilter: 'CLAUDE',
@@ -113,8 +114,26 @@ window.EARegisterComponent('settings-page', 'SettingsPage', {
             skillLoading: false,
             showSkillInstallForm: false,
             skillInstalling: false,
-            skillInstallForm: { githubUrl: '', skillPath: '', scope: 'user' },
-            skillContentDialog: null
+            skillInstallForm: { githubUrl: '', skillName: '', scope: 'user' },
+            skillContentDialog: null,
+            _skillEditor: null,
+            knownRepos: [],
+            remoteSkills: [],
+            skillRepoDropdown: false,
+            skillNameDropdown: false,
+            skillsBrowsing: false,
+            pluginFilter: 'CLAUDE',
+            pluginList: [],
+            pluginLoading: false,
+            showPluginInstallForm: false,
+            pluginInstalling: false,
+            pluginInstallForm: { githubUrl: '', pluginName: '', scope: 'user' },
+            pluginContentDialog: null,
+            _pluginEditor: null,
+            knownPluginRepos: [],
+            remotePlugins: [],
+            pluginRepoDropdown: false,
+            pluginNameDropdown: false
         };
     },
     computed: {
@@ -191,7 +210,7 @@ window.EARegisterComponent('settings-page', 'SettingsPage', {
             return EA_CTX_OPTIONS;
         },
         defaultModelInfo() {
-            return this.store.defaultModelInfoMap[this.modelFilter] || { displayName: '', contextWindow: 128000 };
+            return this.store.defaultModelInfoMap[this.modelFilter] || { displayName: '', modelId: '', contextWindow: 128000 };
         },
         isAddProviderMode() {
             return this.modelFilter === 'OPENCODE';
@@ -220,14 +239,44 @@ window.EARegisterComponent('settings-page', 'SettingsPage', {
         defaultKeyVisible: {
             get() {
                 if (this.configFilter === 'CLAUDE') return this.claudeKeyVisible;
-                if (this.configFilter === 'OPENCODE') return this.opencodeKeyVisible;
-                return this.codexKeyVisible;
+                else if (this.configFilter === 'OPENCODE') return this.opencodeKeyVisible;
+                else return this.codexKeyVisible;
             },
             set(val) {
                 if (this.configFilter === 'CLAUDE') this.claudeKeyVisible = val;
                 else if (this.configFilter === 'OPENCODE') this.opencodeKeyVisible = val;
                 else this.codexKeyVisible = val;
             }
+        },
+        filteredKnownRepos() {
+            var q = (this.skillInstallForm.githubUrl || '').toLowerCase();
+            if (!q) return this.knownRepos;
+            return this.knownRepos.filter(function (r) {
+                return (r.ownerRepo || '').toLowerCase().indexOf(q) >= 0 ||
+                       (r.displayName || '').toLowerCase().indexOf(q) >= 0;
+            });
+        },
+        filteredRemoteSkills() {
+            var q = (this.skillInstallForm.skillName || '').toLowerCase();
+            if (!q) return this.remoteSkills;
+            return this.remoteSkills.filter(function (s) {
+                return (s.name || '').toLowerCase().indexOf(q) >= 0;
+            });
+        },
+        filteredKnownPluginRepos() {
+            var q = (this.pluginInstallForm.githubUrl || '').toLowerCase();
+            if (!q) return this.knownPluginRepos;
+            return this.knownPluginRepos.filter(function (r) {
+                return (r.ownerRepo || '').toLowerCase().indexOf(q) >= 0 ||
+                       (r.displayName || '').toLowerCase().indexOf(q) >= 0;
+            });
+        },
+        filteredRemotePlugins() {
+            var q = (this.pluginInstallForm.pluginName || '').toLowerCase();
+            if (!q) return this.remotePlugins;
+            return this.remotePlugins.filter(function (p) {
+                return (p.name || '').toLowerCase().indexOf(q) >= 0;
+            });
         }
     },
     watch: {
@@ -354,13 +403,87 @@ window.EARegisterComponent('settings-page', 'SettingsPage', {
                 var content = detail.content || '';
                 this.skillContentDialog.content = content;
                 this.skillContentDialog.htmlContent = content ? (window.EAMarkdown ? EAMarkdown.render(content) : content) : '';
+                this._initEditor('skill', content);
             }
+        }.bind(this);
+        this._onKnownRepos = function (e) {
+            this.knownRepos = Array.isArray(e.detail) ? e.detail : [];
+            this.skillRepoDropdown = true;
+        }.bind(this);
+        this._onRemoteSkills = function (e) {
+            this.remoteSkills = Array.isArray(e.detail) ? e.detail : [];
+            this.skillsBrowsing = false;
+            this.skillNameDropdown = this.remoteSkills.length > 0;
         }.bind(this);
         window.addEventListener('ea-skills', this._onSkills);
         window.addEventListener('ea-skill-installed', this._onSkillInstalled);
         window.addEventListener('ea-skill-content', this._onSkillContent);
+        window.addEventListener('ea-known-repos', this._onKnownRepos);
+        window.addEventListener('ea-remote-skills', this._onRemoteSkills);
+
+        this._onSkillContentSaved = function (e) {
+            var detail = e.detail || {};
+            if (this.skillContentDialog) {
+                this.skillContentDialog.saving = false;
+            }
+        }.bind(this);
+        window.addEventListener('ea-skill-content-saved', this._onSkillContentSaved);
+
+        this._onPlugins = function (e) {
+            this.pluginLoading = false;
+            this.pluginList = Array.isArray(e.detail) ? e.detail : [];
+        }.bind(this);
+        this._onPluginInstalled = function (e) {
+            this.pluginInstalling = false;
+            var detail = e.detail || {};
+            if (detail.success) {
+                this.showPluginInstallForm = false;
+            }
+        }.bind(this);
+        this._onPluginContent = function (e) {
+            var detail = e.detail || {};
+            if (this.pluginContentDialog) {
+                var content = detail.content || '';
+                this.pluginContentDialog.content = content;
+                this.pluginContentDialog.htmlContent = content ? (window.EAMarkdown ? EAMarkdown.render(content) : content) : '';
+                if (this.pluginContentDialog.activeTab === 'content') {
+                    this._initEditor('plugin', content);
+                }
+            }
+        }.bind(this);
+        this._onPluginCommands = function (e) {
+            var detail = e.detail || {};
+            if (this.pluginContentDialog) {
+                this.pluginContentDialog.commands = Array.isArray(detail.commands) ? detail.commands : [];
+                this.pluginContentDialog.commandsLoading = false;
+            }
+        }.bind(this);
+        this._onKnownPluginRepos = function (e) {
+            this.knownPluginRepos = Array.isArray(e.detail) ? e.detail : [];
+            this.pluginRepoDropdown = true;
+        }.bind(this);
+        this._onRemotePlugins = function (e) {
+            this.remotePlugins = Array.isArray(e.detail) ? e.detail : [];
+            this.pluginNameDropdown = this.remotePlugins.length > 0;
+        }.bind(this);
+        window.addEventListener('ea-plugins', this._onPlugins);
+        window.addEventListener('ea-plugin-installed', this._onPluginInstalled);
+        window.addEventListener('ea-plugin-content', this._onPluginContent);
+        window.addEventListener('ea-plugin-commands', this._onPluginCommands);
+        window.addEventListener('ea-known-plugin-repos', this._onKnownPluginRepos);
+        window.addEventListener('ea-remote-plugins', this._onRemotePlugins);
+
+        this._onPluginContentSaved = function (e) {
+            var detail = e.detail || {};
+            if (this.pluginContentDialog) {
+                this.pluginContentDialog.saving = false;
+            }
+        }.bind(this);
+        window.addEventListener('ea-plugin-content-saved', this._onPluginContentSaved);
     },
     beforeUnmount() {
+        this._destroyEditor('skill');
+        this._destroyEditor('plugin');
         if (this._syncTimeout) { clearTimeout(this._syncTimeout); this._syncTimeout = null; }
         if (this._onModelsLoaded) window.removeEventListener('ea-models-loaded', this._onModelsLoaded);
         if (this._onCliModelsLoaded) window.removeEventListener('ea-cli-models-loaded', this._onCliModelsLoaded);
@@ -374,9 +497,40 @@ window.EARegisterComponent('settings-page', 'SettingsPage', {
         if (this._onSkills) window.removeEventListener('ea-skills', this._onSkills);
         if (this._onSkillInstalled) window.removeEventListener('ea-skill-installed', this._onSkillInstalled);
         if (this._onSkillContent) window.removeEventListener('ea-skill-content', this._onSkillContent);
+        if (this._onKnownRepos) window.removeEventListener('ea-known-repos', this._onKnownRepos);
+        if (this._onRemoteSkills) window.removeEventListener('ea-remote-skills', this._onRemoteSkills);
+        if (this._onSkillContentSaved) window.removeEventListener('ea-skill-content-saved', this._onSkillContentSaved);
+        if (this._onPlugins) window.removeEventListener('ea-plugins', this._onPlugins);
+        if (this._onPluginInstalled) window.removeEventListener('ea-plugin-installed', this._onPluginInstalled);
+        if (this._onPluginContent) window.removeEventListener('ea-plugin-content', this._onPluginContent);
+        if (this._onPluginCommands) window.removeEventListener('ea-plugin-commands', this._onPluginCommands);
+        if (this._onKnownPluginRepos) window.removeEventListener('ea-known-plugin-repos', this._onKnownPluginRepos);
+        if (this._onRemotePlugins) window.removeEventListener('ea-remote-plugins', this._onRemotePlugins);
+        if (this._onPluginContentSaved) window.removeEventListener('ea-plugin-content-saved', this._onPluginContentSaved);
     },
     methods: {
         setLocale(locale) { window.EAi18n.setLocale(locale); },
+        _initEditor(type, content) {
+            var self = this;
+            this.$nextTick(function () {
+                var refKey = type + 'EditorContainer';
+                var container = self.$refs[refKey];
+                if (!container || !window.EAMarkdownEditor) return;
+                self._destroyEditor(type);
+                var editor = EAMarkdownEditor.create(container, content);
+                if (type === 'skill') self._skillEditor = editor;
+                else self._pluginEditor = editor;
+            });
+        },
+        _destroyEditor(type) {
+            var refKey = type + 'EditorContainer';
+            var container = this.$refs[refKey];
+            if (container && window.EAMarkdownEditor) {
+                EAMarkdownEditor.destroy(container);
+            }
+            if (type === 'skill') this._skillEditor = null;
+            else this._pluginEditor = null;
+        },
         onOverlayMouseDown(e) {
             this._overlayMouseDownPos = { x: e.clientX, y: e.clientY };
         },
@@ -1017,24 +1171,196 @@ window.EARegisterComponent('settings-page', 'SettingsPage', {
         },
         onShowInstallSkill() {
             this.showSkillInstallForm = true;
-            this.skillInstallForm = { githubUrl: '', skillPath: '', scope: 'user' };
+            this.skillInstallForm = { githubUrl: '', skillName: '', scope: 'user' };
+            this.knownRepos = [];
+            this.remoteSkills = [];
+            this.skillRepoDropdown = false;
+            this.skillNameDropdown = false;
         },
         onCancelInstallSkill() {
             this.showSkillInstallForm = false;
+            this.skillRepoDropdown = false;
+            this.skillNameDropdown = false;
         },
         onConfirmInstallSkill() {
             var form = this.skillInstallForm;
             if (!form.githubUrl.trim()) return;
             this.skillInstalling = true;
-            EABridge.installSkill(this.skillFilter, form.githubUrl.trim(), form.skillPath.trim(), form.scope);
+            EABridge.installSkill(this.skillFilter, form.githubUrl.trim(), form.skillName.trim(), form.scope);
         },
         onDeleteSkill(item) {
             if (!confirm(this.i18n.t('settings.skillDeleteConfirm', { name: item.name }))) return;
             EABridge.deleteSkill(this.skillFilter, item.name, item.skillPath);
         },
         onViewSkillContent(item) {
-            this.skillContentDialog = { name: item.name, content: null, htmlContent: null };
+            this.skillContentDialog = { name: item.name, content: null, htmlContent: null, skillPath: item.skillPath, saving: false };
+            this._skillEditor = null;
             EABridge.readSkillContent(item.skillPath);
+        },
+        onCloseSkillContent() {
+            this._destroyEditor('skill');
+            this.skillContentDialog = null;
+        },
+        onSaveSkillContent() {
+            if (!this.skillContentDialog || this.skillContentDialog.saving) return;
+            var content = '';
+            if (this._skillEditor && window.EAMarkdownEditor) {
+                content = EAMarkdownEditor.getMarkdown(this._skillEditor);
+            } else if (this.skillContentDialog.content !== null) {
+                content = this.skillContentDialog.content;
+            }
+            this.skillContentDialog.saving = true;
+            EABridge.saveSkillContent(this.skillContentDialog.skillPath, content);
+        },
+        onSkillRepoFocus() {
+            EABridge.listKnownRepos(this.skillFilter);
+        },
+        onSkillRepoInput() {
+            this.skillRepoDropdown = false;
+            this.remoteSkills = [];
+            this.skillNameDropdown = false;
+            this.skillsBrowsing = false;
+        },
+        onSkillRepoSelected(repo) {
+            this.skillInstallForm.githubUrl = repo.ownerRepo || repo.url;
+            this.skillRepoDropdown = false;
+            this.skillsBrowsing = true;
+            this.remoteSkills = [];
+            EABridge.listRemoteSkills(repo.ownerRepo || repo.url);
+        },
+        onSkillNameFocus() {
+            if (this.remoteSkills.length > 0) {
+                this.skillNameDropdown = true;
+                return;
+            }
+            var repo = (this.skillInstallForm.githubUrl || '').trim();
+            if (repo.indexOf('/') > 0 && !this.skillsBrowsing) {
+                this.skillsBrowsing = true;
+                this.remoteSkills = [];
+                EABridge.listRemoteSkills(repo);
+            }
+        },
+        onSkillNameBlur() {
+            this.skillNameDropdown = false;
+        },
+        onSkillNameInput() {
+            this.skillNameDropdown = false;
+        },
+        onRemoteSkillSelected(skill) {
+            this.skillInstallForm.skillName = skill.name;
+            this.skillNameDropdown = false;
+        },
+
+        // ==================== Plugins ====================
+
+        onOpenPlugins() {
+            this.activeTab = 'plugins';
+            this.loadPluginList();
+        },
+        onPluginFilterChange(cliType) {
+            this.pluginFilter = cliType;
+            this.showPluginInstallForm = false;
+            this.loadPluginList();
+        },
+        loadPluginList() {
+            this.pluginLoading = true;
+            this.pluginList = [];
+            EABridge.getPlugins(this.pluginFilter);
+        },
+        onShowInstallPlugin() {
+            this.showPluginInstallForm = true;
+            this.pluginInstallForm = { githubUrl: '', pluginName: '', scope: 'user' };
+            this.knownPluginRepos = [];
+            this.remotePlugins = [];
+            this.pluginRepoDropdown = false;
+            this.pluginNameDropdown = false;
+        },
+        onCancelInstallPlugin() {
+            this.showPluginInstallForm = false;
+            this.pluginRepoDropdown = false;
+            this.pluginNameDropdown = false;
+        },
+        onConfirmInstallPlugin() {
+            var form = this.pluginInstallForm;
+            if (!form.githubUrl.trim()) return;
+            this.pluginInstalling = true;
+            EABridge.installPlugin(this.pluginFilter, form.githubUrl.trim(), form.pluginName.trim(), form.scope);
+        },
+        onDeletePlugin(item) {
+            if (!confirm(this.i18n.t('settings.pluginDeleteConfirm', { name: item.name }))) return;
+            EABridge.deletePlugin(this.pluginFilter, item.name, item.installPath);
+        },
+        onClosePluginContent() {
+            this._destroyEditor('plugin');
+            this.pluginContentDialog = null;
+        },
+        onSavePluginContent() {
+            if (!this.pluginContentDialog || this.pluginContentDialog.saving) return;
+            var content = '';
+            if (this._pluginEditor && window.EAMarkdownEditor) {
+                content = EAMarkdownEditor.getMarkdown(this._pluginEditor);
+            } else if (this.pluginContentDialog.content !== null) {
+                content = this.pluginContentDialog.content;
+            }
+            this.pluginContentDialog.saving = true;
+            EABridge.savePluginContent(this.pluginContentDialog.installPath, content);
+        },
+        onViewPluginContent(item) {
+            this.pluginContentDialog = {
+                name: item.name,
+                content: null,
+                htmlContent: null,
+                activeTab: 'content',
+                commands: null,
+                commandsLoading: false,
+                saving: false,
+                installPath: item.installPath
+            };
+            this._pluginEditor = null;
+            EABridge.readPluginContent(item.installPath);
+        },
+        onPluginDetailTab(tab) {
+            if (!this.pluginContentDialog) return;
+            var prevTab = this.pluginContentDialog.activeTab;
+            this.pluginContentDialog.activeTab = tab;
+            if (tab === 'content' && this.pluginContentDialog.content) {
+                this._initEditor('plugin', this.pluginContentDialog.content);
+            } else if (tab === 'commands') {
+                this._destroyEditor('plugin');
+            }
+            if (tab === 'commands' && this.pluginContentDialog.commands === null && !this.pluginContentDialog.commandsLoading) {
+                this.pluginContentDialog.commandsLoading = true;
+                EABridge.readPluginCommands(this.pluginContentDialog.installPath);
+            }
+        },
+        onPluginRepoFocus() {
+            EABridge.listKnownPluginRepos(this.pluginFilter);
+        },
+        onPluginRepoInput() {
+            this.pluginRepoDropdown = false;
+            this.remotePlugins = [];
+            this.pluginNameDropdown = false;
+        },
+        onPluginRepoSelected(repo) {
+            this.pluginInstallForm.githubUrl = repo.ownerRepo || repo.url;
+            this.pluginRepoDropdown = false;
+            this.remotePlugins = [];
+            EABridge.listRemotePlugins(repo.ownerRepo || repo.url);
+        },
+        onPluginNameFocus() {
+            if (this.remotePlugins.length > 0) {
+                this.pluginNameDropdown = true;
+            }
+        },
+        onPluginNameBlur() {
+            this.pluginNameDropdown = false;
+        },
+        onPluginNameInput() {
+            this.pluginNameDropdown = false;
+        },
+        onRemotePluginSelected(plugin) {
+            this.pluginInstallForm.pluginName = plugin.name;
+            this.pluginNameDropdown = false;
         }
     }
 });

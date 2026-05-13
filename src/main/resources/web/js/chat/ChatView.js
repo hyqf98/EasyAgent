@@ -37,6 +37,7 @@ window.EARegisterComponent('chat-view', 'ChatView', {
             selectedSessions: [],
             previousSessionId: null,
             pendingDeleteRedirect: false,
+            isDeletingSessions: false,
             pendingSlashExecutions: {},
             pendingSlashRefreshSessionId: null,
             toastMessage: '',
@@ -158,6 +159,7 @@ window.EARegisterComponent('chat-view', 'ChatView', {
         }.bind(this);
         this._onSessionsDeleted = function (e) {
             var detail = e.detail || {};
+            this.isDeletingSessions = false;
             if (detail.deletedCount > 0) {
                 var deletedCurrent = this.store.sessionId && detail.sessionIds && detail.sessionIds.indexOf(this.store.sessionId) >= 0;
                 if (deletedCurrent) {
@@ -491,9 +493,14 @@ window.EARegisterComponent('chat-view', 'ChatView', {
          */
         confirmDelete() {
             if (this.selectedSessions.length === 0) return;
+            if (this.isDeletingSessions) return;
             if (!confirm(this.i18n.t('session.deleteConfirm', { n: this.selectedSessions.length }))) return;
+            this.isDeletingSessions = true;
             this.pendingDeleteRedirect = this.selectedSessions.indexOf(this.store.sessionId) >= 0;
-            EABridge.deleteSessions(this.selectedSessions.slice());
+            var idsToDelete = this.selectedSessions.slice();
+            var self = this;
+            setTimeout(function () { self.isDeletingSessions = false; }, 15000);
+            EABridge.deleteSessions(idsToDelete);
             this.clearSelection();
         },
 

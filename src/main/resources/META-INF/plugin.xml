@@ -2,6 +2,7 @@
     <id>io.github.easyagent</id>
     <name>EasyAgent</name>
     <vendor>EasyAgent</vendor>
+    <idea-version since-build="261" until-build="261.*"/>
     <description><![CDATA[
     <h1>EasyAgent — AI Coding Assistant for IntelliJ IDEA</h1>
     <p>Aggregate Claude Code, OpenCode, and Codex CLI tools into one unified IDE experience.</p>

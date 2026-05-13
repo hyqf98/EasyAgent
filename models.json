@@ -1,9 +1,8 @@
 {
   "version": 2,
-  "updatedAt": "2026-05-09",
+  "updatedAt": "2026-05-13",
   "cliGroups": {
     "CLAUDE": {
-      "defaultModelInfo": { "displayName": "默认模型", "contextWindow": 200000 },
       "reasoningLevels": ["low", "medium", "high", "xhigh", "max"],
       "models": [
         { "modelId": "claude-opus-4-7", "displayName": "Claude Opus 4.7", "contextWindow": 1000000, "provider": "anthropic" },
@@ -12,12 +11,10 @@
       ]
     },
     "OPENCODE": {
-      "defaultModelInfo": { "displayName": "默认模型", "contextWindow": 200000 },
       "reasoningLevels": ["minimal", "low", "medium", "high", "max"],
       "models": []
     },
     "CODEX": {
-      "defaultModelInfo": { "displayName": "默认模型", "contextWindow": 128000 },
       "reasoningLevels": ["low", "medium", "high"],
       "models": [
         { "modelId": "gpt-5.5", "displayName": "GPT-5.5", "contextWindow": 1050000, "provider": "openai" },

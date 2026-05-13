@@ -5,6 +5,16 @@ plugins {
 
 import org.gradle.api.tasks.compile.JavaCompile
 import org.gradle.process.CommandLineArgumentProvider
+import org.jetbrains.intellij.platform.gradle.tasks.RunIdeTask
+import java.nio.file.FileSystems
+import java.nio.file.FileVisitResult
+import java.nio.file.Files
+import java.nio.file.Path
+import java.nio.file.SimpleFileVisitor
+import java.nio.file.StandardCopyOption
+import java.nio.file.StandardWatchEventKinds
+import java.nio.file.WatchKey
+import java.nio.file.attribute.BasicFileAttributes
 
 group = 'io.github.easyagent'
 version = '1.0.0'
@@ -77,25 +87,10 @@ processResources {
 
 intellijPlatform {
     autoReload = true
-
-    pluginConfiguration {
-        id = "io.github.easyagent"
-        name = "EasyAgent"
-        version = "1.0.0"
-        description = "EasyAgent - IntelliJ IDEA Plugin powered by AI"
-        vendor {
-            name = "EasyAgent"
-        }
-        ideaVersion {
-            sinceBuild = "261"
-            untilBuild = "261.*"
-        }
-    }
-
     buildSearchableOptions = false
 }
 
-tasks.named('runIde', org.jetbrains.intellij.platform.gradle.tasks.RunIdeTask) {
+tasks.named('runIde', RunIdeTask) {
     argumentProviders.add({ [defaultRunIdeProjectDir] } as CommandLineArgumentProvider)
     jvmArgs = [
             '-Dide.browser.jcef.debug.port=9222',
@@ -115,21 +110,21 @@ tasks.register('watchWebResources') {
         markerFile.text = String.valueOf(System.currentTimeMillis())
         println "[web-watch] Watching ${srcDir} -> ${destDir}"
         println "[web-watch] Press Ctrl+C to stop"
-        java.nio.file.FileSystems.getDefault().newWatchService().withCloseable { ws ->
-            def registered = [:] as Map<java.nio.file.WatchKey, java.nio.file.Path>
-            def registerRecursive = { java.nio.file.Path dir ->
+        FileSystems.getDefault().newWatchService().withCloseable { ws ->
+            def registered = [:] as Map<WatchKey, Path>
+            def registerRecursive = { Path dir ->
                 try {
-                    def key = dir.register(ws, java.nio.file.StandardWatchEventKinds.ENTRY_MODIFY,
-                            java.nio.file.StandardWatchEventKinds.ENTRY_CREATE,
-                            java.nio.file.StandardWatchEventKinds.ENTRY_DELETE)
+                    def key = dir.register(ws, StandardWatchEventKinds.ENTRY_MODIFY,
+                            StandardWatchEventKinds.ENTRY_CREATE,
+                            StandardWatchEventKinds.ENTRY_DELETE)
                     registered[key] = dir
                 } catch (Exception ignored) {}
             }
-            java.nio.file.Files.walkFileTree(srcDir.toPath(), new java.nio.file.SimpleFileVisitor<java.nio.file.Path>() {
+            Files.walkFileTree(srcDir.toPath(), new SimpleFileVisitor<Path>() {
                 @Override
-                java.nio.file.FileVisitResult preVisitDirectory(java.nio.file.Path dir, java.nio.file.attribute.BasicFileAttributes attrs) {
+                FileVisitResult preVisitDirectory(Path dir, BasicFileAttributes attrs) {
                     registerRecursive(dir)
-                    return java.nio.file.FileVisitResult.CONTINUE
+                    return FileVisitResult.CONTINUE
                 }
             })
             while (true) {
@@ -140,22 +135,22 @@ tasks.register('watchWebResources') {
                     def changedFile = dir.resolve(event.context() as String).toFile()
                     def relPath = srcDir.toPath().relativize(dir.resolve(event.context() as String)).toString()
                     def targetFile = new File(destDir, relPath)
-                    if (event.kind() == java.nio.file.StandardWatchEventKinds.ENTRY_DELETE) {
+                    if (event.kind() == StandardWatchEventKinds.ENTRY_DELETE) {
                         if (targetFile.exists()) targetFile.delete()
                         println "[web-watch] Deleted: ${relPath}"
                     } else {
-                        if (changedFile.isDirectory() && event.kind() == java.nio.file.StandardWatchEventKinds.ENTRY_CREATE) {
-                            java.nio.file.Files.walkFileTree(changedFile.toPath(), new java.nio.file.SimpleFileVisitor<java.nio.file.Path>() {
+                        if (changedFile.isDirectory() && event.kind() == StandardWatchEventKinds.ENTRY_CREATE) {
+                            Files.walkFileTree(changedFile.toPath(), new SimpleFileVisitor<Path>() {
                                 @Override
-                                java.nio.file.FileVisitResult preVisitDirectory(java.nio.file.Path subDir, java.nio.file.attribute.BasicFileAttributes attrs) {
+                                FileVisitResult preVisitDirectory(Path subDir, BasicFileAttributes attrs) {
                                     registerRecursive(subDir)
-                                    return java.nio.file.FileVisitResult.CONTINUE
+                                    return FileVisitResult.CONTINUE
                                 }
                             })
                         }
                         targetFile.parentFile.mkdirs()
-                        java.nio.file.Files.copy(changedFile.toPath(), targetFile.toPath(),
-                                java.nio.file.StandardCopyOption.REPLACE_EXISTING)
+                        Files.copy(changedFile.toPath(), targetFile.toPath(),
+                                StandardCopyOption.REPLACE_EXISTING)
                         println "[web-hotreload] ${relPath} -> ${targetFile} (${new Date().format('HH:mm:ss')})"
                     }
                     markerFile.text = String.valueOf(System.currentTimeMillis())

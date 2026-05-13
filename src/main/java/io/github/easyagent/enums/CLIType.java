@@ -5,6 +5,7 @@ import lombok.extern.slf4j.Slf4j;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Arrays;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -119,12 +120,60 @@ public enum CLIType implements ValueEnum<String> {
             return null;
         }
 
-        String firstResult = output.split("\\R")[0].trim();
-        if (!firstResult.isEmpty() && Files.isExecutable(Path.of(firstResult))) {
+        String[] results = Arrays.stream(output.split("\\R"))
+                .map(String::trim)
+                .filter(s -> !s.isEmpty())
+                .toArray(String[]::new);
+
+        if (IS_WINDOWS) {
+            String cmdCandidate = this.pickWindowsCmd(results, cmd);
+            if (cmdCandidate != null) {
+                log.info("Detected {} CLI via {} at: {}", type.name(), lookupCmd, cmdCandidate);
+                return cmdCandidate;
+            }
+        }
+
+        String firstResult = results[0];
+        if (Files.isExecutable(Path.of(firstResult))) {
             log.info("Detected {} CLI via {} at: {}", type.name(), lookupCmd, firstResult);
             return firstResult;
         }
         return null;
+    }
+
+    /**
+     * 从 {@code where} 返回的多行结果中优先选取 {@code .cmd} 文件。
+     * <p>
+     * Windows 上 npm 全局安装会同时生成无扩展名的 Unix shell 脚本和 {@code .cmd} 批处理文件，
+     * 直接执行无扩展名脚本会报 {@code CreateProcess error=193}。
+     * 优先级：{@code .cmd} > {@code .exe} > 其他。
+     * </p>
+     *
+     * @param results {@code where} 返回的所有候选路径
+     * @param cmd     原始命令名
+     * @return 选中的可执行路径，未找到返回 null
+     */
+    private String pickWindowsCmd(String[] results, String cmd) {
+        String cmdSuffix = cmd + ".cmd";
+        String exeSuffix = cmd + ".exe";
+
+        String cmdMatch = null;
+        String exeMatch = null;
+        String firstValid = null;
+
+        for (String result : results) {
+            String fileName = Path.of(result).getFileName().toString();
+            if (fileName.equalsIgnoreCase(cmdSuffix) && Files.isExecutable(Path.of(result))) {
+                return result;
+            }
+            if (exeMatch == null && fileName.equalsIgnoreCase(exeSuffix) && Files.isExecutable(Path.of(result))) {
+                exeMatch = result;
+            }
+            if (firstValid == null && Files.isExecutable(Path.of(result))) {
+                firstValid = result;
+            }
+        }
+        return exeMatch != null ? exeMatch : firstValid;
     }
 
     /**

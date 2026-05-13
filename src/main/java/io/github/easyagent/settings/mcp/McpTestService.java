@@ -27,6 +27,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
+import java.util.function.Consumer;
 
 /**
  * MCP 服务器测试服务。
@@ -201,8 +202,17 @@ public class McpTestService {
      * @return 连接结果
      */
     private ConnectResult doConnect(McpServerEntry entry, String connectionId, String transportType) {
+        List<String> stderrCollector = Collections.synchronizedList(new ArrayList<>());
         try {
             McpClientTransport transport = this.createTransport(transportType, entry);
+            if (transport instanceof StdioClientTransport stdioTransport) {
+                Consumer<String> stderrHandler = line -> {
+                    log.info("MCP stderr [{}]: {}", entry.name(), line);
+                    stderrCollector.add(line);
+                };
+                stdioTransport.setStdErrorHandler(stderrHandler);
+            }
+
             McpSyncClient client = McpClient.sync(transport)
                     .requestTimeout(REQUEST_TIMEOUT)
                     .initializationTimeout(INIT_TIMEOUT)
@@ -240,8 +250,16 @@ public class McpTestService {
             return new ConnectResult(true, connectionId, serverName, serverCapabilities,
                     transportType, entry.env() != null ? entry.env() : Collections.emptyMap());
         } catch (Exception e) {
+            String errorMsg = this.resolveRootCauseMessage(e);
+            if (!stderrCollector.isEmpty()) {
+                String stderr = String.join("; ", stderrCollector);
+                if (stderr.length() > 500) {
+                    stderr = stderr.substring(stderr.length() - 500);
+                }
+                errorMsg += " | stderr: " + stderr;
+            }
             log.warn("MCP 连接失败 ({}): {}", transportType, entry.name(), e);
-            return new ConnectResult(false, null, e.getMessage(), Collections.emptyMap(),
+            return new ConnectResult(false, null, errorMsg, Collections.emptyMap(),
                     transportType, Collections.emptyMap());
         }
     }
@@ -334,6 +352,29 @@ public class McpTestService {
             }
         });
         this.clients.clear();
+    }
+
+    /**
+     * 解析异常的根本原因消息。
+     * <p>
+     * MCP Java SDK 在初始化失败时会用 {@code "Client failed to initialize ..."}
+     * 包装实际异常，此方法解开异常链，返回最内层的错误信息，
+     * 便于用户定位真正的问题（如命令不存在、超时等）。
+     * </p>
+     *
+     * @param t 异常对象
+     * @return 根因错误消息
+     */
+    private String resolveRootCauseMessage(Throwable t) {
+        Throwable cause = t;
+        while (cause.getCause() != null) {
+            cause = cause.getCause();
+        }
+        String msg = cause.getMessage();
+        if (msg != null && !msg.isBlank()) {
+            return msg;
+        }
+        return t.getMessage() != null ? t.getMessage() : "Unknown error";
     }
 
     private static final java.util.Set<String> WIN_BUILTINS = java.util.Set.of(

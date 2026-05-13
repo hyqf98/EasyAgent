@@ -218,3 +218,162 @@
 [data-theme="dark"] .hljs-attribute { color: #79c0ff; }
 [data-theme="dark"] .hljs-addition { color: #aff5b4; background: rgba(63,185,80,0.15); }
 [data-theme="dark"] .hljs-deletion { color: #ffdcd7; background: rgba(248,81,73,0.15); }
+
+/* === Markdown Editor (Typora-style WYSIWYG) === */
+.md-editor {
+    outline: none;
+    font-size: 13px;
+    line-height: 1.7;
+    color: var(--ea-text);
+    min-height: 120px;
+    max-height: 60vh;
+    overflow-y: auto;
+    padding: 4px 0;
+    cursor: text;
+}
+.md-editor:focus {
+    outline: none;
+}
+.md-editor h1, .md-editor h2, .md-editor h3,
+.md-editor h4, .md-editor h5, .md-editor h6 {
+    margin: 16px 0 6px;
+    font-weight: 600;
+    color: var(--ea-text);
+    line-height: 1.35;
+}
+.md-editor h1 { font-size: 1.3em; }
+.md-editor h2 { font-size: 1.15em; }
+.md-editor h3 { font-size: 1.05em; }
+.md-editor h4 { font-size: 0.98em; }
+.md-editor h5 { font-size: 0.93em; }
+.md-editor h6 { font-size: 0.88em; color: var(--ea-text-secondary); }
+.md-editor h1:first-child, .md-editor h2:first-child, .md-editor h3:first-child { margin-top: 0; }
+.md-editor p { margin: 0 0 8px; }
+.md-editor p:last-child { margin-bottom: 0; }
+.md-editor ul, .md-editor ol {
+    margin: 6px 0;
+    padding-left: 20px;
+}
+.md-editor li { margin: 2px 0; }
+.md-editor li > p { margin: 0; }
+.md-editor code {
+    font-family: var(--ea-font-mono);
+    font-size: 0.85em;
+    background: var(--ea-markdown-code-bg);
+    padding: 2px 6px;
+    border-radius: 4px;
+    color: var(--ea-text);
+    font-weight: 500;
+}
+.md-editor pre {
+    margin: 10px 0;
+    border-radius: 8px;
+    overflow: auto;
+    background: var(--ea-code-bg);
+    border: 1px solid var(--ea-border);
+}
+.md-editor pre code {
+    display: block;
+    padding: 12px 14px;
+    background: transparent;
+    color: var(--ea-text);
+    font-size: 12px;
+    line-height: 1.55;
+    white-space: pre;
+    border-radius: 0;
+    font-weight: 400;
+}
+.md-editor blockquote {
+    margin: 10px 0;
+    padding: 8px 14px;
+    border-left: 3px solid var(--ea-claude);
+    background: var(--ea-markdown-blockquote-bg);
+    border-radius: 0 6px 6px 0;
+    color: var(--ea-text-secondary);
+    font-size: 13px;
+}
+.md-editor blockquote p { margin: 0; }
+.md-editor table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 10px 0;
+    font-size: 12px;
+    border: 1px solid var(--ea-border);
+    border-radius: 8px;
+    overflow: hidden;
+    display: block;
+    overflow-x: auto;
+}
+.md-editor th, .md-editor td {
+    padding: 6px 10px;
+    text-align: left;
+    border-bottom: 1px solid var(--ea-border);
+}
+.md-editor th {
+    background: var(--ea-table-header-bg);
+    font-weight: 600;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: .3px;
+    color: var(--ea-text-secondary);
+}
+.md-editor tr:last-child td { border-bottom: none; }
+.md-editor tr:nth-child(even) td { background: var(--ea-table-even-bg); }
+.md-editor a {
+    color: var(--ea-markdown-link);
+    text-decoration: none;
+    font-weight: 500;
+}
+.md-editor a:hover { text-decoration: underline; }
+.md-editor hr {
+    border: none;
+    border-top: 1px solid var(--ea-border);
+    margin: 14px 0;
+}
+.md-editor img {
+    max-width: 100%;
+    border-radius: 8px;
+    margin: 6px 0;
+}
+.md-editor strong { font-weight: 600; }
+.md-editor em { font-style: italic; }
+.md-editor del { text-decoration: line-through; color: var(--ea-text-muted); }
+.md-editor .code-block-wrapper {
+    margin: 10px 0;
+    border-radius: 8px;
+    overflow: hidden;
+    background: var(--ea-code-bg);
+    border: 1px solid var(--ea-border);
+}
+.md-editor .code-block-wrapper pre {
+    margin: 0;
+    border: none;
+    border-radius: 0;
+}
+.md-editor .code-block-wrapper pre code {
+    padding: 12px 14px;
+}
+.md-editor .code-block-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 6px 12px;
+    background: var(--ea-border-light);
+    border-bottom: 1px solid var(--ea-border);
+    font-size: 11px;
+    color: var(--ea-text-muted);
+    font-family: var(--ea-font-mono);
+}
+.md-editor .code-block-copy {
+    background: none;
+    border: none;
+    color: var(--ea-text-muted);
+    cursor: pointer;
+    font-size: 11px;
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-family: var(--ea-font-sans);
+    opacity: 0;
+}
+.md-editor .code-block-header:hover .code-block-copy { opacity: 1; }
+.md-editor .code-block-copy:hover { background: var(--ea-bg-hover); color: var(--ea-text); }

@@ -8,6 +8,7 @@ import com.moandjiezana.toml.TomlWriter;
 import io.github.easyagent.util.GsonUtils;
 import lombok.extern.slf4j.Slf4j;
 import org.tomlj.Toml;
+import org.tomlj.TomlArray;
 import org.tomlj.TomlParseResult;
 import org.tomlj.TomlTable;
 
@@ -263,14 +264,12 @@ public class McpConfigService {
             if (serversTable == null) {
                 return entries;
             }
-            Map<String, Object> servers = serversTable.toMap();
-            for (Map.Entry<String, Object> e : servers.entrySet()) {
+            for (Map.Entry<String, Object> e : serversTable.toMap().entrySet()) {
                 Object val = e.getValue();
-                if (val instanceof Map<?, ?> rawMap) {
-                    Map<String, Object> map = (Map<String, Object>) rawMap;
-                    entries.add(this.parseTomlServer(e.getKey(), map, scope, configPath.toString()));
-                } else if (val instanceof TomlTable tomlTable) {
+                if (val instanceof TomlTable tomlTable) {
                     entries.add(this.parseTomlServer(e.getKey(), tomlTable.toMap(), scope, configPath.toString()));
+                } else if (val instanceof Map<?, ?> rawMap) {
+                    entries.add(this.parseTomlServer(e.getKey(), (Map<String, Object>) rawMap, scope, configPath.toString()));
                 }
             }
         } catch (Exception e) {
@@ -322,8 +321,13 @@ public class McpConfigService {
             command = obj.get("command").getAsString();
         }
         String url = GsonUtils.getString(obj, "url");
-        Map<String, String> env = obj.has("environment") && obj.get("environment").isJsonObject()
-                ? GsonUtils.jsonObjectToStringMap(obj.getAsJsonObject("environment")) : Collections.emptyMap();
+        Map<String, String> env = new LinkedHashMap<>();
+        if (obj.has("environment") && obj.get("environment").isJsonObject()) {
+            env.putAll(GsonUtils.jsonObjectToStringMap(obj.getAsJsonObject("environment")));
+        }
+        if (obj.has("headers") && obj.get("headers").isJsonObject()) {
+            env.putAll(GsonUtils.jsonObjectToStringMap(obj.getAsJsonObject("headers")));
+        }
         boolean enabled = !obj.has("enabled") || obj.get("enabled").getAsBoolean();
         String rawType = GsonUtils.getString(obj, "type");
         String type = this.normalizeType(rawType, command, url);
@@ -336,14 +340,12 @@ public class McpConfigService {
     /**
      * 解析 TOML 格式的单个 MCP 服务器配置。
      */
+    @SuppressWarnings("unchecked")
     private McpServerEntry parseTomlServer(String name, Map<String, Object> map, String scope, String configPath) {
         String command = map.get("command") instanceof String s ? s : null;
         String url = map.get("url") instanceof String s ? s : null;
-        List<String> args = map.get("args") instanceof List<?> list
-                ? list.stream().map(Object::toString).toList()
-                : Collections.emptyList();
-        Map<String, String> env = map.get("env") instanceof Map<?, ?> m
-                ? this.toStringMap(m) : Collections.emptyMap();
+        List<String> args = this.extractTomlStringList(map.get("args"));
+        Map<String, String> env = this.extractTomlStringMap(map.get("env"));
         boolean enabled = !(map.get("enabled") instanceof Boolean b) || b;
         String rawType = map.get("type") instanceof String s ? s : null;
         String type = this.normalizeType(rawType, command, url);
@@ -351,6 +353,50 @@ public class McpConfigService {
                 .name(name).type(type).command(command).args(args).env(env)
                 .url(url).enabled(enabled).scope(scope).configPath(configPath)
                 .build();
+    }
+
+    /**
+     * 从 tomlj 解析后的值中提取字符串列表。
+     * <p>
+     * tomlj 的 {@code toMap()} 返回的数组值类型为 {@code MutableTomlArray}（实现 {@link TomlArray}），
+     * 而非标准 {@link java.util.List}，需要显式转换。
+     * </p>
+     *
+     * @param value tomlj toMap() 中的值
+     * @return 字符串列表，解析失败返回空列表
+     */
+    private List<String> extractTomlStringList(Object value) {
+        if (value instanceof TomlArray tomlArray) {
+            List<String> result = new ArrayList<>();
+            for (int i = 0; i < tomlArray.size(); i++) {
+                result.add(String.valueOf(tomlArray.get(i)));
+            }
+            return result;
+        }
+        if (value instanceof List<?> list) {
+            return list.stream().map(Object::toString).toList();
+        }
+        return Collections.emptyList();
+    }
+
+    /**
+     * 从 tomlj 解析后的值中提取字符串映射。
+     * <p>
+     * tomlj 的 {@code toMap()} 返回的嵌套表值类型为 {@code MutableTomlTable}（实现 {@link TomlTable}），
+     * 而非标准 {@link java.util.Map}，需要显式调用 {@code toMap()} 转换。
+     * </p>
+     *
+     * @param value tomlj toMap() 中的值
+     * @return 字符串映射，解析失败返回空映射
+     */
+    private Map<String, String> extractTomlStringMap(Object value) {
+        if (value instanceof TomlTable tomlTable) {
+            return this.toStringMap(tomlTable.toMap());
+        }
+        if (value instanceof Map<?, ?> m) {
+            return this.toStringMap(m);
+        }
+        return Collections.emptyMap();
     }
 
     /**
@@ -508,7 +554,8 @@ public class McpConfigService {
         if (entry.env() != null && !entry.env().isEmpty()) {
             JsonObject envObj = new JsonObject();
             entry.env().forEach(envObj::addProperty);
-            obj.add("environment", envObj);
+            boolean isRemote = entry.url() != null && !entry.url().isBlank();
+            obj.add(isRemote ? "headers" : "environment", envObj);
         }
         if (!entry.enabled()) {
             obj.addProperty("enabled", false);

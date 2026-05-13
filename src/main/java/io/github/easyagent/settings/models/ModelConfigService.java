@@ -73,8 +73,11 @@ public class ModelConfigService {
     /** 推理等级配置，{@link CLIType} -> 可用等级列表。 */
     private final Map<CLIType, List<String>> reasoningLevels = new ConcurrentHashMap<>();
 
-    /** 默认模型信息，{@link CLIType} -> {displayName, contextWindow}。 */
+    /** 默认模型信息，{@link CLIType} -> {displayName, modelId, contextWindow}。 */
     private final Map<CLIType, DefaultModelInfo> defaultModelInfoMap = new ConcurrentHashMap<>();
+
+    /** CLI 默认模型检测器（从配置文件读取默认模型名称）。 */
+    private final CliDefaultModelDetector defaultModelDetector = new CliDefaultModelDetector();
 
     /** 从 models.dev API 缓存的动态 provider 列表（id + displayName）。 */
     private volatile List<CliConfigService.ProviderInfo> cachedDynamicProviders = Collections.emptyList();
@@ -156,11 +159,12 @@ public class ModelConfigService {
             JsonObject root = GsonUtils.parseObject(json);
             this.modelCache.clear();
             this.reasoningLevels.clear();
-            this.defaultModelInfoMap.clear();
 
             if (root.has("cliGroups") && root.get("cliGroups").isJsonObject()) {
                 this.loadCliGroups(root.getAsJsonObject("cliGroups"));
             }
+
+            this.detectDefaultModels();
 
             int total = this.modelCache.values().stream().mapToInt(List::size).sum();
             log.debug("Loaded {} models from JSON", total);
@@ -200,16 +204,6 @@ public class ModelConfigService {
                     group.getAsJsonArray("reasoningLevels").forEach(e -> levels.add(e.getAsString()));
                     this.reasoningLevels.put(cliType, levels);
                 }
-
-                if (group.has("defaultModelInfo") && group.get("defaultModelInfo").isJsonObject()) {
-                    JsonObject info = group.getAsJsonObject("defaultModelInfo");
-                    DefaultModelInfo defaultInfo = DefaultModelInfo.builder()
-                            .displayName(GsonUtils.getString(info, "displayName"))
-                            .contextWindow(GsonUtils.getInt(info, "contextWindow",
-                                    DefaultModelInfo.DEFAULT_CONTEXT_WINDOW))
-                            .build();
-                    this.defaultModelInfoMap.put(cliType, defaultInfo);
-                }
             } catch (IllegalArgumentException ignored) {
             }
         }
@@ -234,7 +228,33 @@ public class ModelConfigService {
             List<ModelInfo> models = this.modelCache.getOrDefault(cliType, Collections.emptyList());
             group.add("models", GsonUtils.toJsonTree(models));
 
-            DefaultModelInfo defaultInfo = this.defaultModelInfoMap.get(cliType);
+            cliGroups.add(cliType.name(), group);
+        }
+        root.add("cliGroups", cliGroups);
+
+        return GsonUtils.toJson(root);
+    }
+
+    /**
+     * 序列化为包含自动检测默认模型信息的 JSON，用于推送到前端展示。
+     *
+     * @return JSON 字符串（含 defaultModelInfo）
+     */
+    public String toJsonWithDefaults() {
+        JsonObject root = new JsonObject();
+        root.addProperty("version", 2);
+
+        JsonObject cliGroups = new JsonObject();
+        for (CLIType cliType : CLIType.values()) {
+            JsonObject group = new JsonObject();
+
+            List<String> levels = this.getReasoningLevels(cliType);
+            group.add("reasoningLevels", GsonUtils.toJsonTree(levels));
+
+            List<ModelInfo> models = this.modelCache.getOrDefault(cliType, Collections.emptyList());
+            group.add("models", GsonUtils.toJsonTree(models));
+
+            DefaultModelInfo defaultInfo = this.getDefaultModelInfo(cliType);
             if (defaultInfo != null) {
                 group.add("defaultModelInfo", GsonUtils.toJsonTree(defaultInfo));
             }
@@ -459,24 +479,51 @@ public class ModelConfigService {
 
     /**
      * 获取指定 CLI 类型的默认模型信息。
+     * <p>
+     * 优先返回缓存值，未缓存时自动从 CLI 配置文件检测。
+     * </p>
      *
      * @param cliType CLI 类型
      * @return 默认模型信息，不存在返回 null
      */
     public DefaultModelInfo getDefaultModelInfo(CLIType cliType) {
-        return this.defaultModelInfoMap.get(cliType);
+        DefaultModelInfo cached = this.defaultModelInfoMap.get(cliType);
+        if (cached != null) {
+            return cached;
+        }
+        DefaultModelInfo detected = this.defaultModelDetector.detect(cliType, DEFAULT_CONTEXT_WINDOW);
+        if (detected != null) {
+            this.defaultModelInfoMap.put(cliType, detected);
+        }
+        return detected;
     }
 
     /**
-     * 保存指定 CLI 类型的默认模型信息。
-     *
-     * @param cliType CLI 类型
-     * @param info    默认模型信息
+     * 重新检测所有 CLI 类型的默认模型（从配置文件读取）。
      */
-    public void saveDefaultModelInfo(CLIType cliType,
-                                     DefaultModelInfo info) {
-        if (info != null) {
-            this.defaultModelInfoMap.put(cliType, info);
+    public void redetectDefaultModels() {
+        this.defaultModelDetector.clearCache();
+        for (CLIType cliType : CLIType.values()) {
+            DefaultModelInfo detected = this.defaultModelDetector.detect(cliType, DEFAULT_CONTEXT_WINDOW);
+            if (detected != null) {
+                this.defaultModelInfoMap.put(cliType, detected);
+            } else {
+                this.defaultModelInfoMap.remove(cliType);
+            }
+        }
+    }
+
+    /**
+     * 从各 CLI 配置文件自动检测默认模型信息。
+     */
+    private void detectDefaultModels() {
+        this.defaultModelInfoMap.clear();
+        this.defaultModelDetector.clearCache();
+        for (CLIType cliType : CLIType.values()) {
+            DefaultModelInfo detected = this.defaultModelDetector.detect(cliType, DEFAULT_CONTEXT_WINDOW);
+            if (detected != null) {
+                this.defaultModelInfoMap.put(cliType, detected);
+            }
         }
     }
 
