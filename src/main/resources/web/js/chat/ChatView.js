@@ -337,12 +337,16 @@ window.EARegisterComponent('chat-view', 'ChatView', {
             this._loadLatestSession(type);
         },
         onNewChat() {
+            this.openFreshChatForCurrentCli();
+        },
+        _resetToHome() {
             this._saveCurrentPending();
             this.store._saveCurrentToCache();
             this.store.messages = [];
             this.store.sessionId = null;
             this.store.sessionTitle = '';
             this.store.model = '';
+            this.store.lastTokenUsage = null;
             this.pendingQueue = [];
             this.pendingDeleteRedirect = false;
             this.pendingSlashRefreshSessionId = null;
@@ -354,6 +358,7 @@ window.EARegisterComponent('chat-view', 'ChatView', {
             this.store.messages = [];
             this.store.sessionTitle = '';
             this.store.model = '';
+            this.store.lastTokenUsage = null;
             this.pendingQueue = [];
             this.store.sessionId = 'new-' + Date.now();
             this.pendingDeleteRedirect = false;
@@ -384,7 +389,7 @@ window.EARegisterComponent('chat-view', 'ChatView', {
             if (this.store.isStreaming) {
                 this.onStop();
             }
-            this.onNewChat();
+            this._resetToHome();
         },
         onOpenPlanMode() {
             this.store.appMode = 'plan';

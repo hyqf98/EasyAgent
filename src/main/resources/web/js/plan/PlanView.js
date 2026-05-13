@@ -594,22 +594,24 @@ window.EARegisterComponent('plan-view', 'PlanView', {
                         break;
                     }
                 }
-                EABridge.updatePlanTask(this.currentPlan.planId, this.editTaskId, {
-                    title: this.editTaskTitle.trim(),
-                    description: this.editTaskDesc || '',
-                    priority: this.editTaskPriority,
-                    cliType: this.editTaskCliType || undefined,
-                    modelId: this.editTaskModelId || undefined
-                });
+                if (this.viewMode === 'collect') {
+                    this._persistTasks();
+                } else {
+                    EABridge.updatePlanTask(this.currentPlan.planId, this.editTaskId, {
+                        title: this.editTaskTitle.trim(),
+                        description: this.editTaskDesc || '',
+                        priority: this.editTaskPriority,
+                        cliType: this.editTaskCliType || undefined,
+                        modelId: this.editTaskModelId || undefined
+                    });
+                }
             }
             this.showTaskDialog = false;
         },
 
         onDeleteTask(taskId) {
             this.currentTasks = this.currentTasks.filter(function (t) { return t.taskId !== taskId; });
-            if (this.viewMode === 'collect') {
-                this._persistTasks();
-            }
+            this._persistTasks();
         },
 
         onConfirmSplit() {
