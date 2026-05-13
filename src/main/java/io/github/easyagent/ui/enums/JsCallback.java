@@ -155,7 +155,10 @@ public enum JsCallback implements ValueEnum<String> {
     PLAN_CONFIG_SAVED("PlanConfigSaved"),
 
     /** 计划执行概览更新推送。 */
-    PLAN_OVERVIEW_UPDATED("PlanOverviewUpdated");
+    PLAN_OVERVIEW_UPDATED("PlanOverviewUpdated"),
+
+    /** 计划拆分结果预览推送（不保存，仅前端预览）。 */
+    PLAN_SPLIT_RESULT("PlanSplitResult");
 
     /** 回调名称。 */
     private final String value;

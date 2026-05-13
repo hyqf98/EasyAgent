@@ -333,6 +333,7 @@ window.EAi18n = {
         'plan.kanban.failed': '失败',
         'plan.kanban.queued': '排队中',
         'plan.kanban.stopped': '已停止',
+        'plan.kanban.reSplit': '重新拆分',
         'plan.task.stop': '停止',
         'plan.task.resume': '继续',
         'plan.task.startAll': '全部开始',
@@ -346,6 +347,8 @@ window.EAi18n = {
         'plan.startSplit': '开始拆分',
         'plan.splitResult.title': '拆分结果',
         'plan.splitResult.tasks': '个任务',
+        'plan.splitResult.confirm': '确认创建并进入看板',
+        'plan.splitResult.creating': '创建中…',
         'plan.task.add': '新增任务',
         'plan.task.edit': '编辑',
         'plan.task.delete': '删除',
@@ -366,6 +369,7 @@ window.EAi18n = {
         'plan.splitPrompt.title': '标题：',
         'plan.splitPrompt.content': '内容：',
         'plan.splitPrompt.granularity': '拆分颗粒度：最少{n}个任务',
+        'plan.splitPrompt.retry': 'AI 输出格式不正确，正在第 {n} 次重试（共 {m} 次）…',
         'plan.confirm.stopTask': '确定停止正在执行的任务？'
     },
 
@@ -688,6 +692,7 @@ window.EAi18n = {
         'plan.kanban.failed': 'Failed',
         'plan.kanban.queued': 'Queued',
         'plan.kanban.stopped': 'Stopped',
+        'plan.kanban.reSplit': 'Re-split',
         'plan.task.stop': 'Stop',
         'plan.task.resume': 'Resume',
         'plan.task.startAll': 'Start All',
@@ -700,6 +705,8 @@ window.EAi18n = {
         'plan.startSplit': 'Start Split',
         'plan.splitResult.title': 'Split Result',
         'plan.splitResult.tasks': ' tasks',
+        'plan.splitResult.confirm': 'Confirm & Enter Kanban',
+        'plan.splitResult.creating': 'Creating…',
         'plan.task.add': 'Add Task',
         'plan.task.edit': 'Edit',
         'plan.task.delete': 'Delete',
@@ -720,6 +727,7 @@ window.EAi18n = {
         'plan.splitPrompt.title': 'Title: ',
         'plan.splitPrompt.content': 'Content: ',
         'plan.splitPrompt.granularity': 'Granularity: at least {n} tasks',
+        'plan.splitPrompt.retry': 'AI output format incorrect, retrying ({n}/{m})…',
         'plan.confirm.stopTask': 'Stop running task?'
     },
 

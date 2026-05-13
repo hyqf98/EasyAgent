@@ -525,6 +525,9 @@ public class JCEFMessageBridge {
 
             this.currentSessionId = effectiveSessionId;
 
+            Plan splittingPlan = this.findPlanBySessionId(sessionId, effectiveSessionId);
+            StringBuilder planResponseBuilder = splittingPlan != null ? new StringBuilder() : null;
+
             this.chatManager.sendMessage(prompt, effectiveSessionId, type,
                     this.currentProjectPath, modelId, reasoningLevel, new StreamEventListener() {
                 @Override
@@ -538,6 +541,9 @@ public class JCEFMessageBridge {
                     if (response.toolCall() != null) {
                         JCEFMessageBridge.this.fileEditService.trackToolCall(resolvedSessionId, response.toolCall());
                     }
+                    if (planResponseBuilder != null && response.message() != null && response.message().text() != null) {
+                        planResponseBuilder.append(response.message().text());
+                    }
                     String eventJson = MessageConverter.toStreamEventJson(response, resolvedSessionId,
                             JCEFMessageBridge.this.currentProjectPath);
                     JCEFMessageBridge.this.invokeJSCallback(JsCallback.STREAM_EVENT, eventJson);
@@ -550,6 +556,11 @@ public class JCEFMessageBridge {
                     String resolvedSessionId = JCEFMessageBridge.this.currentSessionId != null
                             ? JCEFMessageBridge.this.currentSessionId
                             : effectiveSessionId;
+
+                    if (splittingPlan != null && planResponseBuilder != null) {
+                        JCEFMessageBridge.this.tryExtractAndCreateTasks(splittingPlan, planResponseBuilder.toString(), resolvedSessionId);
+                    }
+
                     JCEFMessageBridge.this.invokeJSCallback(JsCallback.STREAM_COMPLETE,
                             new StreamCompletePayload(resolvedSessionId));
                 }
@@ -584,6 +595,44 @@ public class JCEFMessageBridge {
             return "new-" + System.currentTimeMillis();
         }
         return sessionId;
+    }
+
+    private Plan findPlanBySessionId(String rawSessionId, String effectiveSessionId) {
+        if (this.planService == null) {
+            return null;
+        }
+        if (rawSessionId != null && rawSessionId.startsWith("plan-")) {
+            String planId = rawSessionId.substring("plan-".length());
+            Plan plan = this.planService.getPlan(planId);
+            if (plan != null && plan.status() == PlanStatus.TASK_SPLITTING) {
+                return plan;
+            }
+        }
+        if (effectiveSessionId != null) {
+            List<Plan> plans = this.planService.listPlans();
+            for (Plan p : plans) {
+                if (p.status() == PlanStatus.TASK_SPLITTING && effectiveSessionId.equals(p.sessionId())) {
+                    return p;
+                }
+            }
+        }
+        return null;
+    }
+
+    private void tryExtractAndCreateTasks(Plan plan, String fullResponse, String resolvedSessionId) {
+        String tasksJson = this.extractTaskListJson(fullResponse);
+        if (tasksJson == null) {
+            return;
+        }
+        log.info("[PLAN] extracted tasks from response, planId={}", plan.planId());
+        List<PlanTask> parsed = this.planService.parseAndCreateTasks(plan.planId(), tasksJson);
+        if (parsed == null || parsed.isEmpty()) {
+            return;
+        }
+        this.invokeJSCallback(JsCallback.PLAN_SPLIT_RESULT, GsonUtils.toJson(Map.of(
+                "planId", plan.planId(),
+                "tasks", parsed
+        )));
     }
 
     /**
@@ -2903,86 +2952,61 @@ public class JCEFMessageBridge {
                 String effectiveSessionId = "new-" + System.currentTimeMillis();
                 String planId = plan.planId();
                 StringBuilder responseBuilder = new StringBuilder();
-                String[] resolvedSessionIdHolder = new String[]{null};
+                String[] resolvedSessionIdHolder = {null};
 
-                this.chatManager.sendMessage(prompt, effectiveSessionId, plan.cliType(), this.currentProjectPath,
-                        null, null, new StreamEventListener() {
-                    @Override
-                    public void onResponse(AIResponse response) {
-                        JCEFMessageBridge.this.logAIResponse(response);
-                        String resolvedSessionId = response.sessionId() != null
-                                ? response.sessionId() : effectiveSessionId;
-                        resolvedSessionIdHolder[0] = resolvedSessionId;
-                        if (resolvedSessionId != null
-                                && (plan.sessionId() == null || plan.sessionId().startsWith("plan-"))) {
-                            Plan withSession = Plan.builder()
-                                    .planId(plan.planId())
-                                    .projectId(plan.projectId())
-                                    .planName(plan.planName())
-                                    .description(plan.description())
-                                    .cliType(plan.cliType())
-                                    .sessionId(resolvedSessionId)
-                                    .minTaskCount(plan.minTaskCount())
-                                    .executionOverview(plan.executionOverview())
-                                    .status(PlanStatus.TASK_SPLITTING)
-                                    .createdAt(plan.createdAt())
-                                    .updatedAt(System.currentTimeMillis())
-                                    .build();
-                            JCEFMessageBridge.this.planService.updatePlan(withSession);
-                        }
-                        if (response.message() != null && response.message().text() != null) {
-                            responseBuilder.append(response.message().text());
-                        }
-                        if (response.toolCall() != null) {
-                            JCEFMessageBridge.this.fileEditService.trackToolCall(resolvedSessionId, response.toolCall());
-                        }
-                        String eventJson = MessageConverter.toStreamEventJson(response, resolvedSessionId,
-                                JCEFMessageBridge.this.currentProjectPath);
-                        JCEFMessageBridge.this.invokeJSCallback(JsCallback.STREAM_EVENT, eventJson);
-                    }
+                this.chatManager.sendMessage(prompt, effectiveSessionId, plan.cliType(),
+                        JCEFMessageBridge.this.currentProjectPath, null, null, new StreamEventListener() {
+                            @Override
+                            public void onResponse(AIResponse response) {
+                                JCEFMessageBridge.this.logAIResponse(response);
+                                String resolvedSessionId = response.sessionId() != null
+                                        ? response.sessionId() : effectiveSessionId;
+                                resolvedSessionIdHolder[0] = resolvedSessionId;
+                                if (resolvedSessionId != null
+                                        && (plan.sessionId() == null || plan.sessionId().startsWith("plan-"))) {
+                                    Plan withSession = Plan.builder()
+                                            .planId(plan.planId())
+                                            .projectId(plan.projectId())
+                                            .planName(plan.planName())
+                                            .description(plan.description())
+                                            .cliType(plan.cliType())
+                                            .sessionId(resolvedSessionId)
+                                            .minTaskCount(plan.minTaskCount())
+                                            .executionOverview(plan.executionOverview())
+                                            .status(PlanStatus.TASK_SPLITTING)
+                                            .createdAt(plan.createdAt())
+                                            .updatedAt(System.currentTimeMillis())
+                                            .build();
+                                    JCEFMessageBridge.this.planService.updatePlan(withSession);
+                                }
+                                if (response.message() != null && response.message().text() != null) {
+                                    responseBuilder.append(response.message().text());
+                                }
+                                if (response.toolCall() != null) {
+                                    JCEFMessageBridge.this.fileEditService.trackToolCall(resolvedSessionId, response.toolCall());
+                                }
+                                String eventJson = MessageConverter.toStreamEventJson(response, resolvedSessionId,
+                                        JCEFMessageBridge.this.currentProjectPath);
+                                JCEFMessageBridge.this.invokeJSCallback(JsCallback.STREAM_EVENT, eventJson);
+                            }
 
-                    @Override
-                    public void onComplete() {
-                        String fullResponse = responseBuilder.toString();
-                        String tasksJson = JCEFMessageBridge.this.extractTaskListJson(fullResponse);
-                        String finalSessionId = resolvedSessionIdHolder[0] != null
-                                ? resolvedSessionIdHolder[0] : plan.sessionId();
-                        if (tasksJson != null) {
-                            List<PlanTask> parsed = JCEFMessageBridge.this.planService.parseAndCreateTasks(planId, tasksJson);
-                            Plan kanbanPlan = Plan.builder()
-                                    .planId(plan.planId())
-                                    .projectId(plan.projectId())
-                                    .planName(plan.planName())
-                                    .description(plan.description())
-                                    .cliType(plan.cliType())
-                                    .sessionId(finalSessionId)
-                                    .minTaskCount(plan.minTaskCount())
-                                    .executionOverview(plan.executionOverview())
-                                    .status(PlanStatus.KANBAN)
-                                    .createdAt(plan.createdAt())
-                                    .updatedAt(System.currentTimeMillis())
-                                    .build();
-                            JCEFMessageBridge.this.planService.updatePlan(kanbanPlan);
-                            JCEFMessageBridge.this.invokeJSCallback(JsCallback.PLAN_TASK_UPDATED, GsonUtils.toJson(Map.of(
-                                    "planId", planId, "tasks", parsed
-                            )));
-                            JCEFMessageBridge.this.invokeJSCallback(JsCallback.PLAN_DETAIL, GsonUtils.toJson(Map.of(
-                                    "plan", GsonUtils.toJsonTree(kanbanPlan),
-                                    "tasks", GsonUtils.toJsonTree(parsed),
-                                    "stats", JCEFMessageBridge.this.planService.getTaskStats(planId)
-                            )));
-                        }
-                        String completeSid = finalSessionId != null ? finalSessionId : effectiveSessionId;
-                        JCEFMessageBridge.this.invokeJSCallback(JsCallback.STREAM_COMPLETE,
-                                new StreamCompletePayload(completeSid));
-                    }
+                            @Override
+                            public void onComplete() {
+                                String fullResponse = responseBuilder.toString();
+                                String finalSessionId = resolvedSessionIdHolder[0] != null
+                                        ? resolvedSessionIdHolder[0] : plan.sessionId();
+                                JCEFMessageBridge.this.tryExtractAndCreateTasks(plan, fullResponse, finalSessionId);
+                                String completeSid = finalSessionId != null ? finalSessionId : effectiveSessionId;
+                                JCEFMessageBridge.this.invokeJSCallback(JsCallback.STREAM_COMPLETE,
+                                        new StreamCompletePayload(completeSid));
+                            }
 
-                    @Override
-                    public void onError(Exception e) {
-                        String errJson = MessageConverter.toErrorJson(e.getMessage(), effectiveSessionId);
-                        JCEFMessageBridge.this.invokeJSCallback(JsCallback.STREAM_EVENT, errJson);
-                    }
-                });
+                            @Override
+                            public void onError(Exception e) {
+                                String errJson = MessageConverter.toErrorJson(e.getMessage(), effectiveSessionId);
+                                JCEFMessageBridge.this.invokeJSCallback(JsCallback.STREAM_EVENT, errJson);
+                            }
+                        });
             } catch (Exception e) {
                 log.warn("Failed to start plan split", e);
             }

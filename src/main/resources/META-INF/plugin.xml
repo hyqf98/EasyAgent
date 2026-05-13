@@ -1,7 +1,7 @@
 <idea-plugin>
     <id>io.github.easyagent</id>
     <name>EasyAgent</name>
-    <vendor>EasyAgent</vendor>
+    <vendor logo="/icons/pluginIcon.svg">EasyAgent</vendor>
     <idea-version since-build="261" until-build="261.*"/>
     <description><![CDATA[
     <h1>EasyAgent — AI Coding Assistant for IntelliJ IDEA</h1>

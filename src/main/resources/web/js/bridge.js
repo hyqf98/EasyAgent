@@ -222,6 +222,8 @@ window.EABridge = {
 
         window.__ea_onPlanOverviewUpdated = (data) => { this._forward('ea-plan-overview-updated', data || {}); };
 
+        window.__ea_onPlanSplitResult = (data) => { this._forward('ea-plan-split-result', data || {}); };
+
         // ========== Hot Reload (dev only) ==========
         if (window.__EA_DEV_MODE__) {
             this._initHotReload();

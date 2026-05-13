@@ -283,23 +283,25 @@ public class PlanService {
      */
     public String buildRequirementPrompt(Plan plan) {
         return """
-                你是一个项目规划专家。用户想创建一个开发计划，请通过对话深入了解需求。
+                你是一个项目规划专家。请根据以下计划信息，直接输出结构化的任务列表。
 
-                ## 用户计划
+                ## 计划信息
                 名称：%s
                 描述：%s
-                期望拆分任务数：%d
+                期望任务数：%d
 
-                ## 你的任务
-                1. 分析用户描述，识别不明确的地方
-                2. 主动提问收集缺失信息（技术栈、约束条件、优先级、验收标准等）
-                3. 当你认为需求已经足够清晰时，输出以下格式的任务列表：
+                ## 输出格式（严格遵守）
+                只输出以下内容，不要输出任何其他文字：
 
                 ---TASK_LIST_START---
-                [{"title":"任务标题","description":"详细描述","priority":"high|medium|low"}]
+                [{"title":"任务标题","description":"详细描述","priority":"high"},{"title":"任务标题2","description":"详细描述2","priority":"medium"}]
                 ---TASK_LIST_END---
 
-                注意：只有在你认为需求已完全明确后才输出任务列表，确保至少拆分 %d 个任务。
+                ## 规则
+                - 只输出上述格式，不要输出其他任何内容
+                - JSON 数组中每个元素必须有 title、description、priority 三个字段
+                - priority 只能是 high、medium 或 low
+                - 至少 %d 个任务
                 """.formatted(plan.planName(), plan.description(), plan.minTaskCount(), plan.minTaskCount());
     }
 

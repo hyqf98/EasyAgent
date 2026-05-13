@@ -10,6 +10,7 @@
         </div>
         <div class="plan-header-actions">
             <button v-if="viewMode === 'list'" class="plan-btn plan-btn-primary" @click="onNewPlan">+ {{ i18n.t('plan.newPlan') }}</button>
+            <button v-if="viewMode === 'kanban'" class="plan-btn" @click="onReSplit">{{ i18n.t('plan.kanban.reSplit') || '重新拆分' }}</button>
             <span v-if="currentPlan" class="plan-status-badge" :class="(currentPlan.status || '').toLowerCase()">{{ getStatusLabel(currentPlan.status) }}</span>
             <button class="icon-btn" @click="onGoSettings" :title="i18n.t('plan.nav.settings')">⚙</button>
             <button class="icon-btn" @click="onGoHome" :title="i18n.t('plan.nav.home')">⌂</button>
@@ -112,6 +113,9 @@
                                 </div>
                             </div>
                         </div>
+                    </div>
+                    <div class="plan-split-tasks-footer">
+                        <button class="plan-btn plan-btn-primary plan-split-confirm-btn" @click="onConfirmSplit" :disabled="splitPending">{{ splitPending ? (i18n.t('plan.splitResult.creating') || '创建中…') : (i18n.t('plan.splitResult.confirm') || '确认创建并进入看板') }}</button>
                     </div>
                 </div>
                 <button v-if="taskPanelCollapsed" class="plan-split-expand-btn" @click="taskPanelCollapsed = false" :title="i18n.t('plan.task.expand')">
@@ -289,9 +293,6 @@
                     </div>
                 </div>
             </div>
-        </div>
-    </div>
-    </div>
 
     <!-- Task Edit/Add Dialog (shared by collect + kanban views) -->
     <div v-if="showTaskDialog" class="plan-dialog-overlay" @click.self="showTaskDialog = false">
@@ -402,6 +403,4 @@
                         :disabled="!newPlanName.trim()">{{ i18n.t('plan.dialogCreate') }}</button>
             </div>
         </div>
-    </div>
-</div>
 </template>

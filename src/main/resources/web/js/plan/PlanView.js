@@ -52,7 +52,9 @@ window.EARegisterComponent('plan-view', 'PlanView', {
 
             taskPanelCollapsed: false,
             taskPanelWidth: 280,
-            showScrollBottom: false
+            showScrollBottom: false,
+            splitPending: false,
+            enteredFromKanban: false
         };
     },
     created() {
@@ -143,6 +145,7 @@ window.EARegisterComponent('plan-view', 'PlanView', {
 
                 if (this.currentPlan.status === 'KANBAN') {
                     this.viewMode = 'kanban';
+                    this.splitPending = false;
                 } else if (this.currentPlan.status === 'TASK_SPLITTING' || this.currentPlan.status === 'DRAFT') {
                     this.viewMode = 'collect';
                 }
@@ -273,6 +276,15 @@ window.EARegisterComponent('plan-view', 'PlanView', {
             }
         }.bind(this);
 
+        this._onPlanSplitResult = function (e) {
+            var detail = e.detail || {};
+            if (!detail.planId || !this.currentPlan || this.currentPlan.planId !== detail.planId) return;
+            var tasks = detail.tasks;
+            if (!Array.isArray(tasks) || tasks.length === 0) return;
+            this.currentTasks = tasks.map(this.normalizeTask);
+            this.taskPanelCollapsed = false;
+        }.bind(this);
+
         window.addEventListener('ea-plan-created', this._onPlanCreated);
         window.addEventListener('ea-plan-list', this._onPlanList);
         window.addEventListener('ea-plan-detail', this._onPlanDetail);
@@ -281,6 +293,7 @@ window.EARegisterComponent('plan-view', 'PlanView', {
         window.addEventListener('ea-plan-deleted', this._onPlanDeleted);
         window.addEventListener('ea-stream-complete', this._onStreamComplete);
         window.addEventListener('ea-plan-overview-updated', this._onPlanOverviewUpdated);
+        window.addEventListener('ea-plan-split-result', this._onPlanSplitResult);
 
         EABridge.listPlans();
     },
@@ -293,6 +306,7 @@ window.EARegisterComponent('plan-view', 'PlanView', {
         if (this._onPlanDeleted) window.removeEventListener('ea-plan-deleted', this._onPlanDeleted);
         if (this._onStreamComplete) window.removeEventListener('ea-stream-complete', this._onStreamComplete);
         if (this._onPlanOverviewUpdated) window.removeEventListener('ea-plan-overview-updated', this._onPlanOverviewUpdated);
+        if (this._onPlanSplitResult) window.removeEventListener('ea-plan-split-result', this._onPlanSplitResult);
         if (this.toastTimer) clearTimeout(this.toastTimer);
         this._destroySortable();
     },
@@ -332,7 +346,7 @@ window.EARegisterComponent('plan-view', 'PlanView', {
 
           _loadPlanSessionHistory() {
               if (!this.currentPlan) return;
-              if (this.currentPlan.status === 'KANBAN') return;
+              if (this.currentPlan.status === 'KANBAN' && !this.enteredFromKanban) return;
               var sessionId = this.currentPlan.sessionId;
               if (!sessionId || sessionId.startsWith('plan-')) return;
               var cliType = this.currentPlan.cliType || 'CLAUDE';
@@ -386,14 +400,55 @@ window.EARegisterComponent('plan-view', 'PlanView', {
                 this.store.sessionId = null;
                 return;
             }
+            if (this.enteredFromKanban && this.viewMode === 'collect') {
+                this._backToKanban();
+                return;
+            }
             if (this.viewMode === 'kanban' || this.viewMode === 'collect') {
                 this.currentPlan = null;
                 this.currentTasks = [];
                 this.viewMode = 'list';
+                this.enteredFromKanban = false;
+                this.store.messages = [];
+                this.store.sessionId = null;
+                this.store.isStreaming = false;
                 this._destroySortable();
                 return;
             }
+            this.store.messages = [];
+            this.store.sessionId = null;
+            this.store.isStreaming = false;
             this.store.appMode = 'welcome';
+        },
+
+        _backToKanban() {
+            this.enteredFromKanban = false;
+            this.viewMode = 'kanban';
+            this.currentPlan.status = 'KANBAN';
+            this.store.messages = [];
+            this.store.sessionId = null;
+            this.store.isStreaming = false;
+            this._destroySortable();
+            this.$nextTick(function () {
+                setTimeout(function () { this._tryInitSortable(); }.bind(this), 80);
+            }.bind(this));
+        },
+
+        onReSplit() {
+            if (!this.currentPlan) return;
+            this.enteredFromKanban = true;
+            this.viewMode = 'collect';
+            this._destroySortable();
+            var sessionId = this.currentPlan.sessionId;
+            var cliType = this.currentPlan.cliType || 'CLAUDE';
+            EAStore.cliType = cliType;
+            this.store.messages = [];
+            this.store.sessionId = null;
+            this.store.isStreaming = false;
+            if (sessionId) {
+                this.store.sessionId = sessionId;
+                EABridge.loadHistory(sessionId, cliType, true);
+            }
         },
 
         onGoSettings() {
@@ -407,6 +462,10 @@ window.EARegisterComponent('plan-view', 'PlanView', {
             this.taskDetailView = null;
             this.viewMode = 'list';
             this._destroySortable();
+            this.store.messages = [];
+            this.store.sessionId = null;
+            this.store.isStreaming = false;
+            this.store.lastTokenUsage = null;
             this.store.appMode = 'welcome';
         },
 
@@ -490,6 +549,10 @@ window.EARegisterComponent('plan-view', 'PlanView', {
             this.showTaskDialog = true;
         },
 
+        onEditTask(task) {
+            this.onOpenTaskDialog(task);
+        },
+
         onOpenTaskDialog(task) {
             this.isAddTask = false;
             this.editTaskId = task.taskId;
@@ -544,7 +607,20 @@ window.EARegisterComponent('plan-view', 'PlanView', {
 
         onDeleteTask(taskId) {
             this.currentTasks = this.currentTasks.filter(function (t) { return t.taskId !== taskId; });
+            if (this.viewMode === 'collect') {
+                this._persistTasks();
+            }
+        },
+
+        onConfirmSplit() {
+            if (!this.currentPlan || this.currentTasks.length === 0) return;
+            this.splitPending = true;
+            var wasFromKanban = this.enteredFromKanban;
             this._persistTasks();
+            if (wasFromKanban) {
+                this._backToKanban();
+                this.splitPending = false;
+            }
         },
 
         selectTaskCli(cli) {
