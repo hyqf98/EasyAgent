@@ -4,6 +4,7 @@
         <button v-if="inChat" class="icon-btn" @click="$emit('back-home')" :title="i18n.t('header.home')">⌂</button>
         <button v-if="inChat" class="icon-btn" @click="$emit('toggle-drawer')" title="History">☰</button>
         <button v-if="inChat" class="icon-btn" @click="$emit('new-chat')" title="New Chat">+</button>
+        <button v-if="inChat" class="icon-btn" @click="$emit('split-pane')" title="Split">◫</button>
         <button class="icon-btn" @click="$emit('open-settings')" title="Settings">⚙</button>
     </div>
 </div>

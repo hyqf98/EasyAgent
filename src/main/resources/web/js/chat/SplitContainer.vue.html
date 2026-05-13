@@ -1,0 +1,36 @@
+<template>
+<div class="split-container" ref="container">
+    <div
+        v-for="(row, rowIdx) in paneGrid"
+        :key="'row-' + rowIdx"
+        class="split-row"
+        :style="{ height: rowHeight + '%' }"
+    >
+        <div
+            v-for="(paneId, colIdx) in row"
+            :key="paneId"
+            class="split-pane-wrapper"
+            :class="{
+                'drag-source': draggingPaneId === paneId,
+                'drop-left': dropTarget && dropTarget.row === rowIdx && dropTarget.col === colIdx && dropTarget.position === 'before',
+                'drop-right': dropTarget && dropTarget.row === rowIdx && dropTarget.col === colIdx && dropTarget.position === 'after',
+                'drop-below': dropTarget && dropTarget.row === rowIdx && dropTarget.col === colIdx && dropTarget.position === 'new-row-below'
+            }"
+            :data-pane-id="paneId"
+            :data-row="rowIdx"
+            :data-col="colIdx"
+        >
+            <session-pane
+                :pane-id="paneId"
+                :session-id="getPaneProp(paneId, 'sessionId')"
+                :cli-type="getPaneProp(paneId, 'cliType')"
+                :pane-title="getPaneProp(paneId, 'title')"
+                @close="onPaneClose"
+                @focus="onPaneFocus"
+                @pane-drag-start="onPaneDragStart"
+            ></session-pane>
+        </div>
+    </div>
+    <div v-if="draggingPaneId" class="drag-overlay"></div>
+</div>
+</template>

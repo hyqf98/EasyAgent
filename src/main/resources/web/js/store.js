@@ -211,6 +211,11 @@ window.EAStore = Vue.reactive({
     planConcurrentTasks: 1,
     pendingOpenSettings: false,
 
+    activePanes: [],
+    paneGrid: [],
+    focusedPaneId: null,
+    _paneSeq: 0,
+
     get isStreaming() {
         return !!EA_STREAMING_MAP[this.sessionId];
     },
@@ -1129,5 +1134,223 @@ window.EAStore = Vue.reactive({
                 }
             }
         }
+    },
+
+    getPaneCount() {
+        return this.activePanes.length;
+    },
+
+    getPaneById(paneId) {
+        for (var i = 0; i < this.activePanes.length; i++) {
+            if (this.activePanes[i].paneId === paneId) return this.activePanes[i];
+        }
+        return null;
+    },
+
+    getFocusedPane() {
+        return this.getPaneById(this.focusedPaneId);
+    },
+
+    getPaneRowIndex(paneId) {
+        for (var r = 0; r < this.paneGrid.length; r++) {
+            for (var c = 0; c < this.paneGrid[r].length; c++) {
+                if (this.paneGrid[r][c] === paneId) return r;
+            }
+        }
+        return -1;
+    },
+
+    getPanePosition(paneId) {
+        for (var r = 0; r < this.paneGrid.length; r++) {
+            for (var c = 0; c < this.paneGrid[r].length; c++) {
+                if (this.paneGrid[r][c] === paneId) return { row: r, col: c };
+            }
+        }
+        return null;
+    },
+
+    addPane(sessionId, cliType, title) {
+        this._paneSeq++;
+        var pane = {
+            paneId: 'pane-' + this._paneSeq,
+            sessionId: sessionId || 'new-' + Date.now(),
+            cliType: cliType || this.cliType,
+            title: title || ''
+        };
+        this.activePanes.push(pane);
+        if (this.paneGrid.length === 0) {
+            this.paneGrid.push([]);
+        }
+        this.paneGrid[this.paneGrid.length - 1].push(pane.paneId);
+        this.focusedPaneId = pane.paneId;
+        return pane;
+    },
+
+    addPaneToNewRow(sessionId, cliType, title) {
+        this._paneSeq++;
+        var pane = {
+            paneId: 'pane-' + this._paneSeq,
+            sessionId: sessionId || 'new-' + Date.now(),
+            cliType: cliType || this.cliType,
+            title: title || ''
+        };
+        this.activePanes.push(pane);
+        this.paneGrid.push([pane.paneId]);
+        this.focusedPaneId = pane.paneId;
+        return pane;
+    },
+
+    removePane(paneId) {
+        var idx = -1;
+        for (var i = 0; i < this.activePanes.length; i++) {
+            if (this.activePanes[i].paneId === paneId) { idx = i; break; }
+        }
+        if (idx < 0) return;
+        this.activePanes.splice(idx, 1);
+        for (var r = 0; r < this.paneGrid.length; r++) {
+            for (var c = this.paneGrid[r].length - 1; c >= 0; c--) {
+                if (this.paneGrid[r][c] === paneId) {
+                    this.paneGrid[r].splice(c, 1);
+                    break;
+                }
+            }
+        }
+        this.paneGrid = this.paneGrid.filter(function (row) { return row.length > 0; });
+        if (this.focusedPaneId === paneId) {
+            if (this.activePanes.length > 0) {
+                var nextIdx = Math.min(idx, this.activePanes.length - 1);
+                this.focusedPaneId = this.activePanes[nextIdx].paneId;
+            } else {
+                this.focusedPaneId = null;
+            }
+        }
+    },
+
+    movePaneToNewRow(paneId) {
+        var pos = this.getPanePosition(paneId);
+        if (!pos) return;
+        this.paneGrid[pos.row].splice(pos.col, 1);
+        if (this.paneGrid[pos.row].length === 0) {
+            this.paneGrid.splice(pos.row, 1);
+        }
+        this.paneGrid.push([paneId]);
+        this.paneGrid = this.paneGrid.filter(function (row) { return row.length > 0; });
+        this.focusedPaneId = paneId;
+    },
+
+    movePaneToRow(paneId, targetRow) {
+        var pos = this.getPanePosition(paneId);
+        if (!pos) return;
+        if (pos.row === targetRow) return;
+        this.paneGrid[pos.row].splice(pos.col, 1);
+        if (this.paneGrid[pos.row].length === 0) {
+            this.paneGrid.splice(pos.row, 1);
+            if (targetRow > pos.row) targetRow--;
+        }
+        if (targetRow >= this.paneGrid.length) {
+            this.paneGrid.push([paneId]);
+        } else {
+            this.paneGrid[targetRow].push(paneId);
+        }
+        this.focusedPaneId = paneId;
+    },
+
+    movePaneBefore(targetPaneId, beforePaneId) {
+        if (targetPaneId === beforePaneId) return;
+        var srcPos = this.getPanePosition(targetPaneId);
+        if (!srcPos) return;
+        this.paneGrid[srcPos.row].splice(srcPos.col, 1);
+        var destPos = this.getPanePosition(beforePaneId);
+        if (!destPos) {
+            if (this.paneGrid[srcPos.row].length === 0) {
+                this.paneGrid.splice(srcPos.row, 1);
+            }
+            this.paneGrid.push([targetPaneId]);
+            this.focusedPaneId = targetPaneId;
+            return;
+        }
+        var insertCol = destPos.col;
+        if (srcPos.row === destPos.row && srcPos.col < destPos.col) {
+            insertCol = destPos.col - 1;
+        }
+        if (this.paneGrid[srcPos.row].length === 0) {
+            this.paneGrid.splice(srcPos.row, 1);
+            if (srcPos.row < destPos.row) {
+                destPos.row--;
+            }
+        }
+        this.paneGrid[destPos.row].splice(insertCol, 0, targetPaneId);
+        this.paneGrid = this.paneGrid.filter(function (row) { return row.length > 0; });
+        this.focusedPaneId = targetPaneId;
+    },
+
+    movePaneAfter(targetPaneId, afterPaneId) {
+        if (targetPaneId === afterPaneId) return;
+        var srcPos = this.getPanePosition(targetPaneId);
+        if (!srcPos) return;
+        this.paneGrid[srcPos.row].splice(srcPos.col, 1);
+        var destPos = this.getPanePosition(afterPaneId);
+        if (!destPos) {
+            if (this.paneGrid[srcPos.row].length === 0) {
+                this.paneGrid.splice(srcPos.row, 1);
+            }
+            this.paneGrid.push([targetPaneId]);
+            this.focusedPaneId = targetPaneId;
+            return;
+        }
+        var insertCol = destPos.col + 1;
+        if (srcPos.row === destPos.row && srcPos.col <= destPos.col) {
+            insertCol = destPos.col;
+        }
+        if (this.paneGrid[srcPos.row].length === 0) {
+            this.paneGrid.splice(srcPos.row, 1);
+            if (srcPos.row < destPos.row) {
+                destPos.row--;
+            }
+        }
+        this.paneGrid[destPos.row].splice(insertCol, 0, targetPaneId);
+        this.paneGrid = this.paneGrid.filter(function (row) { return row.length > 0; });
+        this.focusedPaneId = targetPaneId;
+    },
+
+    focusPane(paneId) {
+        var pane = this.getPaneById(paneId);
+        if (pane) this.focusedPaneId = paneId;
+    },
+
+    updatePaneSession(paneId, sessionId, title) {
+        var pane = this.getPaneById(paneId);
+        if (!pane) return;
+        if (sessionId) pane.sessionId = sessionId;
+        if (title !== undefined) pane.title = title;
+    },
+
+    ensureDefaultPane() {
+        if (this.activePanes.length === 0) {
+            var pane = this.addPane(null, this.cliType, '');
+            this.sessionId = pane.sessionId;
+        }
+    },
+
+    activatePaneAsPrimary(paneId) {
+        var pane = this.getPaneById(paneId);
+        if (!pane) return;
+        this._saveCurrentToCache();
+        var cached = EA_SESSION_CACHE[pane.sessionId];
+        if (cached && cached.loaded) {
+            this.messages = cached.messages;
+            this.retryStatus = cached.retryStatus || null;
+            this.lastTokenUsage = cached.lastTokenUsage || null;
+        } else {
+            this.messages = [];
+            this.retryStatus = null;
+            this.lastTokenUsage = null;
+        }
+        this.sessionId = pane.sessionId;
+        this.cliType = pane.cliType;
+        this.sessionTitle = pane.title || '';
+        this.streamingText = '';
+        this.messagesVersion++;
+        this.focusedPaneId = paneId;
     }
 });

@@ -1,0 +1,16 @@
+<template>
+<div v-if="panes.length > 0" class="tab-bar" ref="tabBar">
+    <div
+        v-for="pane in panes"
+        :key="pane.paneId"
+        class="tab-item"
+        :class="{ active: pane.paneId === focusedPaneId }"
+        @click="onTabClick(pane.paneId)"
+    >
+        <span class="dot" :class="(pane.cliType || 'claude').toLowerCase()"></span>
+        <span class="tab-label">{{ getTabTitle(pane) }}</span>
+        <button v-if="panes.length > 1" class="tab-close" @click.stop="onTabClose(pane.paneId)">✕</button>
+    </div>
+    <button class="tab-add" @click="$emit('add-pane')" title="+">+</button>
+</div>
+</template>
