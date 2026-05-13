@@ -42,7 +42,11 @@ repositories {
 
 dependencies {
     intellijPlatform {
-        local("/Applications/IntelliJ IDEA.app")
+        if (System.getenv('CI') == 'true') {
+            intellijIdeaCommunity('2026.1')
+        } else {
+            local("/Applications/IntelliJ IDEA.app")
+        }
 
         plugin("io.nimbly.mcp-companion:3.4.0")
     }
