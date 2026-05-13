@@ -1,6 +1,5 @@
 package io.github.easyagent.session.reader;
 
-import com.google.gson.reflect.TypeToken;
 import io.github.easyagent.enums.CLIType;
 import io.github.easyagent.enums.ContentBlockType;
 import io.github.easyagent.enums.SessionRole;
@@ -16,12 +15,10 @@ import lombok.extern.slf4j.Slf4j;
 import java.io.BufferedReader;
 import java.io.File;
 import java.io.IOException;
-import java.lang.reflect.Type;
 import java.nio.file.DirectoryStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
-import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
@@ -46,7 +43,6 @@ public class ClaudeSessionReader implements SessionReader {
 
     private static final String DEFAULT_BASE_DIR = System.getProperty("user.home") + File.separator + ".claude"
             + File.separator + "projects";
-    private static final Type MAP_TYPE = new TypeToken<Map<String, Object>>() {}.getType();
 
     private final String baseDir;
 
@@ -130,7 +126,7 @@ public class ClaudeSessionReader implements SessionReader {
     @Override
     public List<SessionInfo> listSessions(String projectPath) {
         return listSessions().stream()
-                .filter(s -> s.projectPath() != null && s.projectPath().contains(projectPath))
+                .filter(s -> matchesPath(s.projectPath(), projectPath))
                 .collect(Collectors.toList());
     }
 
@@ -169,7 +165,7 @@ public class ClaudeSessionReader implements SessionReader {
                     continue;
                 }
                 try {
-                    Map<String, Object> entry = GsonUtils.fromJson(line, MAP_TYPE);
+                    Map<String, Object> entry = GsonUtils.fromJson(line, GsonUtils.MAP_TYPE);
                     if (entry == null) {
                         continue;
                     }
@@ -241,13 +237,13 @@ public class ClaudeSessionReader implements SessionReader {
                     continue;
                 }
                 try {
-                    Map<String, Object> entry = GsonUtils.fromJson(line, MAP_TYPE);
+                    Map<String, Object> entry = GsonUtils.fromJson(line, GsonUtils.MAP_TYPE);
                     if (entry == null) {
                         continue;
                     }
                     String type = (String) entry.get("type");
 
-                    long ts = parseTimestamp(entry.get("timestamp"));
+                    long ts = GsonUtils.parseTimestamp(entry.get("timestamp"));
                     if (ts > 0) {
                         updatedAt = Math.max(updatedAt, ts);
                         createdAt = Math.min(createdAt, ts);
@@ -345,7 +341,7 @@ public class ClaudeSessionReader implements SessionReader {
         String parentUuid = (String) entry.get("parentUuid");
         String model = (String) message.get("model");
         String cwd = (String) entry.get("cwd");
-        Long timestamp = parseTimestamp(entry.get("timestamp"));
+        Long timestamp = GsonUtils.parseTimestamp(entry.get("timestamp"));
 
         List<ContentBlock> contents = new ArrayList<>();
         Object contentObj = message.get("content");
@@ -375,10 +371,10 @@ public class ClaudeSessionReader implements SessionReader {
         Map<String, Object> usage = (Map<String, Object>) message.get("usage");
         if (usage != null) {
             tokenUsage = TokenUsage.builder()
-                    .inputTokens(toInt(usage.get("input_tokens")))
-                    .outputTokens(toInt(usage.get("output_tokens")))
-                    .cacheCreationInputTokens(toInt(usage.get("cache_creation_input_tokens")))
-                    .cacheReadInputTokens(toInt(usage.get("cache_read_input_tokens")))
+                    .inputTokens(GsonUtils.toInt(usage.get("input_tokens")))
+                    .outputTokens(GsonUtils.toInt(usage.get("output_tokens")))
+                    .cacheCreationInputTokens(GsonUtils.toInt(usage.get("cache_creation_input_tokens")))
+                    .cacheReadInputTokens(GsonUtils.toInt(usage.get("cache_read_input_tokens")))
                     .build();
         }
 
@@ -483,7 +479,7 @@ public class ClaudeSessionReader implements SessionReader {
                     .build();
             case "tool_result" -> ContentBlock.builder()
                     .type(ContentBlockType.TOOL_RESULT)
-                    .toolUseId(stringValue(block.get("tool_use_id")))
+                    .toolUseId(GsonUtils.stringValue(block.get("tool_use_id")))
                     .toolOutput(block.get("content") instanceof String s ? s : String.valueOf(block.get("content")))
                     .isError(block.get("is_error") instanceof Boolean b && b)
                     .historicalFileEditData(parseHistoricalFileEditData(toolUseResult))
@@ -505,9 +501,9 @@ public class ClaudeSessionReader implements SessionReader {
         if (toolUseResult == null) {
             return null;
         }
-        String originalFile = stringValue(toolUseResult.get("originalFile"));
-        String oldString = stringValue(toolUseResult.get("oldString"));
-        String newString = stringValue(toolUseResult.get("newString"));
+        String originalFile = GsonUtils.stringValue(toolUseResult.get("originalFile"));
+        String oldString = GsonUtils.stringValue(toolUseResult.get("oldString"));
+        String newString = GsonUtils.stringValue(toolUseResult.get("newString"));
         Boolean replaceAll = toolUseResult.get("replaceAll") instanceof Boolean b ? b : null;
         if (originalFile == null && oldString == null && newString == null) {
             return null;
@@ -518,16 +514,6 @@ public class ClaudeSessionReader implements SessionReader {
                 .newString(newString)
                 .replaceAll(replaceAll)
                 .build();
-    }
-
-    /**
-     * 将对象转为字符串。
-     *
-     * @param value 原始值
-     * @return 字符串或 {@code null}
-     */
-    private String stringValue(Object value) {
-        return value instanceof String s ? s : value != null ? String.valueOf(value) : null;
     }
 
     /**
@@ -577,38 +563,6 @@ public class ClaudeSessionReader implements SessionReader {
                     return userText.length() > 100 ? userText.substring(0, 100) + "..." : userText;
                 }
             }
-        }
-        return null;
-    }
-
-    /**
-     * 解析时间戳对象（支持 ISO 8601 字符串和数值类型）。
-     *
-     * @param ts 时间戳对象
-     * @return 毫秒时间戳，解析失败返回 0
-     */
-    private long parseTimestamp(Object ts) {
-        if (ts instanceof String s) {
-            try {
-                return Instant.parse(s).toEpochMilli();
-            } catch (Exception e) {
-                return 0;
-            }
-        } else if (ts instanceof Number n) {
-            return n.longValue();
-        }
-        return 0;
-    }
-
-    /**
-     * 将对象安全转换为 {@link Integer}。
-     *
-     * @param val 待转换对象
-     * @return Integer 值，无法转换时返回 {@code null}
-     */
-    private Integer toInt(Object val) {
-        if (val instanceof Number n) {
-            return n.intValue();
         }
         return null;
     }

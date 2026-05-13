@@ -5,7 +5,6 @@ import io.github.easyagent.session.entity.SessionInfo;
 import io.github.easyagent.session.entity.SessionMessage;
 
 import java.util.List;
-
 /**
  * CLI 会话读取器接口。
  * <p>
@@ -74,4 +73,24 @@ public interface SessionReader {
      * @return {@code true} 删除成功，{@code false} 会话不存在或删除失败
      */
     boolean deleteSession(String sessionId);
+
+    /**
+     * 判断会话路径是否匹配指定的项目路径。
+     * <p>
+     * 统一路径分隔符后进行包含匹配，解决跨平台路径分隔符不一致的问题
+     * （IntelliJ 使用 {@code /}，Windows 下 CLI 数据可能使用 {@code \}）。
+     * </p>
+     *
+     * @param sessionProjectPath 会话中的项目路径
+     * @param projectPath        待匹配的项目路径
+     * @return {@code true} 路径匹配
+     */
+    default boolean matchesPath(String sessionProjectPath, String projectPath) {
+        if (sessionProjectPath == null || projectPath == null) {
+            return false;
+        }
+        String normalizedSession = sessionProjectPath.replace('\\', '/');
+        String normalizedProject = projectPath.replace('\\', '/');
+        return normalizedSession.contains(normalizedProject);
+    }
 }

@@ -1,8 +1,7 @@
 package io.github.easyagent.settings.skills;
 
 import io.github.easyagent.util.GsonUtils;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import lombok.extern.slf4j.Slf4j;
 
 import java.io.IOException;
 import java.nio.file.DirectoryStream;
@@ -32,9 +31,8 @@ import java.util.concurrent.TimeUnit;
  * @date 2026/5/9
  * @since 1.0.0
  */
+@Slf4j
 public class SkillsConfigService {
-
-    private static final Logger log = LoggerFactory.getLogger(SkillsConfigService.class);
 
     private static final String USER_HOME = System.getProperty("user.home");
     private static final String SKILL_FILE_NAME = "SKILL.md";

@@ -2,6 +2,7 @@ package io.github.easyagent.util;
 
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
+import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
@@ -12,8 +13,11 @@ import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
 
 import java.lang.reflect.Type;
+import java.time.Instant;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 /**
  * JSON 工具类。
@@ -32,6 +36,11 @@ public class GsonUtils {
 
     /** 已注册的枚举类型列表。 */
     private static final List<Class<? extends Enum<?>>> REGISTERED_ENUMS = new ArrayList<>();
+
+    /**
+     * 通用 {@code Map<String, Object>} 泛型类型标记，供 JSONL / JSON 行解析复用。
+     */
+    public static final Type MAP_TYPE = new TypeToken<Map<String, Object>>() {}.getType();
 
     /**
      * 全局 Gson 实例。
@@ -215,7 +224,8 @@ public class GsonUtils {
         if (obj == null || !obj.has(field) || obj.get(field).isJsonNull()) {
             return null;
         }
-        return obj.get(field).getAsString();
+        JsonElement el = obj.get(field);
+        return el.isJsonPrimitive() ? el.getAsString() : null;
     }
 
     /**
@@ -316,13 +326,96 @@ public class GsonUtils {
     }
 
     /**
-     * 判断列表是否为空或 null。
+     * 将对象安全转换为 {@link Integer}。
+     * <p>
+     * 多个 SessionReader 共用的数值提取逻辑。
+     * </p>
      *
-     * @param list 列表
-     * @return 是否为空
+     * @param val 待转换对象
+     * @return Integer 值，无法转换时返回 {@code null}
      * @since 1.0.0
      */
-    public static boolean isEmpty(List<?> list) {
-        return ContainerUtil.isEmpty(list);
+    public static Integer toInt(Object val) {
+        if (val instanceof Number n) {
+            return n.intValue();
+        }
+        return null;
+    }
+
+    /**
+     * 解析时间戳对象（支持 ISO 8601 字符串和数值类型）。
+     * <p>
+     * 多个 SessionReader 共用的时间戳解析逻辑。
+     * </p>
+     *
+     * @param ts 时间戳对象
+     * @return 毫秒时间戳，解析失败返回 0
+     * @since 1.0.0
+     */
+    public static long parseTimestamp(Object ts) {
+        if (ts instanceof String s) {
+            try {
+                return Instant.parse(s).toEpochMilli();
+            } catch (Exception e) {
+                return 0;
+            }
+        } else if (ts instanceof Number n) {
+            return n.longValue();
+        }
+        return 0;
+    }
+
+    /**
+     * 将对象安全转换为字符串。
+     * <p>
+     * 多个 SessionReader 共用的字符串提取逻辑。
+     * </p>
+     *
+     * @param value 原始值
+     * @return 字符串或 {@code null}
+     * @since 1.0.0
+     */
+    public static String stringValue(Object value) {
+        return value instanceof String s ? s : value != null ? String.valueOf(value) : null;
+    }
+
+    /**
+     * 将 JSON 数组转换为字符串列表。
+     *
+     * @param arr JSON 数组，可为 {@code null}
+     * @return 字符串列表
+     * @since 1.0.0
+     */
+    public static List<String> jsonArrayToStringList(JsonArray arr) {
+        if (arr == null) {
+            return new ArrayList<>();
+        }
+        List<String> list = new ArrayList<>(arr.size());
+        for (JsonElement e : arr) {
+            if (e.isJsonPrimitive()) {
+                list.add(e.getAsString());
+            }
+        }
+        return list;
+    }
+
+    /**
+     * 将 JSON 对象转换为字符串映射（仅提取原始字符串值）。
+     *
+     * @param obj JSON 对象，可为 {@code null}
+     * @return 字符串映射
+     * @since 1.0.0
+     */
+    public static Map<String, String> jsonObjectToStringMap(JsonObject obj) {
+        Map<String, String> map = new LinkedHashMap<>();
+        if (obj == null) {
+            return map;
+        }
+        for (Map.Entry<String, JsonElement> e : obj.entrySet()) {
+            if (e.getValue().isJsonPrimitive()) {
+                map.put(e.getKey(), e.getValue().getAsString());
+            }
+        }
+        return map;
     }
 }

@@ -451,44 +451,39 @@ window.EAStore = Vue.reactive({
             this.bindResolvedSessionId(eventSid);
         }
 
-        if (eventType === EA_EVENT_STEP_START) {
-            EA_STREAMING_MAP[eventSid] = true;
-            if (eventSid === this.sessionId) {
-                this.beginAssistantTurn();
-                this.messagesVersion++;
-            } else {
-                this._bufferToCache(eventSid, event);
-            }
-            return;
-        }
-        if (eventType === EA_EVENT_STEP_FINISH) {
-            if (eventSid === this.sessionId) {
-                this.accumulateTokenUsage(event);
-                this.retryStatus = null;
-                var currentAssistant = this.getLastAssistantMessage();
-                if (currentAssistant) {
-                    currentAssistant.pendingFinishReason = event.reason || 'stop';
+        switch (eventType) {
+            case EA_EVENT_STEP_START:
+                EA_STREAMING_MAP[eventSid] = true;
+                if (eventSid === this.sessionId) {
+                    this.beginAssistantTurn();
+                    this.messagesVersion++;
+                } else {
+                    this._bufferToCache(eventSid, event);
                 }
-                this.messagesVersion++;
-            } else {
-                this._bufferToCache(eventSid, event);
-            }
-            return;
-        }
-        if (eventType === EA_EVENT_ERROR) {
-            delete EA_STREAMING_MAP[eventSid];
-            if (eventSid === this.sessionId) {
-                this.appendAssistantError(event.message);
-                this.retryStatus = null;
-                var failedMsg = this.getLastAssistantMessage();
-                if (failedMsg) {
-                    failedMsg.streamState = EA_STATE_FAILED;
+                return;
+            case EA_EVENT_STEP_FINISH:
+                if (eventSid === this.sessionId) {
+                    this.accumulateTokenUsage(event);
+                    this.retryStatus = null;
+                    var currentAssistant = this.getLastAssistantMessage();
+                    if (currentAssistant) currentAssistant.pendingFinishReason = event.reason || 'stop';
+                    this.messagesVersion++;
+                } else {
+                    this._bufferToCache(eventSid, event);
                 }
-                this.messagesVersion++;
-            } else {
-                this._bufferToCache(eventSid, event);
-            }
-            return;
+                return;
+            case EA_EVENT_ERROR:
+                delete EA_STREAMING_MAP[eventSid];
+                if (eventSid === this.sessionId) {
+                    this.appendAssistantError(event.message);
+                    this.retryStatus = null;
+                    var failedMsg = this.getLastAssistantMessage();
+                    if (failedMsg) failedMsg.streamState = EA_STATE_FAILED;
+                    this.messagesVersion++;
+                } else {
+                    this._bufferToCache(eventSid, event);
+                }
+                return;
         }
 
         if (eventSid !== this.sessionId) {
@@ -497,17 +492,22 @@ window.EAStore = Vue.reactive({
         }
 
         EA_STREAMING_MAP[eventSid] = true;
-        if (eventType === EA_EVENT_MESSAGE) {
-            this.appendMessage(event);
-        } else if (eventType === EA_EVENT_TOOL_USE) {
-            this.appendToolCall(event);
-        } else if (eventType === EA_EVENT_COMPACT) {
-            this.appendSystemMessage('Context compacted: ' + event.reason);
-        } else if (eventType === EA_EVENT_RETRY_STATUS) {
-            this.retryStatus = event;
-            var retryMsg = this.ensureAssistantMessage();
-            retryMsg.streamState = EA_STATE_RETRYING;
-            retryMsg.retryStatus = event;
+        switch (eventType) {
+            case EA_EVENT_MESSAGE:
+                this.appendMessage(event);
+                break;
+            case EA_EVENT_TOOL_USE:
+                this.appendToolCall(event);
+                break;
+            case EA_EVENT_COMPACT:
+                this.appendSystemMessage('Context compacted: ' + event.reason);
+                break;
+            case EA_EVENT_RETRY_STATUS:
+                this.retryStatus = event;
+                var retryMsg = this.ensureAssistantMessage();
+                retryMsg.streamState = EA_STATE_RETRYING;
+                retryMsg.retryStatus = event;
+                break;
         }
         this.messagesVersion++;
     },
@@ -525,46 +525,70 @@ window.EAStore = Vue.reactive({
         EA_STREAMING_MAP[sid] = true;
         var msgs = EA_SESSION_CACHE[sid].messages;
         var eventType = normalizeEAType(event.type);
-        if (eventType === EA_EVENT_STEP_START) {
-            this._ensureAssistantIn(msgs).streamState = EA_STATE_GENERATING;
-            return;
-        }
-        if (eventType === EA_EVENT_STEP_FINISH) {
-            this._accumulateTokenUsageIn(msgs, event);
-            var finishMsg = this._getLastAssistantIn(msgs);
-            if (finishMsg) {
-                finishMsg.pendingFinishReason = event.reason || 'stop';
-            }
-            return;
-        }
-        if (eventType === EA_EVENT_RETRY_STATUS) {
-            var retryMsg = this._ensureAssistantIn(msgs);
-            retryMsg.streamState = EA_STATE_RETRYING;
-            retryMsg.retryStatus = event;
-            EA_SESSION_CACHE[sid].retryStatus = event;
-            return;
-        }
-        if (eventType === EA_EVENT_ERROR) {
-            var errorMsg = this._ensureAssistantIn(msgs);
-            errorMsg.streamState = EA_STATE_FAILED;
-            errorMsg.contents.push({ type: EA_BLOCK_ERROR, text: event.message });
-            delete EA_STREAMING_MAP[sid];
-            EA_SESSION_CACHE[sid].isStreaming = false;
-            return;
-        }
-        if (eventType === EA_EVENT_MESSAGE) {
-            this._appendMsgTo(msgs, event);
-        } else if (eventType === EA_EVENT_TOOL_USE) {
-            this._appendToolTo(msgs, event);
+
+        switch (eventType) {
+            case EA_EVENT_STEP_START:
+                this._ensureAssistantIn(msgs).streamState = EA_STATE_GENERATING;
+                return;
+            case EA_EVENT_STEP_FINISH:
+                this._accumulateTokenUsageIn(msgs, event);
+                var finishMsg = this._getLastAssistantIn(msgs);
+                if (finishMsg) finishMsg.pendingFinishReason = event.reason || 'stop';
+                return;
+            case EA_EVENT_RETRY_STATUS:
+                var retryMsg = this._ensureAssistantIn(msgs);
+                retryMsg.streamState = EA_STATE_RETRYING;
+                retryMsg.retryStatus = event;
+                EA_SESSION_CACHE[sid].retryStatus = event;
+                return;
+            case EA_EVENT_ERROR:
+                var errorMsg = this._ensureAssistantIn(msgs);
+                errorMsg.streamState = EA_STATE_FAILED;
+                errorMsg.contents.push({ type: EA_BLOCK_ERROR, text: event.message });
+                delete EA_STREAMING_MAP[sid];
+                EA_SESSION_CACHE[sid].isStreaming = false;
+                return;
+            case EA_EVENT_MESSAGE:
+                this._appendMsgTo(msgs, event);
+                return;
+            case EA_EVENT_TOOL_USE:
+                this._appendToolTo(msgs, event);
+                return;
         }
     },
 
-    /**
-     * 在指定消息数组中追加文本内容块。
-     *
-     * @param {Array} msgs - 目标消息数组
-     * @param {Object} event - 消息事件
-     */
+    _getMsgArray(msgs) {
+        return msgs || this.messages;
+    },
+
+    _getLastAssistantIn(msgs) {
+        var lastUserIdx = -1;
+        for (var i = msgs.length - 1; i >= 0; i--) {
+            if (msgs[i].role === EA_ROLE_USER) {
+                lastUserIdx = i;
+                break;
+            }
+        }
+        for (var j = msgs.length - 1; j > lastUserIdx; j--) {
+            if (msgs[j].role === EA_ROLE_ASSISTANT) return msgs[j];
+        }
+        return null;
+    },
+
+    _ensureAssistantIn(msgs) {
+        var last = msgs[msgs.length - 1];
+        if (last && last.role === EA_ROLE_ASSISTANT) return last;
+
+        var msg = {
+            role: EA_ROLE_ASSISTANT, contents: [],
+            lastTextIndex: -1, lastThinkingIndex: -1,
+            finishReason: null, pendingFinishReason: null, tokenUsage: null,
+            streamState: EA_STATE_GENERATING, retryStatus: null
+        };
+        msgs.push(msg);
+        return msg;
+    },
+
     _appendMsgTo(msgs, event) {
         var isThinking = normalizeEAType(event.messageType) === EA_MSG_THINKING;
         var lastMsg = this._getLastAssistantIn(msgs);
@@ -589,12 +613,6 @@ window.EAStore = Vue.reactive({
         lastMsg.lastThinkingIndex = isThinking ? lastMsg.contents.length - 1 : -1;
     },
 
-    /**
-     * 在指定消息数组中追加或更新工具调用。
-     *
-     * @param {Array} msgs - 目标消息数组
-     * @param {Object} event - 工具调用事件
-     */
     _appendToolTo(msgs, event) {
         var lastMsg = this._getLastAssistantIn(msgs) || this._ensureAssistantIn(msgs);
         lastMsg.streamState = EA_STATE_GENERATING;
@@ -626,151 +644,6 @@ window.EAStore = Vue.reactive({
         lastMsg.lastThinkingIndex = -1;
     },
 
-    /**
-     * 在指定消息数组中获取最后一条助手消息。
-     *
-     * @param {Array} msgs - 目标消息数组
-     * @returns {Object|null} 助手消息对象
-     */
-    _getLastAssistantIn(msgs) {
-        var lastUserIdx = -1;
-        for (var i = msgs.length - 1; i >= 0; i--) {
-            if (msgs[i].role === EA_ROLE_USER) {
-                lastUserIdx = i;
-                break;
-            }
-        }
-        for (var i = msgs.length - 1; i > lastUserIdx; i--) {
-            if (msgs[i].role === EA_ROLE_ASSISTANT) return msgs[i];
-        }
-        return null;
-    },
-
-    /**
-     * 在指定消息数组中确保末尾有一条助手消息。
-     *
-     * @param {Array} msgs - 目标消息数组
-     * @returns {Object} 助手消息对象
-     */
-    _ensureAssistantIn(msgs) {
-        var last = msgs[msgs.length - 1];
-        if (last && last.role === EA_ROLE_ASSISTANT) return last;
-
-        var msg = {
-            role: EA_ROLE_ASSISTANT, contents: [],
-            lastTextIndex: -1, lastThinkingIndex: -1,
-            finishReason: null, pendingFinishReason: null, tokenUsage: null,
-            streamState: EA_STATE_GENERATING, retryStatus: null
-        };
-        msgs.push(msg);
-        return msg;
-    },
-
-    /**
-     * 追加消息文本到当前助手消息（思考或普通文本）。
-     *
-     * @param {{messageType: string, text: string}} event - 消息事件
-     */
-    appendMessage(event) {
-        var isThinking = normalizeEAType(event.messageType) === EA_MSG_THINKING;
-        var lastMsg = this.getLastAssistantMessage();
-
-        if (isThinking && lastMsg && lastMsg.lastThinkingIndex >= 0) {
-            lastMsg.contents[lastMsg.lastThinkingIndex].text += event.text;
-            return;
-        }
-
-        if (!isThinking && lastMsg && lastMsg.lastTextIndex >= 0) {
-            lastMsg.contents[lastMsg.lastTextIndex].text += event.text;
-            return;
-        }
-
-        var blockType = isThinking ? EA_BLOCK_THINKING : EA_BLOCK_TEXT;
-        var block = { type: blockType, text: event.text };
-        if (isThinking) block.collapsed = true;
-
-        lastMsg = this.ensureAssistantMessage();
-        lastMsg.streamState = EA_STATE_GENERATING;
-        lastMsg.contents.push(block);
-        lastMsg.lastTextIndex = isThinking ? -1 : lastMsg.contents.length - 1;
-        lastMsg.lastThinkingIndex = isThinking ? lastMsg.contents.length - 1 : -1;
-    },
-
-    /**
-     * 追加或更新工具调用内容块。
-     *
-     * @param {{toolName: string, status: string, input?: string, output?: string}} event - 工具调用事件
-     */
-    appendToolCall(event) {
-        var lastMsg = this.getLastAssistantMessage() || this.ensureAssistantMessage();
-        lastMsg.streamState = EA_STATE_GENERATING;
-        var status = normalizeEAType(event.status);
-        var isComplete = status === EA_TOOL_COMPLETED || status === EA_TOOL_FAILED;
-
-        if (isComplete) {
-            var tool = this.findLastToolCall(lastMsg, event);
-            if (tool) {
-                tool.status = status;
-                tool.output = event.output || tool.output;
-                tool.fileEdit = event.fileEdit || tool.fileEdit || null;
-                return;
-            }
-        }
-
-        lastMsg.contents.push({
-            type: EA_BLOCK_TOOL_USE,
-            toolName: event.toolName,
-            title: event.title,
-            toolUseId: event.toolUseId || '',
-            status: status || EA_TOOL_CALLING,
-            input: event.input,
-            output: event.output,
-            fileEdit: event.fileEdit || null,
-            collapsed: true
-        });
-        lastMsg.lastTextIndex = -1;
-        lastMsg.lastThinkingIndex = -1;
-    },
-
-    /**
-     * 累积步骤完成事件中的令牌使用统计。
-     * <p>
-     * 中间步骤和最终步骤的 token 信息都累积到当前助手消息中，
-     * 不设置 finishReason，避免中途显示"已完成"状态。
-     * </p>
-     *
-     * @param {{tokenUsage?: Object}} event - 步骤完成事件
-     */
-    accumulateTokenUsage(event) {
-        var lastMsg = this.getLastAssistantMessage();
-        if (!lastMsg || !event.tokenUsage) return;
-
-        var usage = event.tokenUsage;
-        var newInput = usage.input || 0;
-        var newOutput = usage.output || 0;
-        var newTotal = usage.total || 0;
-
-        if (!lastMsg.tokenUsage) {
-            lastMsg.tokenUsage = { input: newInput, output: newOutput, total: newTotal };
-        } else {
-            lastMsg.tokenUsage.input += newInput;
-            lastMsg.tokenUsage.output += newOutput;
-            lastMsg.tokenUsage.total += newTotal;
-        }
-
-        this.lastTokenUsage = {
-            input: lastMsg.tokenUsage.input,
-            output: lastMsg.tokenUsage.output,
-            total: lastMsg.tokenUsage.total
-        };
-    },
-
-    /**
-     * 在指定消息数组中累积 token 使用量。
-     *
-     * @param {Array} msgs - 消息数组
-     * @param {{tokenUsage?: Object}} event - 步骤完成事件
-     */
     _accumulateTokenUsageIn(msgs, event) {
         var lastMsg = this._getLastAssistantIn(msgs);
         if (!lastMsg || !event.tokenUsage) return;
@@ -784,6 +657,26 @@ window.EAStore = Vue.reactive({
             lastMsg.tokenUsage.input += newInput;
             lastMsg.tokenUsage.output += newOutput;
             lastMsg.tokenUsage.total += newTotal;
+        }
+    },
+
+    appendMessage(event) { this._appendMsgTo(this.messages, event); },
+
+    appendToolCall(event) { this._appendToolTo(this.messages, event); },
+
+    getLastAssistantMessage() { return this._getLastAssistantIn(this.messages); },
+
+    ensureAssistantMessage() { return this._ensureAssistantIn(this.messages); },
+
+    accumulateTokenUsage(event) {
+        this._accumulateTokenUsageIn(this.messages, event);
+        var lastMsg = this._getLastAssistantIn(this.messages);
+        if (lastMsg && lastMsg.tokenUsage) {
+            this.lastTokenUsage = {
+                input: lastMsg.tokenUsage.input,
+                output: lastMsg.tokenUsage.output,
+                total: lastMsg.tokenUsage.total
+            };
         }
     },
 
@@ -829,44 +722,6 @@ window.EAStore = Vue.reactive({
             lastAssistant.lastThinkingIndex = -1;
         }
         this.messagesVersion++;
-    },
-
-    /**
-     * 确保消息列表末尾有一条助手消息，没有则创建。
-     *
-     * @returns {Object} 助手消息对象
-     */
-    ensureAssistantMessage() {
-        var last = this.messages[this.messages.length - 1];
-        if (last && last.role === EA_ROLE_ASSISTANT) return last;
-
-        var msg = {
-            role: EA_ROLE_ASSISTANT, contents: [],
-            lastTextIndex: -1, lastThinkingIndex: -1,
-            finishReason: null, pendingFinishReason: null, tokenUsage: null,
-            streamState: EA_STATE_GENERATING, retryStatus: null
-        };
-        this.messages.push(msg);
-        return msg;
-    },
-
-    /**
-     * 获取最后一条助手消息。
-     *
-     * @returns {Object|null} 最后一条助手消息，不存在则返回 null
-     */
-    getLastAssistantMessage() {
-        var lastUserIdx = -1;
-        for (var i = this.messages.length - 1; i >= 0; i--) {
-            if (this.messages[i].role === EA_ROLE_USER) {
-                lastUserIdx = i;
-                break;
-            }
-        }
-        for (var i = this.messages.length - 1; i > lastUserIdx; i--) {
-            if (this.messages[i].role === EA_ROLE_ASSISTANT) return this.messages[i];
-        }
-        return null;
     },
 
     /**
@@ -1146,7 +1001,8 @@ window.EAStore = Vue.reactive({
      * @param {string} fallbackReason - 默认完成原因
      */
     _finalizeAssistantTurn(msgs, fallbackReason) {
-        var lastMsg = msgs === this.messages ? this.getLastAssistantMessage() : this._getLastAssistantIn(msgs);
+        var isCurrent = msgs === this.messages;
+        var lastMsg = isCurrent ? this.getLastAssistantMessage() : this._getLastAssistantIn(msgs);
         if (!lastMsg) return;
         if (lastMsg.streamState !== EA_STATE_FAILED) {
             lastMsg.streamState = EA_STATE_COMPLETED;

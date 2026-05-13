@@ -11,9 +11,10 @@
 window.EABridge = {
     _queryId: 0,
 
-    /**
-     * 初始化通信桥。注册 Java -> JS 的全局回调函数。
-     */
+    _forward(eventName, data) {
+        window.dispatchEvent(new CustomEvent(eventName, { detail: data || {} }));
+    },
+
     init() {
         window.__ea_onThemeChanged = (data) => {
             EATheme.apply(data.isDark);
@@ -60,11 +61,7 @@ window.EABridge = {
             }));
         };
 
-        window.__ea_onAvailableCLIs = (data) => {
-            window.dispatchEvent(new CustomEvent('ea-available-clis', {
-                detail: { clis: data }
-            }));
-        };
+        window.__ea_onAvailableCLIs = (data) => { this._forward('ea-available-clis', { clis: data }); };
 
         window.__ea_onStateRestored = (data) => {
             if (window.EAStore) {
@@ -147,126 +144,50 @@ window.EABridge = {
             window.dispatchEvent(new CustomEvent('ea-cli-models-loaded', { detail: data }));
         };
 
-        window.__ea_onInsertReferences = (data) => {
-            window.dispatchEvent(new CustomEvent('ea-insert-file-references', {
-                detail: { references: data || [] }
-            }));
-        };
+        window.__ea_onInsertReferences = (data) => { this._forward('ea-insert-file-references', { references: data || [] }); };
 
-        window.__ea_onFileReferenceCandidates = (data) => {
-            window.dispatchEvent(new CustomEvent('ea-file-reference-candidates', {
-                detail: data || {}
-            }));
-        };
+        window.__ea_onFileReferenceCandidates = (data) => { this._forward('ea-file-reference-candidates', data || {}); };
 
-        window.__ea_onSessionsDeleted = (data) => {
-            window.dispatchEvent(new CustomEvent('ea-sessions-deleted', {
-                detail: data || {}
-            }));
-        };
+        window.__ea_onSessionsDeleted = (data) => { this._forward('ea-sessions-deleted', data || {}); };
 
-        window.__ea_onSlashCommands = (data) => {
-            window.dispatchEvent(new CustomEvent('ea-slash-commands', {
-                detail: data || {}
-            }));
-        };
+        window.__ea_onSlashCommands = (data) => { this._forward('ea-slash-commands', data || {}); };
 
-        window.__ea_onSlashCommandExecuted = (data) => {
-            window.dispatchEvent(new CustomEvent('ea-slash-command-executed', {
-                detail: data || {}
-            }));
-        };
+        window.__ea_onSlashCommandExecuted = (data) => { this._forward('ea-slash-command-executed', data || {}); };
 
-        window.__ea_onCliConfigs = (data) => {
-            window.dispatchEvent(new CustomEvent('ea-cli-configs', {
-                detail: data || {}
-            }));
-        };
+        window.__ea_onCliConfigs = (data) => { this._forward('ea-cli-configs', data || {}); };
 
-        window.__ea_onCliConfigsSaved = (data) => {
-            window.dispatchEvent(new CustomEvent('ea-cli-configs-saved', {
-                detail: data || {}
-            }));
-        };
+        window.__ea_onCliConfigsSaved = (data) => { this._forward('ea-cli-configs-saved', data || {}); };
 
-        window.__ea_onMcpConfigs = (data) => {
-            window.dispatchEvent(new CustomEvent('ea-mcp-configs', {
-                detail: data || {}
-            }));
-        };
+        window.__ea_onMcpConfigs = (data) => { this._forward('ea-mcp-configs', data || {}); };
 
-        window.__ea_onMcpSaved = (data) => {
-            window.dispatchEvent(new CustomEvent('ea-mcp-saved', {
-                detail: data || {}
-            }));
-        };
+        window.__ea_onMcpSaved = (data) => { this._forward('ea-mcp-saved', data || {}); };
 
-        window.__ea_onMcpTestConnected = (data) => {
-            window.dispatchEvent(new CustomEvent('ea-mcp-test-connected', {
-                detail: data || {}
-            }));
-        };
+        window.__ea_onMcpTestConnected = (data) => { this._forward('ea-mcp-test-connected', data || {}); };
 
-        window.__ea_onMcpTools = (data) => {
-            window.dispatchEvent(new CustomEvent('ea-mcp-tools', {
-                detail: data || {}
-            }));
-        };
+        window.__ea_onMcpTools = (data) => { this._forward('ea-mcp-tools', data || {}); };
 
-        window.__ea_onMcpToolResult = (data) => {
-            window.dispatchEvent(new CustomEvent('ea-mcp-tool-result', {
-                detail: data || {}
-            }));
-        };
+        window.__ea_onMcpToolResult = (data) => { this._forward('ea-mcp-tool-result', data || {}); };
 
-        window.__ea_onSkills = (data) => {
-            window.dispatchEvent(new CustomEvent('ea-skills', {
-                detail: data || []
-            }));
-        };
+        window.__ea_onSkills = (data) => { this._forward('ea-skills', data || []); };
 
-        window.__ea_onSkillInstalled = (data) => {
-            window.dispatchEvent(new CustomEvent('ea-skill-installed', {
-                detail: data || {}
-            }));
-        };
+        window.__ea_onSkillInstalled = (data) => { this._forward('ea-skill-installed', data || {}); };
 
-        window.__ea_onSkillDeleted = (data) => {
-            window.dispatchEvent(new CustomEvent('ea-skill-deleted', {
-                detail: data || {}
-            }));
-        };
+        window.__ea_onSkillDeleted = (data) => { this._forward('ea-skill-deleted', data || {}); };
 
-        window.__ea_onSkillContent = (data) => {
-            window.dispatchEvent(new CustomEvent('ea-skill-content', {
-                detail: data || {}
-            }));
-        };
+        window.__ea_onSkillContent = (data) => { this._forward('ea-skill-content', data || {}); };
 
         // Plan mode callbacks
-        window.__ea_onPlanCreated = (data) => {
-            window.dispatchEvent(new CustomEvent('ea-plan-created', { detail: data || {} }));
-        };
+        window.__ea_onPlanCreated = (data) => { this._forward('ea-plan-created', data || {}); };
 
-        window.__ea_onPlanList = (data) => {
-            window.dispatchEvent(new CustomEvent('ea-plan-list', { detail: data || {} }));
-        };
+        window.__ea_onPlanList = (data) => { this._forward('ea-plan-list', data || {}); };
 
-        window.__ea_onPlanDetail = (data) => {
-            window.dispatchEvent(new CustomEvent('ea-plan-detail', { detail: data || {} }));
-        };
+        window.__ea_onPlanDetail = (data) => { this._forward('ea-plan-detail', data || {}); };
 
-        window.__ea_onPlanTaskUpdated = (data) => {
-            window.dispatchEvent(new CustomEvent('ea-plan-task-updated', { detail: data || {} }));
-        };
+        window.__ea_onPlanTaskUpdated = (data) => { this._forward('ea-plan-task-updated', data || {}); };
 
-        window.__ea_onPlanTaskStatus = (data) => {
-            window.dispatchEvent(new CustomEvent('ea-plan-task-status', { detail: data || {} }));
-        };
+        window.__ea_onPlanTaskStatus = (data) => { this._forward('ea-plan-task-status', data || {}); };
 
-        window.__ea_onPlanDeleted = (data) => {
-            window.dispatchEvent(new CustomEvent('ea-plan-deleted', { detail: data || {} }));
-        };
+        window.__ea_onPlanDeleted = (data) => { this._forward('ea-plan-deleted', data || {}); };
 
         window.__ea_onPlanConfig = (data) => {
             if (window.EAStore && data) {
@@ -275,13 +196,9 @@ window.EABridge = {
             window.dispatchEvent(new CustomEvent('ea-plan-config', { detail: data || {} }));
         };
 
-        window.__ea_onPlanConfigSaved = (data) => {
-            window.dispatchEvent(new CustomEvent('ea-plan-config-saved', { detail: data || {} }));
-        };
+        window.__ea_onPlanConfigSaved = (data) => { this._forward('ea-plan-config-saved', data || {}); };
 
-        window.__ea_onPlanOverviewUpdated = (data) => {
-            window.dispatchEvent(new CustomEvent('ea-plan-overview-updated', { detail: data || {} }));
-        };
+        window.__ea_onPlanOverviewUpdated = (data) => { this._forward('ea-plan-overview-updated', data || {}); };
 
         // ========== Hot Reload (dev only) ==========
         if (window.__EA_DEV_MODE__) {

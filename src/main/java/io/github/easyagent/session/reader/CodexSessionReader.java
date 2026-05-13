@@ -1,6 +1,5 @@
 package io.github.easyagent.session.reader;
 
-import com.google.gson.reflect.TypeToken;
 import io.github.easyagent.enums.CLIType;
 import io.github.easyagent.enums.ContentBlockType;
 import io.github.easyagent.enums.SessionRole;
@@ -12,11 +11,11 @@ import io.github.easyagent.session.entity.TokenUsage;
 import io.github.easyagent.ui.service.ToolMetadataSupport;
 import io.github.easyagent.util.GsonUtils;
 import lombok.extern.slf4j.Slf4j;
+import org.sqlite.JDBC;
 
 import java.io.BufferedReader;
 import java.io.File;
 import java.io.IOException;
-import java.lang.reflect.Type;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -32,7 +31,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Properties;
 import java.util.stream.Collectors;
-import org.sqlite.JDBC;
 
 /**
  * Codex CLI 会话读取器。
@@ -52,7 +50,6 @@ public class CodexSessionReader implements SessionReader {
     private static final String HOME = System.getProperty("user.home");
     private static final String SESSIONS_DIR = HOME + File.separator + ".codex" + File.separator + "sessions";
     private static final String STATE_DB = HOME + File.separator + ".codex" + File.separator + "state_5.sqlite";
-    private static final Type MAP_TYPE = new TypeToken<Map<String, Object>>() {}.getType();
 
     /**
      * 获取此读取器对应的 CLI 类型。
@@ -124,7 +121,7 @@ public class CodexSessionReader implements SessionReader {
     @Override
     public List<SessionInfo> listSessions(String projectPath) {
         return listSessions().stream()
-                .filter(s -> s.projectPath() != null && s.projectPath().contains(projectPath))
+                .filter(s -> matchesPath(s.projectPath(), projectPath))
                 .collect(Collectors.toList());
     }
 
@@ -163,7 +160,7 @@ public class CodexSessionReader implements SessionReader {
                     continue;
                 }
                 try {
-                    Map<String, Object> entry = GsonUtils.fromJson(line, MAP_TYPE);
+                    Map<String, Object> entry = GsonUtils.fromJson(line, GsonUtils.MAP_TYPE);
                     if (entry == null) {
                         continue;
                     }
@@ -448,10 +445,10 @@ public class CodexSessionReader implements SessionReader {
     }
 
     /**
-     * 将对象安全转换为字符串。
+     * 将对象安全转换为 JSON 字符串（非字符串对象序列化为 JSON）。
      *
      * @param value 待转换对象
-     * @return 字符串值
+     * @return JSON 字符串值
      */
     private String stringifyValue(Object value) {
         if (value == null) {
@@ -464,10 +461,10 @@ public class CodexSessionReader implements SessionReader {
     }
 
     /**
-     * 将对象安全转换为字符串并去空。
+     * 将对象安全转换为非空字符串。
      *
      * @param value 待转换对象
-     * @return 字符串值，空值时返回 null
+     * @return 字符串值，空值时返回 {@code null}
      */
     private String stringValue(Object value) {
         String text = stringifyValue(value);

@@ -92,6 +92,9 @@ window.EARegisterComponent('settings-page', 'SettingsPage', {
             newProfileKeyVisible: false,
             providerDropdownOpen: '',
             providerFilter: '',
+            collapsedProviders: {},
+            modelDisplayLimit: 200,
+            modelsReady: false,
             editingDefault: false,
             defaultEditForm: { displayName: '', contextDisplay: '', contextWindow: 0 },
             mcpFilter: 'CLAUDE',
@@ -129,11 +132,17 @@ window.EARegisterComponent('settings-page', 'SettingsPage', {
             });
         },
         modelRows() {
+            if (!this.modelsReady && this.activeTab === 'models') {
+                return [{ rowType: 'default', cliType: this.modelFilter }];
+            }
             var rows = [{
                 rowType: 'default',
                 cliType: this.modelFilter
             }];
             var models = this.filteredModels;
+            var limit = this.modelDisplayLimit;
+            var modelCount = 0;
+            var search = (this.modelSearch || '').toLowerCase().trim();
 
             if (this.modelFilter === 'OPENCODE') {
                 var groups = {};
@@ -144,18 +153,38 @@ window.EARegisterComponent('settings-page', 'SettingsPage', {
                 });
                 var groupKeys = Object.keys(groups).sort();
                 var globalIdx = 0;
+                var self = this;
+                var stopped = false;
                 groupKeys.forEach(function (key) {
-                    rows.push({ rowType: 'provider-header', provider: key });
-                    groups[key].forEach(function (model) {
-                        rows.push({ rowType: 'model', modelIndex: globalIdx, model: model });
-                        globalIdx++;
-                    });
+                    if (stopped) return;
+                    var count = groups[key].length;
+                    var isCollapsed = self.collapsedProviders[key] !== false;
+                    rows.push({ rowType: 'provider-header', provider: key, count: count, collapsed: isCollapsed });
+                    if (!isCollapsed || search) {
+                        groups[key].forEach(function (model) {
+                            if (stopped) return;
+                            if (modelCount >= limit) {
+                                stopped = true;
+                                return;
+                            }
+                            rows.push({ rowType: 'model', modelIndex: globalIdx, model: model });
+                            globalIdx++;
+                            modelCount++;
+                        });
+                    }
                 });
             } else {
                 models.forEach(function (model, index) {
+                    if (modelCount >= limit) return;
                     rows.push({ rowType: 'model', modelIndex: index, model: model });
+                    modelCount++;
                 });
             }
+
+            if (modelCount < models.length) {
+                rows.push({ rowType: 'show-more', remaining: models.length - modelCount });
+            }
+
             return rows;
         },
         ctxOptions() {
@@ -208,6 +237,7 @@ window.EARegisterComponent('settings-page', 'SettingsPage', {
         modelFilter() {
             this.editingIndex = -1;
             this.showAddModel = false;
+            this.modelDisplayLimit = 200;
         }
     },
     mounted() {
@@ -215,6 +245,8 @@ window.EARegisterComponent('settings-page', 'SettingsPage', {
         this.models = (this.store.modelsList || []).slice();
         this._onModelsLoaded = function (e) {
             this.models = Array.isArray(e.detail) ? e.detail.slice() : [];
+            this.modelDisplayLimit = 200;
+            this.modelsReady = true;
             if (this.isSyncing) {
                 this.isSyncing = false;
                 this.cliModelsLoading = false;
@@ -222,6 +254,7 @@ window.EARegisterComponent('settings-page', 'SettingsPage', {
         }.bind(this);
         this._onCliModelsLoaded = function (e) {
             this.cliModelsLoading = false;
+            this.modelDisplayLimit = 200;
             var cliModels = Array.isArray(e.detail) ? e.detail : [];
             var existing = this.models.slice();
             var existingIds = {};
@@ -315,10 +348,7 @@ window.EARegisterComponent('settings-page', 'SettingsPage', {
                 this.showSkillInstallForm = false;
             }
         }.bind(this);
-        this._onSkillDeleted = function (e) {
-            var detail = e.detail || {};
-        }.bind(this);
-        this.        _onSkillContent = function (e) {
+        this._onSkillContent = function (e) {
             var detail = e.detail || {};
             if (this.skillContentDialog) {
                 var content = detail.content || '';
@@ -328,7 +358,6 @@ window.EARegisterComponent('settings-page', 'SettingsPage', {
         }.bind(this);
         window.addEventListener('ea-skills', this._onSkills);
         window.addEventListener('ea-skill-installed', this._onSkillInstalled);
-        window.addEventListener('ea-skill-deleted', this._onSkillDeleted);
         window.addEventListener('ea-skill-content', this._onSkillContent);
     },
     beforeUnmount() {
@@ -344,7 +373,6 @@ window.EARegisterComponent('settings-page', 'SettingsPage', {
         if (this._onMcpToolResult) window.removeEventListener('ea-mcp-tool-result', this._onMcpToolResult);
         if (this._onSkills) window.removeEventListener('ea-skills', this._onSkills);
         if (this._onSkillInstalled) window.removeEventListener('ea-skill-installed', this._onSkillInstalled);
-        if (this._onSkillDeleted) window.removeEventListener('ea-skill-deleted', this._onSkillDeleted);
         if (this._onSkillContent) window.removeEventListener('ea-skill-content', this._onSkillContent);
     },
     methods: {
@@ -390,7 +418,10 @@ window.EARegisterComponent('settings-page', 'SettingsPage', {
         },
         onOpenModels() {
             this.activeTab = 'models';
+            this.modelsReady = false;
+            this.modelDisplayLimit = 200;
             this.models = (this.store.modelsList || []).slice();
+            this.modelsReady = true;
             EABridge.getModels();
         },
         onSyncAllModels() {
@@ -417,6 +448,31 @@ window.EARegisterComponent('settings-page', 'SettingsPage', {
             }
             this.cliModelsLoading = true;
             EABridge.queryCliModels('OPENCODE');
+        },
+
+        toggleProvider(provider) {
+            this.collapsedProviders[provider] = this.collapsedProviders[provider] === false;
+        },
+        expandAllProviders() {
+            var all = {};
+            this.models.forEach(function (m) {
+                if (m.cliType === 'OPENCODE') {
+                    all[m.provider || 'other'] = false;
+                }
+            });
+            this.collapsedProviders = all;
+        },
+        collapseAllProviders() {
+            var all = {};
+            this.models.forEach(function (m) {
+                if (m.cliType === 'OPENCODE') {
+                    all[m.provider || 'other'] = true;
+                }
+            });
+            this.collapsedProviders = all;
+        },
+        loadMoreModels() {
+            this.modelDisplayLimit += 200;
         },
 
         // ==================== Add Model ====================

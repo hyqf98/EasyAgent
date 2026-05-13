@@ -9,6 +9,7 @@ import lombok.extern.slf4j.Slf4j;
 
 import java.io.IOException;
 import java.lang.reflect.Type;
+import java.net.InetSocketAddress;
 import java.net.ProxySelector;
 import java.net.URI;
 import java.net.http.HttpClient;
@@ -24,6 +25,8 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 /**
@@ -76,11 +79,48 @@ public class ModelConfigService {
     /** 从 models.dev API 缓存的动态 provider 列表（id + displayName）。 */
     private volatile List<CliConfigService.ProviderInfo> cachedDynamicProviders = Collections.emptyList();
 
-    /** HTTP 客户端，用于远程同步（自动使用 IDE 代理配置）。 */
+    /** HTTP 客户端，用于远程同步（自动检测环境变量代理）。 */
     private final HttpClient httpClient = HttpClient.newBuilder()
-            .connectTimeout(Duration.ofSeconds(10))
-            .proxy(ProxySelector.getDefault())
+            .connectTimeout(Duration.ofSeconds(15))
+            .proxy(detectProxy())
             .build();
+
+    private static final Pattern PROXY_URL_PATTERN = Pattern.compile(
+            "https?://([^:/]+)(?::(\\d+))?/?");
+
+    /**
+     * 从环境变量 {@code HTTP_PROXY} / {@code HTTPS_PROXY} / {@code ALL_PROXY} 检测代理。
+     *
+     * @return 代理选择器，无代理时返回 {@link ProxySelector#getDefault()}
+     */
+    private static ProxySelector detectProxy() {
+        String proxyUrl = System.getenv("HTTPS_PROXY");
+        if (proxyUrl == null || proxyUrl.isBlank()) {
+            proxyUrl = System.getenv("HTTP_PROXY");
+        }
+        if (proxyUrl == null || proxyUrl.isBlank()) {
+            proxyUrl = System.getenv("ALL_PROXY");
+        }
+        if (proxyUrl == null || proxyUrl.isBlank()) {
+            proxyUrl = System.getenv("https_proxy");
+        }
+        if (proxyUrl == null || proxyUrl.isBlank()) {
+            proxyUrl = System.getenv("http_proxy");
+        }
+        if (proxyUrl == null || proxyUrl.isBlank()) {
+            proxyUrl = System.getenv("all_proxy");
+        }
+        if (proxyUrl != null && !proxyUrl.isBlank()) {
+            Matcher m = PROXY_URL_PATTERN.matcher(proxyUrl.trim());
+            if (m.find()) {
+                String host = m.group(1);
+                int port = m.group(2) != null ? Integer.parseInt(m.group(2)) : 7890;
+                log.info("Detected proxy from env: {}:{}", host, port);
+                return ProxySelector.of(new InetSocketAddress(host, port));
+            }
+        }
+        return ProxySelector.getDefault();
+    }
 
     /**
      * 获取指定 CLI 类型的模型列表。

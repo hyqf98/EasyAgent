@@ -1,5 +1,6 @@
 package io.github.easyagent.plan;
 
+import com.google.gson.reflect.TypeToken;
 import com.intellij.openapi.project.Project;
 import io.github.easyagent.enums.CLIType;
 import io.github.easyagent.enums.PlanStatus;
@@ -234,7 +235,7 @@ public class PlanService {
      */
     public List<PlanTask> parseAndCreateTasks(String planId, String tasksJson) {
         List<Map<String, Object>> rawTasks = GsonUtils.fromJson(tasksJson,
-                new com.google.gson.reflect.TypeToken<List<Map<String, Object>>>() {}.getType());
+                new TypeToken<List<Map<String, Object>>>() {}.getType());
         if (rawTasks == null) {
             return new ArrayList<>();
         }

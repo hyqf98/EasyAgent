@@ -8,8 +8,6 @@
  * @component plan-view
  */
 
-var EA_SCROLL_BOTTOM_THRESHOLD = 80;
-
 var EA_TASK_STATUS_VALUES = ['PENDING', 'RUNNING', 'COMPLETED', 'FAILED', 'STOPPED'];
 var EA_TASK_PRIORITY_VALUES = ['HIGH', 'MEDIUM', 'LOW'];
 var EA_CLI_LABELS = { CLAUDE: 'Claude', OPENCODE: 'OpenCode', CODEX: 'Codex' };
@@ -211,10 +209,6 @@ window.EARegisterComponent('plan-view', 'PlanView', {
                         if (this._dragging) {
                             this.currentTasks[i].sortOrder = preservedSortOrder;
                         }
-                        console.log('[PlanView] _onPlanTaskUpdated callback: taskId=' + updatedTaskId
-                            + ', sortOrder=' + this.currentTasks[i].sortOrder
-                            + ', completedAt=' + this.currentTasks[i].completedAt
-                            + ', dragging=' + this._dragging);
                     }
                     found = true;
                     break;
@@ -491,10 +485,6 @@ window.EARegisterComponent('plan-view', 'PlanView', {
             this.showTaskDialog = true;
         },
 
-        onEditTask(task) {
-            this.onOpenTaskDialog(task);
-        },
-
         onSaveTaskDialog() {
             if (!this.editTaskTitle || !this.editTaskTitle.trim()) return;
             if (!this.currentPlan) return;
@@ -571,10 +561,6 @@ window.EARegisterComponent('plan-view', 'PlanView', {
 
         // ========== Kanban Drag & Drop ==========
 
-        _initSortable() {
-            this._tryInitSortable();
-        },
-
         _tryInitSortable() {
             if (this._sortableInstances || this._dragging) return;
             if (typeof window.Sortable === 'undefined') {
@@ -615,12 +601,6 @@ window.EARegisterComponent('plan-view', 'PlanView', {
                         var taskId = evt.item.getAttribute('data-task-id');
                         var fromColumn = evt.from.getAttribute('data-column');
                         var toColumn = evt.to.getAttribute('data-column');
-                        var oldIndex = evt.oldIndex;
-                        var newIndex = evt.newIndex;
-
-                        console.log('[PlanView] Sortable onEnd: taskId=' + taskId
-                            + ', from=' + fromColumn + ', to=' + toColumn
-                            + ', oldIndex=' + oldIndex + ', newIndex=' + newIndex);
 
                         self._destroySortable();
 
@@ -650,54 +630,13 @@ window.EARegisterComponent('plan-view', 'PlanView', {
             }
         },
 
-        _handleDragEnd(evt) {
-            var fromColumn = evt.from.getAttribute('data-column');
-            var toColumn = evt.to.getAttribute('data-column');
-            var taskId = evt.item.getAttribute('data-task-id');
-
-            if (!taskId || !this.currentPlan) return;
-
-            if (fromColumn === toColumn) {
-                this._reorderInColumn(evt);
-                return;
-            }
-
-            this.onTaskDragEnd(taskId, fromColumn, toColumn);
-        },
-
         _handleDragEndFromData(taskId, fromColumn, toColumn) {
-            if (!taskId || !this.currentPlan) return;
-
-            if (fromColumn === toColumn) {
-                return;
-            }
-
+            if (!taskId || !this.currentPlan || fromColumn === toColumn) return;
             this.onTaskDragEnd(taskId, fromColumn, toColumn);
-        },
-
-        _reorderInColumn(evt) {
-            var column = evt.from.getAttribute('data-column');
-            var items = evt.to.querySelectorAll('.kanban-card[data-task-id]');
-            var newOrder = [];
-            for (var i = 0; i < items.length; i++) {
-                newOrder.push(items[i].getAttribute('data-task-id'));
-            }
-
-            for (var j = 0; j < newOrder.length; j++) {
-                for (var k = 0; k < this.currentTasks.length; k++) {
-                    if (this.currentTasks[k].taskId === newOrder[j]) {
-                        this.currentTasks[k].sortOrder = j;
-                        break;
-                    }
-                }
-            }
-            this._persistTasks();
         },
 
         _reorderInColumnByIndex(column, taskId, oldIndex, newIndex) {
             if (oldIndex === newIndex) return;
-            console.log('[PlanView] reorderInColumn: column=' + column
-                + ', taskId=' + taskId + ', oldIdx=' + oldIndex + ', newIdx=' + newIndex);
             var statusFilter;
             switch (column) {
                 case 'PENDING': statusFilter = 'PENDING'; break;
@@ -730,10 +669,6 @@ window.EARegisterComponent('plan-view', 'PlanView', {
             var task = this.currentTasks.find(function (t) { return t.taskId === taskId; });
             if (!task || !this.currentPlan) return;
 
-            console.log('[PlanView] onTaskDragEnd: taskId=' + taskId
-                + ', title="' + (task.title || '') + '"'
-                + ', from=' + fromColumn + ', to=' + toColumn);
-
             var newStatus;
             switch (toColumn) {
                 case 'PENDING': newStatus = 'PENDING'; break;
@@ -765,10 +700,6 @@ window.EARegisterComponent('plan-view', 'PlanView', {
             var oldStatus = (task.status || '').toUpperCase();
             task.status = newStatus;
 
-            console.log('[PlanView] _updateTaskStatus: taskId=' + taskId
-                + ', oldStatus=' + oldStatus + ', newStatus=' + newStatus
-                + ', fromDrag=' + !!fromDrag);
-
             if (newStatus === 'PENDING') {
                 task.completedAt = 0;
                 task.startedAt = 0;
@@ -784,12 +715,8 @@ window.EARegisterComponent('plan-view', 'PlanView', {
                 this._assignSortOrder(task, taskId, 'RUNNING_GROUP', fromDrag);
             }
             if (newStatus === 'COMPLETED' || newStatus === 'FAILED') {
-                task.completedAt = fromDrag ? 0 : Date.now();
                 this._assignSortOrder(task, taskId, newStatus, fromDrag);
             }
-
-            console.log('[PlanView] after sort: taskId=' + taskId
-                + ', sortOrder=' + task.sortOrder + ', completedAt=' + task.completedAt);
 
             var backendStatus = newStatus === 'QUEUED' ? 'PENDING' : newStatus;
             var updateData = {
@@ -838,18 +765,6 @@ window.EARegisterComponent('plan-view', 'PlanView', {
                 });
                 task.sortOrder = 0;
             }
-        },
-
-        _indexOfTask(taskId, statusFilter) {
-            var idx = 0;
-            for (var i = 0; i < this.currentTasks.length; i++) {
-                var t = this.currentTasks[i];
-                if ((t.status || '').toUpperCase() === statusFilter) {
-                    if (t.taskId === taskId) return idx;
-                    idx++;
-                }
-            }
-            return idx;
         },
 
         // ========== Task Actions ==========

@@ -58,9 +58,8 @@ public enum CLIType implements ValueEnum<String> {
     /**
      * 自动检测 CLI 可执行文件路径。
      * <p>
-     * macOS/Linux：通过 {@code /usr/bin/which} 命令查找 PATH 中的可执行文件。
-     * Windows：依次检查 {@code %APPDATA%\\npm\\{cmd}.cmd}、{@code C:\\Program Files\\nodejs\\{cmd}.cmd}。
-     * 结果会缓存，重复调用直接返回缓存值。
+     * 通过系统命令 {@code where}（Windows）或 {@code which}（macOS/Linux）查找 PATH 中的可执行文件，
+     * 未找到时回退到常见安装路径。结果会缓存，重复调用直接返回缓存值。
      * </p>
      *
      * @return 检测到的绝对路径，未找到返回 null
@@ -89,66 +88,81 @@ public enum CLIType implements ValueEnum<String> {
     private String doDetectCommandPath(CLIType type) {
         String cmd = type.commandPath;
         try {
-            if (IS_WINDOWS) {
-                return detectOnWindows(type, cmd);
+            String detected = this.detectBySystemCommand(type, cmd);
+            if (detected != null) {
+                return detected;
             }
-            return detectOnUnix(type, cmd);
+            return this.detectByFallbackPaths(type, cmd);
         } catch (Exception e) {
             log.warn("Failed to detect {} CLI path", type.name(), e);
             return null;
         }
     }
 
-    private String detectOnWindows(CLIType type, String cmd) throws Exception {
-        String appData = System.getenv("APPDATA");
-        if (appData != null) {
-            Path npmPath = Path.of(appData, "npm", cmd + ".cmd");
-            if (Files.isExecutable(npmPath)) {
-                log.info("Detected {} CLI at: {}", type.name(), npmPath);
-                return npmPath.toString();
-            }
-        }
-        Path globalPath = Path.of("C:\\Program Files\\nodejs", cmd + ".cmd");
-        if (Files.isExecutable(globalPath)) {
-            log.info("Detected {} CLI at: {}", type.name(), globalPath);
-            return globalPath.toString();
-        }
-        log.info("{} CLI not found on Windows", type.name());
-        return null;
-    }
-
-    private String detectOnUnix(CLIType type, String cmd) throws Exception {
-        ProcessBuilder pb = new ProcessBuilder("/usr/bin/which", cmd);
+    /**
+     * 通过 {@code where}（Windows）或 {@code which}（macOS/Linux）查找可执行文件。
+     *
+     * @param type CLI 类型
+     * @param cmd  命令名
+     * @return 检测到的绝对路径，未找到返回 null
+     */
+    private String detectBySystemCommand(CLIType type, String cmd) throws Exception {
+        String lookupCmd = IS_WINDOWS ? "where" : "which";
+        ProcessBuilder pb = new ProcessBuilder(lookupCmd, cmd);
         pb.redirectErrorStream(true);
         Process proc = pb.start();
         String output = new String(proc.getInputStream().readAllBytes()).trim();
         proc.waitFor();
-        if (proc.exitValue() == 0 && !output.isEmpty() && Files.isExecutable(Path.of(output))) {
-            log.info("Detected {} CLI at: {}", type.name(), output);
-            return output;
+
+        if (proc.exitValue() != 0 || output.isEmpty()) {
+            log.debug("{} lookup found nothing for: {}", lookupCmd, cmd);
+            return null;
         }
-        String fallback = checkUnixFallbackPaths(type, cmd);
-        if (fallback != null) {
-            return fallback;
+
+        String firstResult = output.split("\\R")[0].trim();
+        if (!firstResult.isEmpty() && Files.isExecutable(Path.of(firstResult))) {
+            log.info("Detected {} CLI via {} at: {}", type.name(), lookupCmd, firstResult);
+            return firstResult;
         }
-        log.info("{} CLI not found in PATH", type.name());
         return null;
     }
 
-    private String checkUnixFallbackPaths(CLIType type, String cmd) {
-        String[] fallbackDirs = {
-                "/opt/homebrew/bin",
-                "/usr/local/bin",
-                HOME + "/.npm/bin",
-                HOME + "/.nvm/versions/node/current/bin"
-        };
+    /**
+     * 回退到常见安装路径逐个检查。
+     *
+     * @param type CLI 类型
+     * @param cmd  命令名
+     * @return 检测到的绝对路径，未找到返回 null
+     */
+    private String detectByFallbackPaths(CLIType type, String cmd) {
+        String[] fallbackDirs;
+        if (IS_WINDOWS) {
+            String appData = System.getenv("APPDATA");
+            fallbackDirs = new String[]{
+                    appData != null ? Path.of(appData, "npm").toString() : null,
+                    "C:\\Program Files\\nodejs"
+            };
+        } else {
+            fallbackDirs = new String[]{
+                    "/opt/homebrew/bin",
+                    "/usr/local/bin",
+                    HOME + "/.npm/bin",
+                    HOME + "/.nvm/versions/node/current/bin"
+            };
+        }
+
         for (String dir : fallbackDirs) {
-            Path candidate = Path.of(dir, cmd);
+            if (dir == null) {
+                continue;
+            }
+            String suffix = IS_WINDOWS ? ".cmd" : "";
+            Path candidate = Path.of(dir, cmd + suffix);
             if (Files.isExecutable(candidate)) {
                 log.info("Detected {} CLI at fallback path: {}", type.name(), candidate);
                 return candidate.toString();
             }
         }
+        log.info("{} CLI not found", type.name());
         return null;
     }
 

@@ -4,12 +4,12 @@ import com.google.gson.Gson;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
-import com.google.gson.JsonParser;
-import com.moandjiezana.toml.Toml;
 import com.moandjiezana.toml.TomlWriter;
 import io.github.easyagent.util.GsonUtils;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import lombok.extern.slf4j.Slf4j;
+import org.tomlj.Toml;
+import org.tomlj.TomlParseResult;
+import org.tomlj.TomlTable;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -39,9 +39,8 @@ import java.util.Map;
  * @date 2026/5/9
  * @since 1.0.0
  */
+@Slf4j
 public class McpConfigService {
-
-    private static final Logger log = LoggerFactory.getLogger(McpConfigService.class);
 
     private static final String USER_HOME = System.getProperty("user.home");
     private static final Gson GSON = GsonUtils.getGson();
@@ -125,9 +124,7 @@ public class McpConfigService {
      */
     private List<McpServerEntry> loadScope(String cliType, String scope, String projectPath) {
         return switch (cliType.toUpperCase()) {
-            case "CLAUDE" -> this.loadFromJsonFile(
-                    this.resolveConfigPath("CLAUDE", scope, projectPath),
-                    "mcpServers", scope, false);
+            case "CLAUDE" -> this.loadClaudeMcp(scope, projectPath);
             case "OPENCODE" -> this.loadFromJsonFile(
                     this.resolveConfigPath("OPENCODE", scope, projectPath),
                     "mcp", scope, true);
@@ -136,6 +133,66 @@ public class McpConfigService {
                     "mcp_servers", scope);
             default -> Collections.emptyList();
         };
+    }
+
+    /**
+     * 加载 Claude MCP 配置。
+     * <p>
+     * Claude 的 {@code ~/.claude.json} 中 MCP 服务器存储在两个位置：
+     * <ol>
+     *   <li>顶层 {@code mcpServers}：全局 MCP 服务器</li>
+     *   <li>{@code projects.<path>.mcpServers}：按项目存储的 MCP 服务器</li>
+     * </ol>
+     * 本方法同时读取两个位置，合并去重。
+     * </p>
+     *
+     * @param scope       作用域
+     * @param projectPath 当前项目路径
+     * @return MCP 服务器条目列表
+     */
+    private List<McpServerEntry> loadClaudeMcp(String scope, String projectPath) {
+        List<McpServerEntry> result = new ArrayList<>();
+        Path configPath = this.resolveConfigPath("CLAUDE", scope, projectPath);
+        if (!Files.exists(configPath)) {
+            return result;
+        }
+        try {
+            String content = Files.readString(configPath);
+            JsonObject root = GsonUtils.parseObject(content);
+
+            JsonObject topServers = root.getAsJsonObject("mcpServers");
+            if (topServers != null) {
+                for (Map.Entry<String, JsonElement> e : topServers.entrySet()) {
+                    result.add(this.parseClaudeServer(e.getKey(), e.getValue(), scope, configPath.toString()));
+                }
+            }
+
+            JsonObject projects = root.getAsJsonObject("projects");
+            if (projects != null) {
+                for (Map.Entry<String, JsonElement> projEntry : projects.entrySet()) {
+                    if (!projEntry.getValue().isJsonObject()) {
+                        continue;
+                    }
+                    JsonObject projObj = projEntry.getValue().getAsJsonObject();
+                    JsonObject projServers = projObj.getAsJsonObject("mcpServers");
+                    if (projServers == null || projServers.isEmpty()) {
+                        continue;
+                    }
+                    for (Map.Entry<String, JsonElement> e : projServers.entrySet()) {
+                        result.add(this.parseClaudeServer(e.getKey(), e.getValue(), scope, configPath.toString()));
+                    }
+                }
+            }
+        } catch (Exception e) {
+            log.warn("读取 Claude MCP 配置文件失败: {}", configPath, e);
+        }
+
+        if ("project".equals(scope) && projectPath != null) {
+            Path mcpJsonPath = Path.of(projectPath, ".mcp.json");
+            result.addAll(this.loadFromJsonFile(mcpJsonPath, "mcpServers", scope, false));
+        }
+
+        return result;
     }
 
     /**
@@ -167,7 +224,7 @@ public class McpConfigService {
         }
         try {
             String content = Files.readString(configPath);
-            JsonObject root = JsonParser.parseString(content).getAsJsonObject();
+            JsonObject root = GsonUtils.parseObject(content);
             JsonObject servers = root.getAsJsonObject(topKey);
             if (servers == null) {
                 return entries;
@@ -187,6 +244,9 @@ public class McpConfigService {
 
     /**
      * 从 TOML 配置文件中读取 MCP 服务器列表（Codex 专用）。
+     * <p>
+     * 使用 tomlj 解析，避免 toml4j 在 Windows 路径 {@code \U} 上的 Unicode 转义 bug。
+     * </p>
      */
     @SuppressWarnings("unchecked")
     private List<McpServerEntry> loadFromTomlFile(Path configPath, String topKey, String scope) {
@@ -195,15 +255,22 @@ public class McpConfigService {
             return entries;
         }
         try {
-            Toml toml = new Toml().read(configPath.toFile());
-            Toml serversTable = toml.getTable(topKey);
+            TomlParseResult result = Toml.parse(Files.readString(configPath));
+            if (result.hasErrors()) {
+                log.warn("TOML parse errors in {}: {}", configPath, result.errors());
+            }
+            TomlTable serversTable = result.getTable(topKey);
             if (serversTable == null) {
                 return entries;
             }
             Map<String, Object> servers = serversTable.toMap();
             for (Map.Entry<String, Object> e : servers.entrySet()) {
-                if (e.getValue() instanceof Map<?, ?> map) {
-                    entries.add(this.parseTomlServer(e.getKey(), (Map<String, Object>) map, scope, configPath.toString()));
+                Object val = e.getValue();
+                if (val instanceof Map<?, ?> rawMap) {
+                    Map<String, Object> map = (Map<String, Object>) rawMap;
+                    entries.add(this.parseTomlServer(e.getKey(), map, scope, configPath.toString()));
+                } else if (val instanceof TomlTable tomlTable) {
+                    entries.add(this.parseTomlServer(e.getKey(), tomlTable.toMap(), scope, configPath.toString()));
                 }
             }
         } catch (Exception e) {
@@ -220,10 +287,12 @@ public class McpConfigService {
      */
     private McpServerEntry parseClaudeServer(String name, JsonElement element, String scope, String configPath) {
         JsonObject obj = element.isJsonObject() ? element.getAsJsonObject() : new JsonObject();
-        String command = obj.has("command") ? obj.get("command").getAsString() : null;
-        String url = obj.has("url") ? obj.get("url").getAsString() : null;
-        List<String> args = obj.has("args") ? this.jsonArrayToStringList(obj.getAsJsonArray("args")) : Collections.emptyList();
-        Map<String, String> env = obj.has("env") ? this.jsonObjectToStringMap(obj.getAsJsonObject("env")) : Collections.emptyMap();
+        String command = GsonUtils.getString(obj, "command");
+        String url = GsonUtils.getString(obj, "url");
+        List<String> args = obj.has("args") && obj.get("args").isJsonArray()
+                ? GsonUtils.jsonArrayToStringList(obj.getAsJsonArray("args")) : Collections.emptyList();
+        Map<String, String> env = obj.has("env") && obj.get("env").isJsonObject()
+                ? GsonUtils.jsonObjectToStringMap(obj.getAsJsonObject("env")) : Collections.emptyMap();
         boolean enabled = !obj.has("disabled") || !obj.get("disabled").getAsBoolean();
         String type = this.normalizeType(null, command, url);
         return McpServerEntry.builder()
@@ -244,7 +313,7 @@ public class McpConfigService {
         String command = null;
         List<String> args = Collections.emptyList();
         if (obj.has("command") && obj.get("command").isJsonArray()) {
-            List<String> parts = this.jsonArrayToStringList(obj.getAsJsonArray("command"));
+            List<String> parts = GsonUtils.jsonArrayToStringList(obj.getAsJsonArray("command"));
             if (!parts.isEmpty()) {
                 command = parts.get(0);
                 args = parts.size() > 1 ? parts.subList(1, parts.size()) : Collections.emptyList();
@@ -252,12 +321,12 @@ public class McpConfigService {
         } else if (obj.has("command") && obj.get("command").isJsonPrimitive()) {
             command = obj.get("command").getAsString();
         }
-        String url = obj.has("url") ? obj.get("url").getAsString() : null;
-        Map<String, String> env = obj.has("environment")
-                ? this.jsonObjectToStringMap(obj.getAsJsonObject("environment"))
-                : Collections.emptyMap();
+        String url = GsonUtils.getString(obj, "url");
+        Map<String, String> env = obj.has("environment") && obj.get("environment").isJsonObject()
+                ? GsonUtils.jsonObjectToStringMap(obj.getAsJsonObject("environment")) : Collections.emptyMap();
         boolean enabled = !obj.has("enabled") || obj.get("enabled").getAsBoolean();
-        String type = this.normalizeType(obj.has("type") ? obj.get("type").getAsString() : null, command, url);
+        String rawType = GsonUtils.getString(obj, "type");
+        String type = this.normalizeType(rawType, command, url);
         return McpServerEntry.builder()
                 .name(name).type(type).command(command).args(args).env(env)
                 .url(url).enabled(enabled).scope(scope).configPath(configPath)
@@ -274,8 +343,7 @@ public class McpConfigService {
                 ? list.stream().map(Object::toString).toList()
                 : Collections.emptyList();
         Map<String, String> env = map.get("env") instanceof Map<?, ?> m
-                ? this.toStringMap(m)
-                : Collections.emptyMap();
+                ? this.toStringMap(m) : Collections.emptyMap();
         boolean enabled = !(map.get("enabled") instanceof Boolean b) || b;
         String rawType = map.get("type") instanceof String s ? s : null;
         String type = this.normalizeType(rawType, command, url);
@@ -484,7 +552,7 @@ public class McpConfigService {
         if (content.isBlank()) {
             return new JsonObject();
         }
-        return JsonParser.parseString(content).getAsJsonObject();
+        return GsonUtils.parseObject(content);
     }
 
     /**
@@ -497,14 +565,18 @@ public class McpConfigService {
 
     /**
      * 读取 TOML 配置文件的根 Map。
+     * <p>
+     * 使用 tomlj 解析，避免 toml4j 在 Windows 路径 {@code \U} 上的 bug。
+     * 写入仍使用 toml4j 的 {@link TomlWriter}（写入数据不含 Windows 路径，不会触发 bug）。
+     * </p>
      */
     private Map<String, Object> readTomlRoot(Path configPath) {
         if (!Files.exists(configPath)) {
             return new LinkedHashMap<>();
         }
         try {
-            Toml toml = new Toml().read(configPath.toFile());
-            return new LinkedHashMap<>(toml.toMap());
+            TomlParseResult result = Toml.parse(Files.readString(configPath));
+            return new LinkedHashMap<>(result.toMap());
         } catch (Exception e) {
             return new LinkedHashMap<>();
         }
@@ -518,34 +590,6 @@ public class McpConfigService {
         if (parent != null && !Files.exists(parent)) {
             Files.createDirectories(parent);
         }
-    }
-
-    /**
-     * JSON 数组转字符串列表。
-     */
-    private List<String> jsonArrayToStringList(JsonArray arr) {
-        List<String> list = new ArrayList<>();
-        if (arr == null) {
-            return list;
-        }
-        for (JsonElement e : arr) {
-            list.add(e.getAsString());
-        }
-        return list;
-    }
-
-    /**
-     * JSON 对象转字符串映射。
-     */
-    private Map<String, String> jsonObjectToStringMap(JsonObject obj) {
-        Map<String, String> map = new LinkedHashMap<>();
-        if (obj == null) {
-            return map;
-        }
-        for (Map.Entry<String, JsonElement> e : obj.entrySet()) {
-            map.put(e.getKey(), e.getValue().getAsString());
-        }
-        return map;
     }
 
     /**

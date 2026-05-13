@@ -1,6 +1,5 @@
 package io.github.easyagent.session.reader;
 
-import com.google.gson.reflect.TypeToken;
 import io.github.easyagent.enums.CLIType;
 import io.github.easyagent.enums.ContentBlockType;
 import io.github.easyagent.enums.SessionRole;
@@ -15,7 +14,6 @@ import io.github.easyagent.util.GsonUtils;
 import lombok.extern.slf4j.Slf4j;
 
 import java.io.File;
-import java.lang.reflect.Type;
 import java.nio.file.Files;
 import java.nio.file.Paths;
 import java.sql.Connection;
@@ -49,7 +47,6 @@ public class OpenCodeSessionReader implements SessionReader {
     private static final String DB_PATH = System.getProperty("user.home")
             + File.separator + ".local" + File.separator + "share"
             + File.separator + "opencode" + File.separator + "opencode.db";
-    private static final Type MAP_TYPE = new TypeToken<Map<String, Object>>() {}.getType();
 
     /**
      * 获取此读取器对应的 CLI 类型。
@@ -122,7 +119,7 @@ public class OpenCodeSessionReader implements SessionReader {
     @Override
     public List<SessionInfo> listSessions(String projectPath) {
         return listSessions().stream()
-                .filter(s -> s.projectPath() != null && s.projectPath().contains(projectPath))
+                .filter(s -> matchesPath(s.projectPath(), projectPath))
                 .collect(Collectors.toList());
     }
 
@@ -191,7 +188,7 @@ public class OpenCodeSessionReader implements SessionReader {
                 String messageId = rs.getString("id");
                 long timeCreated = rs.getLong("time_created");
                 String dataJson = rs.getString("data");
-                Map<String, Object> data = GsonUtils.fromJson(dataJson, MAP_TYPE);
+                Map<String, Object> data = GsonUtils.fromJson(dataJson, GsonUtils.MAP_TYPE);
 
                 if (data == null) {
                     continue;
@@ -206,10 +203,10 @@ public class OpenCodeSessionReader implements SessionReader {
                 Map<String, Object> tokens = (Map<String, Object>) data.get("tokens");
                 if (tokens != null) {
                     tokenUsage = TokenUsage.builder()
-                            .totalTokens(toInt(tokens.get("total")))
-                            .inputTokens(toInt(tokens.get("input")))
-                            .outputTokens(toInt(tokens.get("output")))
-                            .reasoningTokens(toInt(tokens.get("reasoning")))
+                            .totalTokens(GsonUtils.toInt(tokens.get("total")))
+                            .inputTokens(GsonUtils.toInt(tokens.get("input")))
+                            .outputTokens(GsonUtils.toInt(tokens.get("output")))
+                            .reasoningTokens(GsonUtils.toInt(tokens.get("reasoning")))
                             .build();
                 }
 
@@ -252,7 +249,7 @@ public class OpenCodeSessionReader implements SessionReader {
 
             while (rs.next()) {
                 String dataJson = rs.getString("data");
-                Map<String, Object> data = GsonUtils.fromJson(dataJson, MAP_TYPE);
+                Map<String, Object> data = GsonUtils.fromJson(dataJson, GsonUtils.MAP_TYPE);
                 if (data == null) {
                     continue;
                 }
@@ -369,16 +366,4 @@ public class OpenCodeSessionReader implements SessionReader {
         }
     }
 
-    /**
-     * 将对象安全转换为 Integer。
-     *
-     * @param val 待转换对象
-     * @return Integer 值，无法转换时返回 null
-     */
-    private Integer toInt(Object val) {
-        if (val instanceof Number n) {
-            return n.intValue();
-        }
-        return null;
-    }
 }

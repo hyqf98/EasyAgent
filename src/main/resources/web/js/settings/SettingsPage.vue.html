@@ -103,6 +103,10 @@
                         <input type="text" class="model-search-input" v-model="modelSearch" :placeholder="i18n.t('settings.modelSearch') || 'Filter...'" />
                         <button v-if="modelSearch" class="model-search-clear" @click="modelSearch = ''">×</button>
                     </div>
+                    <template v-if="modelFilter === 'OPENCODE'">
+                        <button class="provider-toggle-btn" @click="expandAllProviders" :title="i18n.t('settings.expandAll') || 'Expand All'">▽</button>
+                        <button class="provider-toggle-btn" @click="collapseAllProviders" :title="i18n.t('settings.collapseAll') || 'Collapse All'">▷</button>
+                    </template>
                 </div>
 
                 <!-- Add Model Form -->
@@ -167,13 +171,18 @@
                         </div>
                         <div
                             class="model-table-row"
-                            :class="{ 'default-row': row.rowType === 'default' }"
+                            :class="{
+                                'default-row': row.rowType === 'default',
+                                'model-show-more-row': row.rowType === 'show-more'
+                            }"
                             v-for="(row, rowIdx) in modelRows"
                             :key="row.rowType === 'default'
                                 ? 'default-' + modelFilter
                                 : row.rowType === 'provider-header'
                                     ? 'provider-' + row.provider + '-' + rowIdx
-                                    : row.model.modelId + '-' + row.modelIndex + '-' + rowIdx"
+                                    : row.rowType === 'show-more'
+                                        ? 'show-more-' + rowIdx
+                                        : row.model.modelId + '-' + row.modelIndex + '-' + rowIdx"
                         >
                         <template v-if="row.rowType === 'default' && !editingDefault">
                             <span class="model-col-id model-default-id">-</span>
@@ -205,10 +214,10 @@
                                 <button class="icon-btn model-action-btn" @click="onCancelDefault">✕</button>
                             </span>
                         </template>
-                        <div v-else-if="row.rowType === 'provider-header'" class="model-provider-header">
-                            <span class="model-provider-dot"></span>
+                        <div v-else-if="row.rowType === 'provider-header'" class="model-provider-header" @click="toggleProvider(row.provider)" :class="{ collapsed: row.collapsed }">
+                            <span class="model-provider-arrow">{{ row.collapsed ? '▶' : '▼' }}</span>
                             <span class="model-provider-name">{{ row.provider }}</span>
-                            <span class="model-provider-count">{{ filteredModels.filter(function(m){ return (m.provider || 'other') === row.provider; }).length }}</span>
+                            <span class="model-provider-count">{{ row.count }}</span>
                         </div>
                         <template v-else-if="editingIndex === row.modelIndex">
                             <span class="model-col-id"><input class="model-edit-input" v-model="editForm.modelId" /></span>
@@ -231,6 +240,9 @@
                                 <button class="icon-btn model-action-btn" @click="onSaveEdit(row.modelIndex)">✓</button>
                                 <button class="icon-btn model-action-btn" @click="editingIndex = -1">✕</button>
                             </span>
+                        </template>
+                        <template v-else-if="row.rowType === 'show-more'">
+                            <span class="model-show-more" @click="loadMoreModels">{{ i18n.t('settings.showMore') }} ({{ row.remaining }} {{ i18n.t('settings.remaining') }})</span>
                         </template>
                         <template v-else>
                             <span class="model-col-id model-cell-ellipsis" :title="row.model.modelId">{{ row.model.modelId }}</span>

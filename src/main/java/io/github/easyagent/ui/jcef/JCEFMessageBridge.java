@@ -1,5 +1,6 @@
 package io.github.easyagent.ui.jcef;
 
+import com.google.gson.reflect.TypeToken;
 import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.util.text.StringUtil;
@@ -976,10 +977,15 @@ public class JCEFMessageBridge {
      */
     private void handleGetMcpConfigs(McpConfigsRequest request) {
         this.asyncExecutor.submit(() -> {
-            String cliType = request.cliType();
-            String projectPath = this.currentProjectPath;
-            List<McpServerEntry> entries = this.mcpConfigService.loadMcpConfigs(cliType, projectPath);
-            this.invokeJSCallback(JsCallback.MCP_CONFIGS, entries);
+            try {
+                String cliType = request.cliType();
+                String projectPath = this.currentProjectPath;
+                List<McpServerEntry> entries = this.mcpConfigService.loadMcpConfigs(cliType, projectPath);
+                this.invokeJSCallback(JsCallback.MCP_CONFIGS, entries);
+            } catch (Exception e) {
+                log.error("加载 MCP 配置失败", e);
+                this.invokeJSCallback(JsCallback.MCP_CONFIGS, List.of());
+            }
         });
     }
 
@@ -990,16 +996,22 @@ public class JCEFMessageBridge {
      */
     private void handleSaveMcpServer(SaveMcpServerRequest request) {
         this.asyncExecutor.submit(() -> {
-            String cliType = request.cliType();
-            String scope = request.scope();
-            String projectPath = "project".equals(scope) ? this.currentProjectPath : null;
-            McpServerEntry entry = request.toEntry();
-            boolean success = this.mcpConfigService.saveMcpServer(cliType, scope, projectPath, entry);
-            this.invokeJSCallback(JsCallback.MCP_SAVED,
-                    new McpSavedPayload(success, cliType, success ? "" : "Save failed"));
-            if (success) {
-                List<McpServerEntry> entries = this.mcpConfigService.loadMcpConfigs(cliType, this.currentProjectPath);
-                this.invokeJSCallback(JsCallback.MCP_CONFIGS, entries);
+            try {
+                String cliType = request.cliType();
+                String scope = request.scope();
+                String projectPath = "project".equals(scope) ? this.currentProjectPath : null;
+                McpServerEntry entry = request.toEntry();
+                boolean success = this.mcpConfigService.saveMcpServer(cliType, scope, projectPath, entry);
+                this.invokeJSCallback(JsCallback.MCP_SAVED,
+                        new McpSavedPayload(success, cliType, success ? "" : "Save failed"));
+                if (success) {
+                    List<McpServerEntry> entries = this.mcpConfigService.loadMcpConfigs(cliType, this.currentProjectPath);
+                    this.invokeJSCallback(JsCallback.MCP_CONFIGS, entries);
+                }
+            } catch (Exception e) {
+                log.error("保存 MCP 配置失败", e);
+                this.invokeJSCallback(JsCallback.MCP_SAVED,
+                        new McpSavedPayload(false, request.cliType(), e.getMessage()));
             }
         });
     }
@@ -1011,15 +1023,21 @@ public class JCEFMessageBridge {
      */
     private void handleDeleteMcpServer(DeleteMcpServerRequest request) {
         this.asyncExecutor.submit(() -> {
-            String cliType = request.cliType();
-            String scope = request.scope();
-            String projectPath = "project".equals(scope) ? this.currentProjectPath : null;
-            boolean success = this.mcpConfigService.deleteMcpServer(cliType, scope, projectPath, request.serverName());
-            this.invokeJSCallback(JsCallback.MCP_SAVED,
-                    new McpSavedPayload(success, cliType, success ? "" : "Delete failed"));
-            if (success) {
-                List<McpServerEntry> entries = this.mcpConfigService.loadMcpConfigs(cliType, this.currentProjectPath);
-                this.invokeJSCallback(JsCallback.MCP_CONFIGS, entries);
+            try {
+                String cliType = request.cliType();
+                String scope = request.scope();
+                String projectPath = "project".equals(scope) ? this.currentProjectPath : null;
+                boolean success = this.mcpConfigService.deleteMcpServer(cliType, scope, projectPath, request.serverName());
+                this.invokeJSCallback(JsCallback.MCP_SAVED,
+                        new McpSavedPayload(success, cliType, success ? "" : "Delete failed"));
+                if (success) {
+                    List<McpServerEntry> entries = this.mcpConfigService.loadMcpConfigs(cliType, this.currentProjectPath);
+                    this.invokeJSCallback(JsCallback.MCP_CONFIGS, entries);
+                }
+            } catch (Exception e) {
+                log.error("删除 MCP 配置失败", e);
+                this.invokeJSCallback(JsCallback.MCP_SAVED,
+                        new McpSavedPayload(false, request.cliType(), e.getMessage()));
             }
         });
     }
@@ -1034,32 +1052,38 @@ public class JCEFMessageBridge {
      */
     private void handleTestMcpConnect(TestMcpConnectRequest request) {
         this.asyncExecutor.submit(() -> {
-            String cliType = request.cliType();
-            String scope = request.scope();
-            String serverName = request.serverName();
-            String projectPath = "project".equals(scope) ? this.currentProjectPath : null;
-            List<McpServerEntry> entries = this.mcpConfigService.loadMcpConfigs(cliType, projectPath);
-            McpServerEntry target = null;
-            for (McpServerEntry e : entries) {
-                if (e.name().equals(serverName) && e.scope().equals(scope)) {
-                    target = e;
-                    break;
+            try {
+                String cliType = request.cliType();
+                String scope = request.scope();
+                String serverName = request.serverName();
+                String projectPath = "project".equals(scope) ? this.currentProjectPath : null;
+                List<McpServerEntry> entries = this.mcpConfigService.loadMcpConfigs(cliType, projectPath);
+                McpServerEntry target = null;
+                for (McpServerEntry e : entries) {
+                    if (e.name().equals(serverName) && e.scope().equals(scope)) {
+                        target = e;
+                        break;
+                    }
                 }
-            }
-            if (target == null) {
+                if (target == null) {
+                    this.invokeJSCallback(JsCallback.MCP_TEST_CONNECTED,
+                            new McpTestConnectedPayload(false, null, serverName, "Server config not found", List.of(), "", Map.of()));
+                    return;
+                }
+                McpTestService.ConnectResult result = this.mcpTestService.connect(target);
+                List<McpTestService.ToolInfo> tools = List.of();
+                if (result.success()) {
+                    tools = this.mcpTestService.listTools(result.connectionId());
+                }
                 this.invokeJSCallback(JsCallback.MCP_TEST_CONNECTED,
-                        new McpTestConnectedPayload(false, null, serverName, "Server config not found", List.of(), "", Map.of()));
-                return;
+                        new McpTestConnectedPayload(result.success(), result.connectionId(),
+                                serverName, result.serverNameOrError(), tools,
+                                result.transportType(), result.env()));
+            } catch (Exception e) {
+                log.error("测试 MCP 连接失败", e);
+                this.invokeJSCallback(JsCallback.MCP_TEST_CONNECTED,
+                        new McpTestConnectedPayload(false, null, "", e.getMessage(), List.of(), "", Map.of()));
             }
-            McpTestService.ConnectResult result = this.mcpTestService.connect(target);
-            List<McpTestService.ToolInfo> tools = List.of();
-            if (result.success()) {
-                tools = this.mcpTestService.listTools(result.connectionId());
-            }
-            this.invokeJSCallback(JsCallback.MCP_TEST_CONNECTED,
-                    new McpTestConnectedPayload(result.success(), result.connectionId(),
-                            serverName, result.serverNameOrError(), tools,
-                            result.transportType(), result.env()));
         });
     }
 
@@ -1070,9 +1094,15 @@ public class JCEFMessageBridge {
      */
     private void handleListMcpTools(ListMcpToolsRequest request) {
         this.asyncExecutor.submit(() -> {
-            List<McpTestService.ToolInfo> tools = this.mcpTestService.listTools(request.connectionId());
-            this.invokeJSCallback(JsCallback.MCP_TOOLS,
-                    new McpToolsPayload(request.connectionId(), tools));
+            try {
+                List<McpTestService.ToolInfo> tools = this.mcpTestService.listTools(request.connectionId());
+                this.invokeJSCallback(JsCallback.MCP_TOOLS,
+                        new McpToolsPayload(request.connectionId(), tools));
+            } catch (Exception e) {
+                log.error("列出 MCP 工具失败", e);
+                this.invokeJSCallback(JsCallback.MCP_TOOLS,
+                        new McpToolsPayload(request.connectionId(), List.of()));
+            }
         });
     }
 
@@ -1083,11 +1113,18 @@ public class JCEFMessageBridge {
      */
     private void handleCallMcpTool(CallMcpToolRequest request) {
         this.asyncExecutor.submit(() -> {
-            Map<String, Object> args = request.arguments() != null ? request.arguments() : Map.of();
-            McpTestService.ToolCallResult result = this.mcpTestService.callTool(
-                    request.connectionId(), request.toolName(), args);
-            this.invokeJSCallback(JsCallback.MCP_TOOL_RESULT,
-                    new McpToolResultPayload(request.connectionId(), request.toolName(), result));
+            try {
+                Map<String, Object> args = request.arguments() != null ? request.arguments() : Map.of();
+                McpTestService.ToolCallResult result = this.mcpTestService.callTool(
+                        request.connectionId(), request.toolName(), args);
+                this.invokeJSCallback(JsCallback.MCP_TOOL_RESULT,
+                        new McpToolResultPayload(request.connectionId(), request.toolName(), result));
+            } catch (Exception e) {
+                log.error("调用 MCP 工具失败", e);
+                this.invokeJSCallback(JsCallback.MCP_TOOL_RESULT,
+                        new McpToolResultPayload(request.connectionId(), request.toolName(),
+                                new McpTestService.ToolCallResult(false, e.getMessage(), false, List.of())));
+            }
         });
     }
 
@@ -1098,8 +1135,13 @@ public class JCEFMessageBridge {
      */
     private void handleGetSkills(GetSkillsRequest request) {
         this.asyncExecutor.submit(() -> {
-            List<SkillEntry> skills = this.skillsConfigService.loadSkills(request.cliType());
-            this.invokeJSCallback(JsCallback.SKILLS, skills);
+            try {
+                List<SkillEntry> skills = this.skillsConfigService.loadSkills(request.cliType());
+                this.invokeJSCallback(JsCallback.SKILLS, skills);
+            } catch (Exception e) {
+                log.error("加载 Skills 列表失败", e);
+                this.invokeJSCallback(JsCallback.SKILLS, List.of());
+            }
         });
     }
 
@@ -1110,14 +1152,20 @@ public class JCEFMessageBridge {
      */
     private void handleInstallSkill(InstallSkillRequest request) {
         this.asyncExecutor.submit(() -> {
-            String cliType = request.cliType();
-            SkillsConfigService.InstallResult result = this.skillsConfigService.installSkill(
-                    cliType, request.githubUrl(), request.skillPath(), request.scope());
-            this.invokeJSCallback(JsCallback.SKILL_INSTALLED,
-                    new SkillActionPayload(result.success(), cliType, result.message()));
-            if (result.success()) {
-                List<SkillEntry> skills = this.skillsConfigService.loadSkills(cliType);
-                this.invokeJSCallback(JsCallback.SKILLS, skills);
+            try {
+                String cliType = request.cliType();
+                SkillsConfigService.InstallResult result = this.skillsConfigService.installSkill(
+                        cliType, request.githubUrl(), request.skillPath(), request.scope());
+                this.invokeJSCallback(JsCallback.SKILL_INSTALLED,
+                        new SkillActionPayload(result.success(), cliType, result.message()));
+                if (result.success()) {
+                    List<SkillEntry> skills = this.skillsConfigService.loadSkills(cliType);
+                    this.invokeJSCallback(JsCallback.SKILLS, skills);
+                }
+            } catch (Exception e) {
+                log.error("安装 Skill 失败", e);
+                this.invokeJSCallback(JsCallback.SKILL_INSTALLED,
+                        new SkillActionPayload(false, request.cliType(), e.getMessage()));
             }
         });
     }
@@ -1129,14 +1177,20 @@ public class JCEFMessageBridge {
      */
     private void handleDeleteSkill(DeleteSkillRequest request) {
         this.asyncExecutor.submit(() -> {
-            String cliType = request.cliType();
-            SkillsConfigService.DeleteResult result = this.skillsConfigService.deleteSkill(
-                    cliType, request.skillName(), request.skillPath());
-            this.invokeJSCallback(JsCallback.SKILL_DELETED,
-                    new SkillActionPayload(result.success(), cliType, result.message()));
-            if (result.success()) {
-                List<SkillEntry> skills = this.skillsConfigService.loadSkills(cliType);
-                this.invokeJSCallback(JsCallback.SKILLS, skills);
+            try {
+                String cliType = request.cliType();
+                SkillsConfigService.DeleteResult result = this.skillsConfigService.deleteSkill(
+                        cliType, request.skillName(), request.skillPath());
+                this.invokeJSCallback(JsCallback.SKILL_DELETED,
+                        new SkillActionPayload(result.success(), cliType, result.message()));
+                if (result.success()) {
+                    List<SkillEntry> skills = this.skillsConfigService.loadSkills(cliType);
+                    this.invokeJSCallback(JsCallback.SKILLS, skills);
+                }
+            } catch (Exception e) {
+                log.error("删除 Skill 失败", e);
+                this.invokeJSCallback(JsCallback.SKILL_DELETED,
+                        new SkillActionPayload(false, request.cliType(), e.getMessage()));
             }
         });
     }
@@ -1148,9 +1202,15 @@ public class JCEFMessageBridge {
      */
     private void handleReadSkillContent(ReadSkillContentRequest request) {
         this.asyncExecutor.submit(() -> {
-            String content = this.skillsConfigService.readSkillContent(request.skillPath());
-            this.invokeJSCallback(JsCallback.SKILL_CONTENT,
-                    new SkillContentPayload(request.skillPath(), content != null ? content : ""));
+            try {
+                String content = this.skillsConfigService.readSkillContent(request.skillPath());
+                this.invokeJSCallback(JsCallback.SKILL_CONTENT,
+                        new SkillContentPayload(request.skillPath(), content != null ? content : ""));
+            } catch (Exception e) {
+                log.error("读取 Skill 内容失败", e);
+                this.invokeJSCallback(JsCallback.SKILL_CONTENT,
+                        new SkillContentPayload(request.skillPath(), ""));
+            }
         });
     }
 
@@ -2551,7 +2611,7 @@ public class JCEFMessageBridge {
         this.asyncExecutor.submit(() -> {
             try {
                 List<PlanTask> tasks = GsonUtils.fromJson(request.tasksJson(),
-                        new com.google.gson.reflect.TypeToken<List<PlanTask>>() {}.getType());
+                        new TypeToken<List<PlanTask>>() {}.getType());
                 boolean success = this.planService.saveTasks(request.planId(), tasks);
                 this.invokeJSCallback(JsCallback.PLAN_DETAIL, GsonUtils.toJson(Map.of(
                         "plan", GsonUtils.toJsonTree(this.planService.getPlan(request.planId())),

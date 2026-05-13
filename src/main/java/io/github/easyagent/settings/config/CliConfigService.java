@@ -1,6 +1,9 @@
 package io.github.easyagent.settings.config;
 
+import com.google.gson.GsonBuilder;
+import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
+import com.google.gson.JsonParser;
 import com.google.gson.reflect.TypeToken;
 import io.github.easyagent.enums.CLIType;
 import io.github.easyagent.util.GsonUtils;
@@ -12,7 +15,9 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -40,6 +45,7 @@ public class CliConfigService {
 
     private static final Path ZSHRC_PATH = Path.of(HOME, ".zshrc");
     private static final Path BASHRC_PATH = Path.of(HOME, ".bashrc");
+    private static final Path CLAUDE_SETTINGS_PATH = Path.of(HOME, ".claude", "settings.json");
 
     private static final Path OPENCODE_CONFIG_PATH = Path.of(HOME, ".config", "opencode", "opencode.json");
     private static final Path CODEX_CONFIG_PATH = Path.of(HOME, ".codex", "config.toml");
@@ -126,6 +132,12 @@ public class CliConfigService {
      */
     public ClaudeConfig readClaudeConfig(String commandPath) {
         java.util.Map<String, String> envVars = this.readShellExports();
+        if (IS_WINDOWS) {
+            java.util.Map<String, String> settingsEnv = this.readClaudeSettingsJson();
+            for (Map.Entry<String, String> e : settingsEnv.entrySet()) {
+                envVars.putIfAbsent(e.getKey(), e.getValue());
+            }
+        }
         return ClaudeConfig.builder()
                 .baseUrl(envVars.getOrDefault("ANTHROPIC_BASE_URL", ""))
                 .apiKey(envVars.getOrDefault("ANTHROPIC_API_KEY", ""))
@@ -141,13 +153,17 @@ public class CliConfigService {
      * @param config Claude 配置
      */
     public void saveClaudeConfig(ClaudeConfig config) {
-        Path shellFile = this.detectShellProfile();
-        this.writeShellExport(shellFile, "ANTHROPIC_BASE_URL", config.baseUrl());
-        this.writeShellExport(shellFile, "ANTHROPIC_API_KEY", config.apiKey());
-        this.writeShellExport(shellFile, "ANTHROPIC_AUTH_TOKEN",
-                config.authToken() != null ? config.authToken() : "");
-        this.writeShellExport(shellFile, "ANTHROPIC_MODEL", config.model());
-        log.info("Claude Code config saved to {}", shellFile);
+        if (IS_WINDOWS) {
+            this.writeClaudeSettingsJson(config);
+        } else {
+            Path shellFile = this.detectShellProfile();
+            this.writeShellExport(shellFile, "ANTHROPIC_BASE_URL", config.baseUrl());
+            this.writeShellExport(shellFile, "ANTHROPIC_API_KEY", config.apiKey());
+            this.writeShellExport(shellFile, "ANTHROPIC_AUTH_TOKEN",
+                    config.authToken() != null ? config.authToken() : "");
+            this.writeShellExport(shellFile, "ANTHROPIC_MODEL", config.model());
+            log.info("Claude Code config saved to {}", shellFile);
+        }
     }
 
     // ==================== OpenCode ====================
@@ -334,7 +350,7 @@ public class CliConfigService {
         if (Files.exists(authPath)) {
             try {
                 String json = Files.readString(authPath);
-                com.google.gson.JsonObject obj = com.google.gson.JsonParser.parseString(json).getAsJsonObject();
+                JsonObject obj = JsonParser.parseString(json).getAsJsonObject();
                 var keyEl = obj.get("OPENAI_API_KEY");
                 if (keyEl != null && !keyEl.isJsonNull()) {
                     String key = keyEl.getAsString();
@@ -356,9 +372,13 @@ public class CliConfigService {
      */
     public void saveCodexConfig(CodexConfig config) {
         if (config.apiKey() != null && !config.apiKey().isBlank()) {
-            Path shellFile = this.detectShellProfile();
-            this.writeShellExport(shellFile, "OPENAI_API_KEY", config.apiKey());
-            log.info("Codex API key saved to {}", shellFile);
+            if (IS_WINDOWS) {
+                this.writeCodexAuthJson(config.apiKey());
+            } else {
+                Path shellFile = this.detectShellProfile();
+                this.writeShellExport(shellFile, "OPENAI_API_KEY", config.apiKey());
+                log.info("Codex API key saved to {}", shellFile);
+            }
         }
 
         Path configPath = CODEX_CONFIG_PATH;
@@ -435,6 +455,36 @@ public class CliConfigService {
     // ==================== Shell Profile Helpers ====================
 
     /**
+     * 从 Claude 的 {@code ~/.claude/settings.json} 中读取 {@code env} 段的配置。
+     * <p>
+     * Windows 下 Claude 不写入 shell profile，而是将环境变量存储在 settings.json 的 env 字段中。
+     * </p>
+     *
+     * @return 环境变量映射
+     */
+    private Map<String, String> readClaudeSettingsJson() {
+        Map<String, String> vars = new HashMap<>();
+        if (!Files.exists(CLAUDE_SETTINGS_PATH)) {
+            return vars;
+        }
+        try {
+            String json = Files.readString(CLAUDE_SETTINGS_PATH);
+            JsonObject root = JsonParser.parseString(json).getAsJsonObject();
+            JsonObject env = root.getAsJsonObject("env");
+            if (env != null) {
+                for (Map.Entry<String, JsonElement> e : env.entrySet()) {
+                    if (e.getValue().isJsonPrimitive()) {
+                        vars.put(e.getKey(), e.getValue().getAsString());
+                    }
+                }
+            }
+        } catch (Exception e) {
+            log.warn("Failed to read Claude settings.json: {}", CLAUDE_SETTINGS_PATH, e);
+        }
+        return vars;
+    }
+
+    /**
      * 检测当前用户的 shell profile 文件路径。
      *
      * @return shell profile 文件路径
@@ -447,6 +497,83 @@ public class CliConfigService {
             return BASHRC_PATH;
         }
         return ZSHRC_PATH;
+    }
+
+    /**
+     * 将 Claude 配置写入 {@code ~/.claude/settings.json} 的 {@code env} 段。
+     * <p>
+     * Windows 下 Claude 使用 settings.json 存储环境变量，不写入 shell profile。
+     * </p>
+     *
+     * @param config Claude 配置
+     */
+    private void writeClaudeSettingsJson(ClaudeConfig config) {
+        try {
+            Files.createDirectories(CLAUDE_SETTINGS_PATH.getParent());
+            JsonObject root = new JsonObject();
+            if (Files.exists(CLAUDE_SETTINGS_PATH)) {
+                try {
+                    String existing = Files.readString(CLAUDE_SETTINGS_PATH);
+                    root = JsonParser.parseString(existing).getAsJsonObject();
+                } catch (Exception ignored) {
+                }
+            }
+            JsonObject env = root.has("env") && root.get("env").isJsonObject()
+                    ? root.getAsJsonObject("env")
+                    : new JsonObject();
+            this.putEnvIfNotBlank(env, "ANTHROPIC_BASE_URL", config.baseUrl());
+            this.putEnvIfNotBlank(env, "ANTHROPIC_API_KEY", config.apiKey());
+            this.putEnvIfNotBlank(env, "ANTHROPIC_AUTH_TOKEN", config.authToken());
+            this.putEnvIfNotBlank(env, "ANTHROPIC_MODEL", config.model());
+            root.add("env", env);
+            String json = new com.google.gson.GsonBuilder().setPrettyPrinting().create().toJson(root);
+            Files.writeString(CLAUDE_SETTINGS_PATH, json);
+            log.info("Claude Code config saved to {}", CLAUDE_SETTINGS_PATH);
+        } catch (IOException e) {
+            log.warn("Failed to write Claude settings.json: {}", CLAUDE_SETTINGS_PATH, e);
+            throw new RuntimeException("Failed to save Claude config: " + e.getMessage(), e);
+        }
+    }
+
+    /**
+     * 向 JSON 对象中写入非空环境变量值。
+     *
+     * @param env   env JSON 对象
+     * @param key   环境变量名
+     * @param value 环境变量值
+     */
+    private void putEnvIfNotBlank(com.google.gson.JsonObject env, String key, String value) {
+        if (value != null && !value.isBlank()) {
+            env.addProperty(key, value);
+        }
+    }
+
+    /**
+     * 将 Codex API Key 写入 {@code ~/.codex/auth.json}。
+     * <p>
+     * Windows 下 Codex 使用 auth.json 存储密钥，不写入 shell profile。
+     * </p>
+     *
+     * @param apiKey API Key
+     */
+    private void writeCodexAuthJson(String apiKey) {
+        try {
+            Files.createDirectories(CODEX_AUTH_PATH.getParent());
+            JsonObject obj = new JsonObject();
+            if (Files.exists(CODEX_AUTH_PATH)) {
+                try {
+                    String existing = Files.readString(CODEX_AUTH_PATH);
+                    obj = JsonParser.parseString(existing).getAsJsonObject();
+                } catch (Exception ignored) {
+                }
+            }
+            obj.addProperty("OPENAI_API_KEY", apiKey);
+            Files.writeString(CODEX_AUTH_PATH, new GsonBuilder().setPrettyPrinting().create().toJson(obj));
+            log.info("Codex API key saved to {}", CODEX_AUTH_PATH);
+        } catch (IOException e) {
+            log.warn("Failed to write Codex auth.json: {}", CODEX_AUTH_PATH, e);
+            throw new RuntimeException("Failed to save Codex API key: " + e.getMessage(), e);
+        }
     }
 
     /**

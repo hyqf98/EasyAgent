@@ -101,7 +101,8 @@ public class McpTestService {
                 if (entry.command() == null || entry.command().isBlank()) {
                     throw new IllegalArgumentException("Command is required for stdio MCP server");
                 }
-                ServerParameters.Builder builder = ServerParameters.builder(entry.command());
+                String command = resolveCommand(entry.command());
+                ServerParameters.Builder builder = ServerParameters.builder(command);
                 if (entry.args() != null && !entry.args().isEmpty()) {
                     builder.args(entry.args());
                 }
@@ -333,6 +334,36 @@ public class McpTestService {
             }
         });
         this.clients.clear();
+    }
+
+    /**
+     * 解析 MCP 服务器启动命令，在 Windows 上自动补充 {@code .cmd} 后缀。
+     * <p>
+     * Node.js 的 {@code npx}、{@code npm} 等命令在 Windows 上实际是
+     * {@code npx.cmd}、{@code npm.cmd}，直接传给 {@link ProcessBuilder}
+     * 会因 {@code CreateProcess error=2} 失败。
+     * </p>
+     *
+     * @param command 原始命令
+     * @return 解析后的命令
+     */
+    private static String resolveCommand(String command) {
+        if (command == null || command.isBlank()) {
+            return command;
+        }
+        if (!System.getProperty("os.name", "").toLowerCase().contains("win")) {
+            return command;
+        }
+        if (command.contains("/") || command.contains("\\") || command.contains(".")) {
+            return command;
+        }
+        String[] winExts = {".cmd", ".bat", ".exe"};
+        for (String ext : winExts) {
+            if (command.toLowerCase().endsWith(ext)) {
+                return command;
+            }
+        }
+        return command + ".cmd";
     }
 
     /**

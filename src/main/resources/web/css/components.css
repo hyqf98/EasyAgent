@@ -262,9 +262,6 @@
     background: rgba(239,68,68,0.08);
 }
 
-/* === Streaming Cursor === */
-.streaming-cursor::after { content: '\25CD'; animation: blink .7s infinite; color: var(--ea-claude); }
-
 /* === Session Drawer Overlay === */
 .session-overlay {
     position: fixed; top: 0; left: 0; right: 0; bottom: 0;
