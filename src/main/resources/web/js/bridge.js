@@ -388,9 +388,18 @@ window.EABridge = {
      * @param {number} retryMaxCount - 最大重试次数
      * @param {number} retryTimeoutMs - 单次执行超时（毫秒）
      */
-     saveRetryConfig(retryMaxCount, retryTimeoutMs) {
-         this.send('saveRetryConfig', { retryMaxCount: retryMaxCount, retryTimeoutMs: retryTimeoutMs });
-     },
+      saveRetryConfig(retryMaxCount, retryTimeoutMs) {
+          this.send('saveRetryConfig', { retryMaxCount: retryMaxCount, retryTimeoutMs: retryTimeoutMs });
+      },
+
+      /**
+       * 保存面板布局到后端持久化。
+       *
+       * @param {string} paneLayoutJson 面板布局 JSON 字符串
+       */
+      savePaneLayout(paneLayoutJson) {
+          this.send('savePaneLayout', { paneLayoutJson: paneLayoutJson });
+      },
 
      /**
       * 获取模型配置列表。

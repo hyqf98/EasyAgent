@@ -4,13 +4,20 @@
         v-for="pane in panes"
         :key="pane.paneId"
         class="tab-item"
-        :class="{ active: pane.paneId === focusedPaneId }"
+        :class="{
+            active: pane.paneId === focusedPaneId,
+            'tab-drag-source': dragTabId === pane.paneId,
+            'tab-drop-left': dropTabId === pane.paneId && dropTabPosition === 'before',
+            'tab-drop-right': dropTabId === pane.paneId && dropTabPosition === 'after'
+        }"
+        :data-pane-id="pane.paneId"
         @click="onTabClick(pane.paneId)"
+        @mousedown="onTabMouseDown(pane.paneId, $event)"
     >
         <span class="dot" :class="(pane.cliType || 'claude').toLowerCase()"></span>
         <span class="tab-label">{{ getTabTitle(pane) }}</span>
-        <button v-if="panes.length > 1" class="tab-close" @click.stop="onTabClose(pane.paneId)">✕</button>
+        <button v-if="panes.length > 1" class="tab-close" @mousedown.stop @click.stop="onTabClose(pane.paneId)">✕</button>
     </div>
-    <button class="tab-add" @click="$emit('add-pane')" title="+">+</button>
+    <button class="tab-add" @mousedown.stop @click="$emit('add-pane')" title="+">+</button>
 </div>
 </template>

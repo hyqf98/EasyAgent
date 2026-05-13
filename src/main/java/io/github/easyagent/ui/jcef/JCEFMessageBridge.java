@@ -199,6 +199,8 @@ public class JCEFMessageBridge {
                 this::handleDeleteSessions);
         this.registerHandler(JsAction.SAVE_PENDING_QUEUE, SavePendingQueueRequest.class,
                 this::handleSavePendingQueue);
+        this.registerHandler(JsAction.SAVE_PANE_LAYOUT, SavePaneLayoutRequest.class,
+                this::handleSavePaneLayout);
         this.registerHandler(JsAction.GET_RETRY_CONFIG, ActionRequest.class, request -> this.pushRetryConfig());
         this.registerHandler(JsAction.SAVE_RETRY_CONFIG, SaveRetryConfigRequest.class,
                 this::handleSaveRetryConfig);
@@ -535,9 +537,7 @@ public class JCEFMessageBridge {
                     JCEFMessageBridge.this.logAIResponse(response);
                     String resolvedSessionId = response.sessionId() != null
                             ? response.sessionId()
-                            : (JCEFMessageBridge.this.currentSessionId != null
-                            ? JCEFMessageBridge.this.currentSessionId
-                            : effectiveSessionId);
+                            : effectiveSessionId;
                     if (response.toolCall() != null) {
                         JCEFMessageBridge.this.fileEditService.trackToolCall(resolvedSessionId, response.toolCall());
                     }
@@ -554,6 +554,7 @@ public class JCEFMessageBridge {
                 @Override
                 public void onComplete() {
                     String resolvedSessionId = JCEFMessageBridge.this.currentSessionId != null
+                            && JCEFMessageBridge.this.currentSessionId.equals(effectiveSessionId)
                             ? JCEFMessageBridge.this.currentSessionId
                             : effectiveSessionId;
 
@@ -732,6 +733,19 @@ public class JCEFMessageBridge {
     }
 
     /**
+     * 保存面板布局到项目状态。
+     *
+     * @param request 保存面板布局请求
+     */
+    private void handleSavePaneLayout(SavePaneLayoutRequest request) {
+        if (this.project == null) {
+            return;
+        }
+        EasyAgentState state = EasyAgentState.getInstance(this.project);
+        state.setPaneLayoutJson(request.paneLayoutJson());
+    }
+
+    /**
      * 推送恢复的持久化状态到前端。
      * <p>
      * 包括上次活跃的会话 ID、CLI 类型和所有待发送队列。
@@ -748,7 +762,8 @@ public class JCEFMessageBridge {
                 appState.getCurrentCliType() != null ? appState.getCurrentCliType() : "",
                 this.pendingQueueStates(state.getPendingQueues()),
                 appState.getRetryMaxCount(),
-                appState.getRetryTimeoutMs()
+                appState.getRetryTimeoutMs(),
+                state.getPaneLayoutJson() != null ? state.getPaneLayoutJson() : ""
         ));
     }
 
@@ -1830,6 +1845,15 @@ public class JCEFMessageBridge {
     }
 
     /**
+     * 保存面板布局请求。
+     *
+     * @param action       动作名称
+     * @param paneLayoutJson 面板布局 JSON 字符串
+     */
+    private record SavePaneLayoutRequest(String action, String paneLayoutJson) implements JsRequest {
+    }
+
+    /**
      * 保存重试配置请求。
      *
      * @param action         动作名称
@@ -1974,10 +1998,12 @@ public class JCEFMessageBridge {
      * @param pendingQueues    待发送队列列表
      * @param retryMaxCount    最大重试次数
      * @param retryTimeoutMs   超时时间
+     * @param paneLayoutJson   面板布局 JSON
      */
     private record RestoredStatePayload(String currentSessionId, String currentCliType,
                                         List<PendingQueueStatePayload> pendingQueues,
-                                        int retryMaxCount, long retryTimeoutMs) {
+                                        int retryMaxCount, long retryTimeoutMs,
+                                        String paneLayoutJson) {
     }
 
     /**

@@ -104,16 +104,22 @@ window.EARegisterComponent('chat-view', 'ChatView', {
                 EABridge.loadHistory(sessionId, cliType, true);
             }, 60);
         }.bind(this);
+        this._onStateRestored = function (e) {
+            var detail = e.detail || {};
+            this._restorePaneLayout(detail.paneLayoutJson);
+        }.bind(this);
         window.addEventListener('ea-session-list', this._onSessionList);
         window.addEventListener('ea-sessions-deleted', this._onSessionsDeleted);
         window.addEventListener('ea-slash-command-executed', this._onSlashCommandExecuted);
         window.addEventListener('ea-stream-complete', this._onStreamComplete);
+        window.addEventListener('ea-state-restored', this._onStateRestored);
     },
     beforeUnmount() {
         if (this._onSessionList) window.removeEventListener('ea-session-list', this._onSessionList);
         if (this._onSessionsDeleted) window.removeEventListener('ea-sessions-deleted', this._onSessionsDeleted);
         if (this._onSlashCommandExecuted) window.removeEventListener('ea-slash-command-executed', this._onSlashCommandExecuted);
         if (this._onStreamComplete) window.removeEventListener('ea-stream-complete', this._onStreamComplete);
+        if (this._onStateRestored) window.removeEventListener('ea-state-restored', this._onStateRestored);
         if (this.toastTimer) { clearTimeout(this.toastTimer); this.toastTimer = null; }
     },
     watch: {
@@ -127,6 +133,12 @@ window.EARegisterComponent('chat-view', 'ChatView', {
             if (newSid && this.store.activePanes.length === 0) {
                 this.store.addPane(newSid, this.store.cliType, this.store.sessionTitle);
             }
+        },
+        'store.paneGrid': {
+            handler() {
+                this._savePaneLayout();
+            },
+            deep: true
         }
     },
     methods: {
@@ -193,6 +205,7 @@ window.EARegisterComponent('chat-view', 'ChatView', {
             this.pendingDeleteRedirect = false;
             this.pendingSlashRefreshSessionId = null;
             this.store.messagesVersion++;
+            this._savePaneLayout();
         },
         openFreshChatForCurrentCli() {
             this.store._saveCurrentToCache();
@@ -300,6 +313,97 @@ window.EARegisterComponent('chat-view', 'ChatView', {
             setTimeout(function () { self.isDeletingSessions = false; }, 15000);
             EABridge.deleteSessions(idsToDelete);
             this.clearSelection();
+        },
+        _restorePaneLayout(paneLayoutJson) {
+            if (!paneLayoutJson) return;
+            try {
+                var layout = JSON.parse(paneLayoutJson);
+                if (!layout || !layout.panes || !layout.grid) return;
+                var panes = layout.panes;
+                var grid = layout.grid;
+                if (!Array.isArray(panes) || panes.length === 0) return;
+                if (!Array.isArray(grid) || grid.length === 0) return;
+
+                var allPaneIds = {};
+                grid.forEach(function (row) {
+                    (row || []).forEach(function (pid) { allPaneIds[pid] = true; });
+                });
+                var validPanes = panes.filter(function (p) {
+                    return !!allPaneIds[p.paneId] && !!p.sessionId && !EAIsProvisionalSessionId(p.sessionId);
+                });
+                if (validPanes.length === 0) return;
+
+                var validGrid = grid.map(function (row) {
+                    return (row || []).filter(function (pid) {
+                        return validPanes.some(function (p) { return p.paneId === pid; });
+                    });
+                }).filter(function (row) { return row.length > 0; });
+
+                if (validGrid.length === 0) return;
+
+                var maxSeq = 0;
+                validPanes.forEach(function (p) {
+                    var match = p.paneId.match(/^pane-(\d+)$/);
+                    if (match) { var seq = parseInt(match[1]); if (seq > maxSeq) maxSeq = seq; }
+                });
+
+                this.store.activePanes = validPanes;
+                this.store.paneGrid = validGrid;
+                this.store._paneSeq = maxSeq;
+
+                if (Array.isArray(layout.rowSizes) && layout.rowSizes.length === validGrid.length) {
+                    this.store.rowSizes = layout.rowSizes.slice();
+                    this.store.colSizes = {};
+                    validGrid.forEach(function (row, idx) {
+                        var saved = layout.colSizes && layout.colSizes[idx];
+                        if (Array.isArray(saved) && saved.length === row.length) {
+                            this.store.colSizes[idx] = saved.slice();
+                        } else {
+                            this.store._recalcSizes();
+                            return;
+                        }
+                    }.bind(this));
+                } else {
+                    this.store._recalcSizes();
+                }
+
+                var focusedId = layout.focusedPaneId;
+                if (focusedId && this.store.getPaneById(focusedId)) {
+                    this.store.focusedPaneId = focusedId;
+                } else if (validPanes.length > 0) {
+                    this.store.focusedPaneId = validPanes[0].paneId;
+                }
+
+                var primaryPane = this.store.getFocusedPane();
+                if (primaryPane) {
+                    this.store.sessionId = primaryPane.sessionId;
+                    this.store.cliType = primaryPane.cliType || this.store.cliType;
+                    this.store.sessionTitle = primaryPane.title || '';
+                    this.store.messages = [];
+                    this.store.messagesVersion++;
+                    EABridge.loadHistory(primaryPane.sessionId, primaryPane.cliType || this.store.cliType);
+                }
+            } catch (e) {
+                // ignore invalid layout JSON
+            }
+        },
+        _savePaneLayout() {
+            var panes = this.store.activePanes;
+            var grid = this.store.paneGrid;
+            if (panes.length === 0) {
+                EABridge.savePaneLayout('');
+                return;
+            }
+            var layout = {
+                panes: panes.map(function (p) {
+                    return { paneId: p.paneId, sessionId: p.sessionId, cliType: p.cliType, title: p.title || '' };
+                }),
+                grid: grid,
+                focusedPaneId: this.store.focusedPaneId,
+                rowSizes: this.store.rowSizes.slice(),
+                colSizes: JSON.parse(JSON.stringify(this.store.colSizes))
+            };
+            EABridge.savePaneLayout(JSON.stringify(layout));
         }
     }
 });

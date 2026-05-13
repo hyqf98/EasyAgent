@@ -16,6 +16,8 @@ import org.cef.misc.StringRef;
 import org.cef.network.CefRequest;
 import org.cef.network.CefResponse;
 
+import com.intellij.ui.JBColor;
+
 import javax.swing.JComponent;
 import java.io.IOException;
 import java.io.InputStream;
@@ -214,19 +216,23 @@ public class ChatBrowserComponent {
     }
 
     private void loadFallbackHTML() {
+        boolean isDark = !JBColor.isBright();
+        String bgColor = isDark ? "#111214" : "#FFFFFF";
+        String textColor = isDark ? "#E6E6E6" : "#374151";
+        String titleColor = isDark ? "#F1F5F9" : "#111827";
         String html = """
                 <html><head><meta charset="UTF-8">
                 <style>
                     body{font-family:-apple-system,sans-serif;display:flex;justify-content:center;
-                    align-items:center;height:100vh;margin:0;background:#0F172A;color:#94A3B8;}
+                    align-items:center;height:100vh;margin:0;background:%s;color:%s;}
                     .container{text-align:center;}
-                    h2{color:#F1F5F9;font-size:18px;margin-bottom:8px;}
+                    h2{color:%s;font-size:18px;margin-bottom:8px;}
                     p{font-size:13px;}
                 </style></head><body>
                 <div class="container"><h2>EasyAgent</h2>
                 <p>Failed to load UI resources.<br>Please restart the IDE.</p></div>
                 </body></html>
-                """;
+                """.formatted(bgColor, textColor, titleColor);
         this.browser.loadHTML(html);
     }
 

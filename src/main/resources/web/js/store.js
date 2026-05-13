@@ -179,7 +179,7 @@ var EA_PENDING_MAP = {};
 var EA_STREAMING_MAP = Vue.reactive({});
 
 /** 按会话 ID 存储的消息缓存 { messages, retryStatus, isStreaming, loaded }。 */
-var EA_SESSION_CACHE = {};
+var EA_SESSION_CACHE = Vue.reactive({});
 
 /** 是否正在加载历史消息。 */
 var EA_LOADING_MAP = Vue.reactive({});
@@ -215,6 +215,11 @@ window.EAStore = Vue.reactive({
     paneGrid: [],
     focusedPaneId: null,
     _paneSeq: 0,
+
+    /** 行高度比例数组，每项为百分比数值（如 50 表示 50%）。 */
+    rowSizes: [],
+    /** 按行索引存储的列宽度比例数组，每项为百分比数值。 */
+    colSizes: {},
 
     get isStreaming() {
         return !!EA_STREAMING_MAP[this.sessionId];
@@ -534,32 +539,35 @@ window.EAStore = Vue.reactive({
         switch (eventType) {
             case EA_EVENT_STEP_START:
                 this._ensureAssistantIn(msgs).streamState = EA_STATE_GENERATING;
-                return;
+                break;
             case EA_EVENT_STEP_FINISH:
                 this._accumulateTokenUsageIn(msgs, event);
                 var finishMsg = this._getLastAssistantIn(msgs);
                 if (finishMsg) finishMsg.pendingFinishReason = event.reason || 'stop';
-                return;
+                break;
             case EA_EVENT_RETRY_STATUS:
                 var retryMsg = this._ensureAssistantIn(msgs);
                 retryMsg.streamState = EA_STATE_RETRYING;
                 retryMsg.retryStatus = event;
                 EA_SESSION_CACHE[sid].retryStatus = event;
-                return;
+                break;
             case EA_EVENT_ERROR:
                 var errorMsg = this._ensureAssistantIn(msgs);
                 errorMsg.streamState = EA_STATE_FAILED;
                 errorMsg.contents.push({ type: EA_BLOCK_ERROR, text: event.message });
                 delete EA_STREAMING_MAP[sid];
                 EA_SESSION_CACHE[sid].isStreaming = false;
-                return;
+                break;
             case EA_EVENT_MESSAGE:
                 this._appendMsgTo(msgs, event);
-                return;
+                break;
             case EA_EVENT_TOOL_USE:
                 this._appendToolTo(msgs, event);
+                break;
+            default:
                 return;
         }
+        this.messagesVersion++;
     },
 
     _getMsgArray(msgs) {
@@ -1183,6 +1191,7 @@ window.EAStore = Vue.reactive({
         }
         this.paneGrid[this.paneGrid.length - 1].push(pane.paneId);
         this.focusedPaneId = pane.paneId;
+        this._recalcSizes();
         return pane;
     },
 
@@ -1197,6 +1206,7 @@ window.EAStore = Vue.reactive({
         this.activePanes.push(pane);
         this.paneGrid.push([pane.paneId]);
         this.focusedPaneId = pane.paneId;
+        this._recalcSizes();
         return pane;
     },
 
@@ -1224,6 +1234,7 @@ window.EAStore = Vue.reactive({
                 this.focusedPaneId = null;
             }
         }
+        this._recalcSizes();
     },
 
     movePaneToNewRow(paneId) {
@@ -1330,6 +1341,49 @@ window.EAStore = Vue.reactive({
             var pane = this.addPane(null, this.cliType, '');
             this.sessionId = pane.sessionId;
         }
+    },
+
+    /**
+     * 重新计算所有行高和列宽比例，保持均匀分布。
+     * 在面板增删或行列变化后自动调用。
+     */
+    _recalcSizes() {
+        var rowCount = this.paneGrid.length;
+        if (rowCount === 0) {
+            this.rowSizes = [];
+            this.colSizes = {};
+            return;
+        }
+        var rowPct = 100 / rowCount;
+        this.rowSizes = [];
+        for (var r = 0; r < rowCount; r++) {
+            this.rowSizes.push(rowPct);
+            var colCount = this.paneGrid[r].length;
+            var colPct = 100 / colCount;
+            this.colSizes[r] = [];
+            for (var c = 0; c < colCount; c++) {
+                this.colSizes[r].push(colPct);
+            }
+        }
+    },
+
+    /**
+     * 更新行高度比例数组（拖拽调整行高后调用）。
+     *
+     * @param {Array} sizes 行高度百分比数组
+     */
+    updateRowSizes(sizes) {
+        this.rowSizes = sizes.slice();
+    },
+
+    /**
+     * 更新指定行的列宽度比例数组（拖拽调整列宽后调用）。
+     *
+     * @param {number} rowIdx 行索引
+     * @param {Array} sizes 列宽度百分比数组
+     */
+    updateColSizes(rowIdx, sizes) {
+        this.colSizes[rowIdx] = sizes.slice();
     },
 
     activatePaneAsPrimary(paneId) {

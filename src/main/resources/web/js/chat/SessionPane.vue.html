@@ -26,15 +26,17 @@
             <div class="chat-welcome-desc">{{ i18n.t('chat.welcomeDesc') }}</div>
         </div>
         <template v-if="!isLoading && paneMessages.length > 0">
+            <div class="virtual-spacer-top" :style="{ height: virtualTopPadding + 'px' }"></div>
             <message-bubble
-                v-for="(msg, idx) in paneMessages"
-                :key="idx"
+                v-for="(msg, vIdx) in virtualVisibleMessages"
+                :key="virtualStart + vIdx"
                 :message="msg"
-                :is-last="idx === paneMessages.length - 1"
-                :show-retry="idx === paneMessages.length - 1 && canRetry"
+                :is-last="virtualStart + vIdx === paneMessages.length - 1"
+                :show-retry="virtualStart + vIdx === paneMessages.length - 1 && canRetry"
                 @retry="onRetry"
                 @stop="onStop"
             ></message-bubble>
+            <div class="virtual-spacer-bottom" :style="{ height: virtualBottomPadding + 'px' }"></div>
         </template>
     </div>
     <div v-if="showScrollBottom" class="scroll-bottom-btn" @click="scrollToBottom">

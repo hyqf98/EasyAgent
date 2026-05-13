@@ -203,7 +203,10 @@ public enum JsAction implements ValueEnum<String> {
     SAVE_PLAN_CONFIG("savePlanConfig"),
 
     /** 开始计划拆分（启动 CLI 会话）。 */
-    START_PLAN_SPLIT("startPlanSplit");
+    START_PLAN_SPLIT("startPlanSplit"),
+
+    /** 保存面板布局。 */
+    SAVE_PANE_LAYOUT("savePaneLayout");
 
     /** 动作标识值。 */
     private final String value;

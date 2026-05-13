@@ -10,6 +10,12 @@
 
 var EA_PANE_SCROLL_THRESHOLD = 80;
 
+/** 虚拟滚动：视口上下各多渲染的消息数量缓冲区。 */
+var EA_VIRTUAL_BUFFER = 5;
+
+/** 虚拟滚动：每条消息估算高度（像素），用于占位计算。 */
+var EA_VIRTUAL_ITEM_HEIGHT = 160;
+
 window.EARegisterComponent('session-pane', 'SessionPane', {
     props: {
         paneId: { type: String, required: true },
@@ -22,7 +28,10 @@ window.EARegisterComponent('session-pane', 'SessionPane', {
         return {
             showScrollBottom: false,
             pendingQueue: [],
-            pendingIdCounter: 0
+            pendingIdCounter: 0,
+            virtualStart: 0,
+            virtualEnd: 50,
+            _virtualRaf: null
         };
     },
     computed: {
@@ -38,6 +47,24 @@ window.EARegisterComponent('session-pane', 'SessionPane', {
             if (sid === this.store.sessionId) return this.store.messages;
             var cached = EA_SESSION_CACHE[sid];
             return cached ? cached.messages : [];
+        },
+        virtualVisibleMessages() {
+            var msgs = this.paneMessages;
+            if (msgs.length <= 60) return msgs;
+            var start = Math.max(0, this.virtualStart);
+            var end = Math.min(msgs.length, this.virtualEnd);
+            return msgs.slice(start, end);
+        },
+        virtualTopPadding() {
+            if (this.paneMessages.length <= 60) return 0;
+            return this.virtualStart * EA_VIRTUAL_ITEM_HEIGHT;
+        },
+        virtualBottomPadding() {
+            var msgs = this.paneMessages;
+            if (msgs.length <= 60) return 0;
+            var rendered = this.virtualEnd - this.virtualStart;
+            var below = msgs.length - this.virtualEnd;
+            return Math.max(0, below) * EA_VIRTUAL_ITEM_HEIGHT;
         },
         canRetry() {
             if (this.isStreaming) return false;
@@ -73,6 +100,12 @@ window.EARegisterComponent('session-pane', 'SessionPane', {
     },
     mounted() {
         this._restorePending();
+    },
+    beforeUnmount() {
+        if (this._virtualRaf) {
+            cancelAnimationFrame(this._virtualRaf);
+            this._virtualRaf = null;
+        }
     },
     methods: {
         onFocus() {
@@ -208,6 +241,35 @@ window.EARegisterComponent('session-pane', 'SessionPane', {
             if (!area) return;
             var distToBottom = area.scrollHeight - area.scrollTop - area.clientHeight;
             this.showScrollBottom = distToBottom > EA_PANE_SCROLL_THRESHOLD;
+            this._scheduleVirtualUpdate();
+        },
+
+        _scheduleVirtualUpdate() {
+            if (this._virtualRaf) return;
+            this._virtualRaf = requestAnimationFrame(function () {
+                this._virtualRaf = null;
+                this._updateVirtualWindow();
+            }.bind(this));
+        },
+
+        _updateVirtualWindow() {
+            var msgs = this.paneMessages;
+            if (msgs.length <= 60) {
+                this.virtualStart = 0;
+                this.virtualEnd = msgs.length;
+                return;
+            }
+            var area = this.$refs.messagesArea;
+            if (!area) return;
+            var scrollTop = area.scrollTop;
+            var viewportHeight = area.clientHeight;
+            var itemH = EA_VIRTUAL_ITEM_HEIGHT;
+
+            var visibleStart = Math.floor(scrollTop / itemH);
+            var visibleEnd = Math.ceil((scrollTop + viewportHeight) / itemH);
+
+            this.virtualStart = Math.max(0, visibleStart - EA_VIRTUAL_BUFFER);
+            this.virtualEnd = Math.min(msgs.length, visibleEnd + EA_VIRTUAL_BUFFER);
         },
 
         scrollToBottom() {

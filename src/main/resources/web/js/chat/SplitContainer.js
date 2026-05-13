@@ -3,6 +3,7 @@
  * <p>
  * 使用 paneGrid 二维数组渲染多行多列的 SessionPane 网格。
  * 纯鼠标事件实现拖拽：面板上半区=同行左右插入，下半区=移到新行。
+ * 支持行间和列间拖拽调整大小。
  * </p>
  *
  * @component split-container
@@ -11,6 +12,9 @@
 /** 拖拽时 Y 轴分区阈值：上半部分为同行插入，下半部分为新行。 */
 var EA_DRAG_Y_SPLIT = 0.5;
 
+/** 调整大小时最小面板尺寸占行/列的百分比。 */
+var EA_RESIZE_MIN_PCT = 15;
+
 window.EARegisterComponent('split-container', 'SplitContainer', {
     emits: ['close-pane', 'focus-pane'],
     data() {
@@ -18,7 +22,10 @@ window.EARegisterComponent('split-container', 'SplitContainer', {
             draggingPaneId: null,
             dropTarget: null,
             _onMouseMove: null,
-            _onMouseUp: null
+            _onMouseUp: null,
+            resizing: null,
+            _onResizeMove: null,
+            _onResizeUp: null
         };
     },
     computed: {
@@ -26,15 +33,33 @@ window.EARegisterComponent('split-container', 'SplitContainer', {
         i18n() { void this.store.i18nVersion; return window.EAi18n; },
         paneGrid() { return this.store.paneGrid; },
         rowCount() { return this.paneGrid.length; },
-        rowHeight() {
-            if (this.rowCount === 0) return 100;
-            return 100 / this.rowCount;
-        }
+        rowSizes() { return this.store.rowSizes; },
+        colSizes() { return this.store.colSizes; }
     },
     methods: {
         getPaneProp(paneId, prop) {
             var pane = this.store.getPaneById(paneId);
             return pane ? pane[prop] : '';
+        },
+
+        getRowHeightStyle(rowIdx) {
+            var sizes = this.rowSizes;
+            if (!sizes || sizes.length === 0) return { flex: '1 1 0' };
+            return { flex: '0 0 ' + sizes[rowIdx] + '%' };
+        },
+
+        getColWidthStyle(rowIdx, colIdx) {
+            var sizes = this.colSizes[rowIdx];
+            if (!sizes || sizes.length === 0) return { flex: '1 1 0' };
+            return { flex: '0 0 ' + sizes[colIdx] + '%' };
+        },
+
+        hasRowResizer(rowIdx) {
+            return rowIdx < this.rowCount - 1;
+        },
+
+        hasColResizer(rowIdx, colIdx) {
+            return colIdx < this.paneGrid[rowIdx].length - 1;
         },
 
         onPaneClose(paneId) {
@@ -62,6 +87,95 @@ window.EARegisterComponent('split-container', 'SplitContainer', {
             document.addEventListener('mouseup', this._onMouseUp);
             document.body.style.userSelect = 'none';
             document.body.style.cursor = 'grabbing';
+        },
+
+        onRowResizeStart(rowIdx, event) {
+            event.preventDefault();
+            var container = this.$refs.container;
+            if (!container) return;
+            var containerRect = container.getBoundingClientRect();
+            var startSizes = (this.rowSizes || []).slice();
+            if (startSizes.length === 0) {
+                var equal = 100 / this.rowCount;
+                for (var r = 0; r < this.rowCount; r++) startSizes.push(equal);
+            }
+            var startY = event.clientY;
+
+            this._onResizeMove = function (e) {
+                var deltaPx = e.clientY - startY;
+                var totalH = containerRect.height;
+                if (totalH <= 0) return;
+                var deltaPct = (deltaPx / totalH) * 100;
+
+                var newSizes = startSizes.slice();
+                var newAbove = newSizes[rowIdx] + deltaPct;
+                var newBelow = newSizes[rowIdx + 1] - deltaPct;
+
+                if (newAbove < EA_RESIZE_MIN_PCT || newBelow < EA_RESIZE_MIN_PCT) return;
+
+                newSizes[rowIdx] = newAbove;
+                newSizes[rowIdx + 1] = newBelow;
+                this.store.updateRowSizes(newSizes);
+            }.bind(this);
+
+            this._onResizeUp = function () {
+                document.removeEventListener('mousemove', this._onResizeMove);
+                document.removeEventListener('mouseup', this._onResizeUp);
+                document.body.style.userSelect = '';
+                document.body.style.cursor = '';
+                this._onResizeMove = null;
+                this._onResizeUp = null;
+            }.bind(this);
+
+            document.addEventListener('mousemove', this._onResizeMove);
+            document.addEventListener('mouseup', this._onResizeUp);
+            document.body.style.userSelect = 'none';
+            document.body.style.cursor = 'row-resize';
+        },
+
+        onColResizeStart(rowIdx, colIdx, event) {
+            event.preventDefault();
+            var rowEl = this.$refs.container.querySelectorAll('.split-row')[rowIdx];
+            if (!rowEl) return;
+            var rowRect = rowEl.getBoundingClientRect();
+            var startSizes = (this.colSizes[rowIdx] || []).slice();
+            if (startSizes.length === 0) {
+                var colCount = this.paneGrid[rowIdx].length;
+                var equal = 100 / colCount;
+                for (var c = 0; c < colCount; c++) startSizes.push(equal);
+            }
+            var startX = event.clientX;
+
+            this._onResizeMove = function (e) {
+                var deltaPx = e.clientX - startX;
+                var totalW = rowRect.width;
+                if (totalW <= 0) return;
+                var deltaPct = (deltaPx / totalW) * 100;
+
+                var newSizes = startSizes.slice();
+                var newLeft = newSizes[colIdx] + deltaPct;
+                var newRight = newSizes[colIdx + 1] - deltaPct;
+
+                if (newLeft < EA_RESIZE_MIN_PCT || newRight < EA_RESIZE_MIN_PCT) return;
+
+                newSizes[colIdx] = newLeft;
+                newSizes[colIdx + 1] = newRight;
+                this.store.updateColSizes(rowIdx, newSizes);
+            }.bind(this);
+
+            this._onResizeUp = function () {
+                document.removeEventListener('mousemove', this._onResizeMove);
+                document.removeEventListener('mouseup', this._onResizeUp);
+                document.body.style.userSelect = '';
+                document.body.style.cursor = '';
+                this._onResizeMove = null;
+                this._onResizeUp = null;
+            }.bind(this);
+
+            document.addEventListener('mousemove', this._onResizeMove);
+            document.addEventListener('mouseup', this._onResizeUp);
+            document.body.style.userSelect = 'none';
+            document.body.style.cursor = 'col-resize';
         },
 
         _updateDropTarget(clientX, clientY) {
@@ -186,5 +300,7 @@ window.EARegisterComponent('split-container', 'SplitContainer', {
     beforeUnmount() {
         if (this._onMouseMove) document.removeEventListener('mousemove', this._onMouseMove);
         if (this._onMouseUp) document.removeEventListener('mouseup', this._onMouseUp);
+        if (this._onResizeMove) document.removeEventListener('mousemove', this._onResizeMove);
+        if (this._onResizeUp) document.removeEventListener('mouseup', this._onResizeUp);
     }
 });

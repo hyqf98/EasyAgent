@@ -36,6 +36,9 @@ public class EasyAgentState implements PersistentStateComponent<EasyAgentState> 
     /** 按编辑 ID 存储的 AI 文件编辑快照：editId -> JSON 字符串。 */
     private Map<String, String> fileEditSnapshots = new HashMap<>();
 
+    /** 面板布局 JSON 字符串，持久化多面板分屏状态。 */
+    private String paneLayoutJson;
+
     /**
      * 获取项目级别的 EasyAgentState 实例。
      *

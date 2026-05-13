@@ -3228,6 +3228,17 @@
 }
 .tab-add:hover { background: var(--ea-bg-hover); color: var(--ea-text); }
 
+/* Tab Drag Reorder */
+.tab-item.tab-drag-source {
+    opacity: 0.35;
+}
+.tab-item.tab-drop-left {
+    box-shadow: -2px 0 0 0 var(--ea-input-focus);
+}
+.tab-item.tab-drop-right {
+    box-shadow: 2px 0 0 0 var(--ea-input-focus);
+}
+
 /* === Split Container (Multi-row Grid) === */
 .split-container {
     flex: 1;
@@ -3241,21 +3252,16 @@
     display: flex;
     min-height: 0;
     overflow: hidden;
-}
-.split-row + .split-row {
-    border-top: 2px solid var(--ea-border);
+    position: relative;
 }
 .split-pane-wrapper {
-    flex: 1;
+    flex: none;
     display: flex;
     flex-direction: column;
     min-width: 0;
     min-height: 0;
     overflow: hidden;
     position: relative;
-}
-.split-pane-wrapper + .split-pane-wrapper {
-    border-left: 2px solid var(--ea-border);
 }
 .split-pane-wrapper.drag-source {
     opacity: 0.35;
@@ -3301,6 +3307,28 @@
     inset: 0;
     z-index: 999;
     cursor: grabbing;
+}
+
+/* === Split Resizer Handles === */
+.split-resizer {
+    flex-shrink: 0;
+    transition: background var(--ea-transition);
+}
+.split-resizer:hover,
+.split-resizer:active {
+    background: var(--ea-input-focus);
+}
+.split-resizer-row {
+    width: 100%;
+    height: 4px;
+    cursor: row-resize;
+    background: transparent;
+}
+.split-resizer-col {
+    width: 4px;
+    cursor: col-resize;
+    background: var(--ea-border);
+    align-self: stretch;
 }
 
 /* === Session Pane === */
@@ -3376,4 +3404,9 @@
     padding: 12px 0 4px;
     overscroll-behavior: contain;
     position: relative;
+}
+.virtual-spacer-top,
+.virtual-spacer-bottom {
+    width: 100%;
+    flex-shrink: 0;
 }
