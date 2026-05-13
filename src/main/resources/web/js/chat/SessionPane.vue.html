@@ -11,6 +11,10 @@
         </div>
     </div>
     <div class="pane-messages" ref="messagesArea" @scroll="onMessagesScroll">
+        <div v-if="contextProgress > 0" class="context-progress-bar" :class="contextProgressClass">
+            <div class="context-progress-fill" :style="{ width: contextProgress + '%' }"></div>
+            <span class="context-progress-label">{{ contextProgressLabel }}</span>
+        </div>
         <div v-if="isLoading" class="loading-skeleton">
             <div class="skeleton-row" v-for="i in 3" :key="'sk-'+i">
                 <div class="skeleton-avatar"></div>

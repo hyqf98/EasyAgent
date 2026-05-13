@@ -16,6 +16,15 @@ var EA_VIRTUAL_BUFFER = 5;
 /** 虚拟滚动：每条消息估算高度（像素），用于占位计算。 */
 var EA_VIRTUAL_ITEM_HEIGHT = 160;
 
+/** 默认上下文窗口大小。 */
+var EA_DEFAULT_CONTEXT_WINDOW = 128000;
+
+/** 上下文使用率警告阈值（百分比）。 */
+var EA_CONTEXT_WARN_THRESHOLD = 70;
+
+/** 上下文使用率危险阈值（百分比）。 */
+var EA_CONTEXT_DANGER_THRESHOLD = 90;
+
 window.EARegisterComponent('session-pane', 'SessionPane', {
     props: {
         paneId: { type: String, required: true },
@@ -65,6 +74,63 @@ window.EARegisterComponent('session-pane', 'SessionPane', {
             var rendered = this.virtualEnd - this.virtualStart;
             var below = msgs.length - this.virtualEnd;
             return Math.max(0, below) * EA_VIRTUAL_ITEM_HEIGHT;
+        },
+        _extractPaneTokenUsage() {
+            var msgs = this.paneMessages;
+            if (!msgs) return null;
+            for (var i = msgs.length - 1; i >= 0; i--) {
+                var usage = msgs[i].tokenUsage;
+                if (usage && (usage.inputTokens || usage.totalTokens || usage.input)) {
+                    return {
+                        input: usage.inputTokens || usage.input || 0,
+                        output: usage.outputTokens || usage.output || 0,
+                        total: usage.totalTokens || usage.total || 0
+                    };
+                }
+            }
+            return null;
+        },
+        tokenUsageInfo() {
+            var lastUsage = this._extractPaneTokenUsage();
+            if (!lastUsage) return null;
+            var model = (this.store.selectedModelId || this.store.model || '').toLowerCase();
+            var map = this.store.modelContextMap || {};
+            var window_ = EA_DEFAULT_CONTEXT_WINDOW;
+            if (map[this.store.selectedModelId]) {
+                window_ = map[this.store.selectedModelId];
+            } else if (!this.store.selectedModelId) {
+                var cliType = this.cliType || 'CLAUDE';
+                var defaultInfo = this.store.defaultModelInfoMap[cliType];
+                if (defaultInfo && defaultInfo.contextWindow) {
+                    window_ = defaultInfo.contextWindow;
+                }
+            } else {
+                for (var key in map) {
+                    if (model.indexOf(key.toLowerCase()) >= 0) {
+                        window_ = map[key];
+                        break;
+                    }
+                }
+            }
+            var inputTokens = lastUsage.input || lastUsage.total || 0;
+            return { input: inputTokens, window: window_ };
+        },
+        contextProgress() {
+            var info = this.tokenUsageInfo;
+            if (!info || info.window <= 0) return 0;
+            return Math.min(100, Math.round(info.input / info.window * 100));
+        },
+        contextProgressClass() {
+            if (this.contextProgress >= EA_CONTEXT_DANGER_THRESHOLD) return 'danger';
+            if (this.contextProgress >= EA_CONTEXT_WARN_THRESHOLD) return 'warn';
+            return '';
+        },
+        contextProgressLabel() {
+            var info = this.tokenUsageInfo;
+            if (!info) return '';
+            var input = info.input;
+            var label = input >= 1000 ? (input / 1000).toFixed(1) + 'K' : input;
+            return label + ' / ' + (info.window / 1000) + 'K';
         },
         canRetry() {
             if (this.isStreaming) return false;

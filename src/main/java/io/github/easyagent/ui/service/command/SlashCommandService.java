@@ -253,6 +253,9 @@ public final class SlashCommandService {
      * @param cliType     CLI 类型
      */
     private void addCoreDefinitions(List<SlashCommandDefinition> definitions, CLIType cliType) {
+        this.addDefinition(definitions, this.definition(cliType, "plan", this.corePlanDescription(cliType),
+                SlashCommandActionType.PASS_THROUGH, SlashCommandSourceType.BUILTIN, List.of(),
+                null, false, true));
         this.addDefinition(definitions, this.definition(cliType, "new", this.coreNewDescription(cliType),
                 SlashCommandActionType.OPEN_NEW_SESSION, SlashCommandSourceType.BUILTIN, List.of("clear", "reset"),
                 null, true, false));
@@ -265,6 +268,20 @@ public final class SlashCommandService {
         this.addDefinition(definitions, this.definition(cliType, "plugins", this.corePluginsDescription(cliType),
                 SlashCommandActionType.SEND_PROMPT, SlashCommandSourceType.BUILTIN, List.of("plugin"),
                 this.corePluginsPrompt(cliType), false, false));
+    }
+
+    /**
+     * 获取计划模式命令描述。
+     *
+     * @param cliType CLI 类型
+     * @return 描述文本
+     */
+    private String corePlanDescription(CLIType cliType) {
+        return switch (cliType) {
+            case CLAUDE -> "Enter plan mode to analyze before making changes";
+            case CODEX -> "Enter plan mode";
+            case OPENCODE -> "Enter plan mode";
+        };
     }
 
     /**
@@ -1191,9 +1208,14 @@ public final class SlashCommandService {
         public SlashCommandExecutionPayload execute(SlashCommandDefinition definition,
                                                     SlashCommandInvocation invocation,
                                                     SlashCommandService service) {
-            String prompt = service.composePrompt(definition, invocation);
-            if (prompt == null || prompt.isBlank()) {
+            String prompt;
+            if (definition.actionType() == SlashCommandActionType.PASS_THROUGH) {
                 prompt = invocation.rawText();
+            } else {
+                prompt = service.composePrompt(definition, invocation);
+                if (prompt == null || prompt.isBlank()) {
+                    prompt = invocation.rawText();
+                }
             }
             return SlashCommandExecutionPayload.builder()
                     .requestId(invocation.requestId())
