@@ -336,12 +336,17 @@ public class McpTestService {
         this.clients.clear();
     }
 
+    private static final java.util.Set<String> WIN_BUILTINS = java.util.Set.of(
+            "cmd", "powershell", "pwsh", "bash", "sh", "python", "python3", "node", "java", "dotnet"
+    );
+
     /**
      * 解析 MCP 服务器启动命令，在 Windows 上自动补充 {@code .cmd} 后缀。
      * <p>
      * Node.js 的 {@code npx}、{@code npm} 等命令在 Windows 上实际是
      * {@code npx.cmd}、{@code npm.cmd}，直接传给 {@link ProcessBuilder}
      * 会因 {@code CreateProcess error=2} 失败。
+     * 但 {@code cmd}、{@code powershell} 等 Windows 内建命令不需要加后缀。
      * </p>
      *
      * @param command 原始命令
@@ -357,11 +362,8 @@ public class McpTestService {
         if (command.contains("/") || command.contains("\\") || command.contains(".")) {
             return command;
         }
-        String[] winExts = {".cmd", ".bat", ".exe"};
-        for (String ext : winExts) {
-            if (command.toLowerCase().endsWith(ext)) {
-                return command;
-            }
+        if (WIN_BUILTINS.contains(command.toLowerCase())) {
+            return command;
         }
         return command + ".cmd";
     }
