@@ -46,7 +46,12 @@ dependencies {
         if (ideaLocalPath && !ideaLocalPath.isBlank()) {
             local(ideaLocalPath)
         } else {
-            intellijIdeaCommunity('2025.3')
+            def platformVersion = providers.gradleProperty('platformVersion').get()
+            def platformType = providers.gradleProperty('platformType').get()
+            switch (platformType) {
+                case 'IU' -> intellijIdeaUltimate(platformVersion)
+                default  -> intellijIdeaCommunity(platformVersion)
+            }
         }
 
         plugin("io.nimbly.mcp-companion:3.4.0")
