@@ -2,7 +2,7 @@
     <id>io.github.easyagent</id>
     <name>EasyAgent</name>
     <vendor logo="/icons/pluginIcon.svg">EasyAgent</vendor>
-    <idea-version since-build="261" until-build="261.*"/>
+    <idea-version since-build="242"/>
     <description><![CDATA[
     <h1>EasyAgent — AI Coding Assistant for IntelliJ IDEA</h1>
     <p>Aggregate Claude Code, OpenCode, and Codex CLI tools into one unified IDE experience.</p>
@@ -43,7 +43,7 @@
       <tr><td><b>Codex</b></td><td>OpenAI official CLI</td><td><code>npm i -g @openai/codex</code></td></tr>
     </table>
 
-    <p><b>Requirements:</b> JDK 17+, IntelliJ IDEA 2026.1+, at least one supported CLI tool installed.</p>
+    <p><b>Requirements:</b> JDK 17+, IntelliJ IDEA 2024.2+, at least one supported CLI tool installed.</p>
     ]]></description>
 
     <depends>com.intellij.modules.platform</depends>

@@ -34,10 +34,8 @@ jobs:
           echo "version=$VERSION" >> $GITHUB_OUTPUT
 
           SINCE=$(grep 'since-build' src/main/resources/META-INF/plugin.xml | sed 's/.*since-build="\([^"]*\)".*/\1/')
-          UNTIL=$(grep 'until-build' src/main/resources/META-INF/plugin.xml | sed 's/.*until-build="\([^"]*\)".*/\1/' | sed 's/\*//g')
           echo "since=$SINCE" >> $GITHUB_OUTPUT
-          echo "until=$UNTIL" >> $GITHUB_OUTPUT
-          echo "zip_name=EasyAgent-${VERSION}-IDEA${SINCE}-${UNTIL}" >> $GITHUB_OUTPUT
+          echo "zip_name=EasyAgent-${VERSION}-IDEA${SINCE}+" >> $GITHUB_OUTPUT
 
       - name: Rename ZIP
         run: |
@@ -51,10 +49,10 @@ jobs:
           body: |
             ## EasyAgent ${{ steps.version.outputs.version }}
 
-            **Supported IDEA versions:** ${{ steps.version.outputs.since }} ~ ${{ steps.version.outputs.until }}
+            **Supported IDEA versions:** ${{ steps.version.outputs.since }}+
 
             ### Installation
-            1. Download `EasyAgent-${{ steps.version.outputs.version }}-IDEA${{ steps.version.outputs.since }}-${{ steps.version.outputs.until }}.zip`
+            1. Download `EasyAgent-${{ steps.version.outputs.version }}-IDEA${{ steps.version.outputs.since }}+.zip`
             2. In IntelliJ IDEA: `Settings` → `Plugins` → `⚙️` → `Install Plugin from Disk...`
             3. Select the downloaded ZIP file
             4. Restart IDE
