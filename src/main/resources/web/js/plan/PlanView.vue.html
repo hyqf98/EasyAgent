@@ -10,7 +10,8 @@
         </div>
         <div class="plan-header-actions">
             <button v-if="viewMode === 'list'" class="plan-btn plan-btn-primary" @click="onNewPlan">+ {{ i18n.t('plan.newPlan') }}</button>
-            <button v-if="viewMode === 'kanban'" class="plan-btn" @click="onReSplit">{{ i18n.t('plan.kanban.reSplit') || '重新拆分' }}</button>
+            <button v-if="viewMode === 'kanban'" class="plan-btn" @click="onReSplit">{{ i18n.t('plan.kanban.backToPlan') || '返回计划' }}</button>
+            <button v-if="viewMode === 'collect' && enteredFromKanban" class="plan-btn" @click="onGoToKanban">{{ i18n.t('plan.collect.goToKanban') || '前往看板' }}</button>
             <span v-if="currentPlan" class="plan-status-badge" :class="(currentPlan.status || '').toLowerCase()">{{ getStatusLabel(currentPlan.status) }}</span>
             <button class="icon-btn" @click="onGoSettings" :title="i18n.t('plan.nav.settings')">⚙</button>
             <button class="icon-btn" @click="onGoHome" :title="i18n.t('plan.nav.home')">⌂</button>

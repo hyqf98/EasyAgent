@@ -42,9 +42,9 @@
             ></message-bubble>
             <div class="virtual-spacer-bottom" :style="{ height: virtualBottomPadding + 'px' }"></div>
         </template>
-    </div>
-    <div v-if="showScrollBottom" class="scroll-bottom-btn" @click="scrollToBottom">
-        <span class="scroll-bottom-inner"><span class="scroll-bottom-arrow">↓</span></span>
+        <div v-if="showScrollBottom" class="scroll-bottom-btn" @click="scrollToBottom">
+            <span class="scroll-bottom-inner"><span class="scroll-bottom-arrow">↓</span></span>
+        </div>
     </div>
     <pending-queue
         :items="pendingQueue"

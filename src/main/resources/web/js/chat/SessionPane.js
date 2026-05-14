@@ -75,21 +75,6 @@ window.EARegisterComponent('session-pane', 'SessionPane', {
             var below = msgs.length - this.virtualEnd;
             return Math.max(0, below) * EA_VIRTUAL_ITEM_HEIGHT;
         },
-        _extractPaneTokenUsage() {
-            var msgs = this.paneMessages;
-            if (!msgs) return null;
-            for (var i = msgs.length - 1; i >= 0; i--) {
-                var usage = msgs[i].tokenUsage;
-                if (usage && (usage.inputTokens || usage.totalTokens || usage.input)) {
-                    return {
-                        input: usage.inputTokens || usage.input || 0,
-                        output: usage.outputTokens || usage.output || 0,
-                        total: usage.totalTokens || usage.total || 0
-                    };
-                }
-            }
-            return null;
-        },
         tokenUsageInfo() {
             var lastUsage = this._extractPaneTokenUsage();
             if (!lastUsage) return null;
@@ -174,6 +159,22 @@ window.EARegisterComponent('session-pane', 'SessionPane', {
         }
     },
     methods: {
+        _extractPaneTokenUsage() {
+            var msgs = this.paneMessages;
+            if (!msgs) return null;
+            for (var i = msgs.length - 1; i >= 0; i--) {
+                var usage = msgs[i].tokenUsage;
+                if (usage && (usage.inputTokens || usage.totalTokens || usage.input)) {
+                    return {
+                        input: usage.inputTokens || usage.input || 0,
+                        output: usage.outputTokens || usage.output || 0,
+                        total: usage.totalTokens || usage.total || 0
+                    };
+                }
+            }
+            return null;
+        },
+
         onFocus() {
             this.store.focusPane(this.paneId);
             this.$emit('focus', this.paneId);

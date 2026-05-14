@@ -17,7 +17,7 @@ window.EABridge = {
 
     init() {
         window.__ea_onThemeChanged = (data) => {
-            EATheme.apply(data.isDark);
+            EATheme.apply(data.isDark, data.colors || {});
         };
 
         window.__ea_onHistoryLoaded = (data) => {

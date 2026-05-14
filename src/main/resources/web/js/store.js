@@ -1247,6 +1247,7 @@ window.EAStore = Vue.reactive({
         this.paneGrid.push([paneId]);
         this.paneGrid = this.paneGrid.filter(function (row) { return row.length > 0; });
         this.focusedPaneId = paneId;
+        this._recalcSizes();
     },
 
     movePaneToRow(paneId, targetRow) {
@@ -1264,6 +1265,7 @@ window.EAStore = Vue.reactive({
             this.paneGrid[targetRow].push(paneId);
         }
         this.focusedPaneId = paneId;
+        this._recalcSizes();
     },
 
     movePaneBefore(targetPaneId, beforePaneId) {
@@ -1278,6 +1280,7 @@ window.EAStore = Vue.reactive({
             }
             this.paneGrid.push([targetPaneId]);
             this.focusedPaneId = targetPaneId;
+            this._recalcSizes();
             return;
         }
         var insertCol = destPos.col;
@@ -1293,6 +1296,7 @@ window.EAStore = Vue.reactive({
         this.paneGrid[destPos.row].splice(insertCol, 0, targetPaneId);
         this.paneGrid = this.paneGrid.filter(function (row) { return row.length > 0; });
         this.focusedPaneId = targetPaneId;
+        this._recalcSizes();
     },
 
     movePaneAfter(targetPaneId, afterPaneId) {
@@ -1307,6 +1311,7 @@ window.EAStore = Vue.reactive({
             }
             this.paneGrid.push([targetPaneId]);
             this.focusedPaneId = targetPaneId;
+            this._recalcSizes();
             return;
         }
         var insertCol = destPos.col + 1;
@@ -1322,6 +1327,7 @@ window.EAStore = Vue.reactive({
         this.paneGrid[destPos.row].splice(insertCol, 0, targetPaneId);
         this.paneGrid = this.paneGrid.filter(function (row) { return row.length > 0; });
         this.focusedPaneId = targetPaneId;
+        this._recalcSizes();
     },
 
     focusPane(paneId) {

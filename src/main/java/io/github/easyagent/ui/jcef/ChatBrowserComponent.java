@@ -1,14 +1,20 @@
 package io.github.easyagent.ui.jcef;
 
+import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.project.Project;
 import com.intellij.ui.jcef.JBCefApp;
 import com.intellij.ui.jcef.JBCefBrowser;
+import com.intellij.ide.ui.LafManager;
+import com.intellij.ide.ui.LafManagerListener;
+import com.intellij.util.messages.MessageBusConnection;
 import io.github.easyagent.ui.service.ChatManager;
 import lombok.extern.slf4j.Slf4j;
 import org.cef.CefApp;
 import org.cef.browser.CefBrowser;
 import org.cef.browser.CefFrame;
 import org.cef.callback.CefCallback;
+import org.cef.CefSettings;
+import org.cef.handler.CefDisplayHandlerAdapter;
 import org.cef.handler.CefResourceHandler;
 import org.cef.callback.CefSchemeHandlerFactory;
 import org.cef.misc.IntRef;
@@ -69,8 +75,10 @@ public class ChatBrowserComponent {
             "js/settings/SettingsPage.vue.html"
     );
 
+    private final Project project;
     private final JBCefBrowser browser;
     private final JCEFMessageBridge cefBridge;
+    private MessageBusConnection lafManagerConnection;
 
     private static volatile boolean schemeRegistered = false;
 
@@ -79,6 +87,7 @@ public class ChatBrowserComponent {
             throw new UnsupportedOperationException("JCEF is not supported in this environment");
         }
 
+        this.project = project;
         this.browser = new JBCefBrowser();
         ChatManager chatManager = new ChatManager();
         this.cefBridge = new JCEFMessageBridge(this.browser, chatManager, project);
@@ -89,6 +98,8 @@ public class ChatBrowserComponent {
         }
 
         this.registerSchemeHandler();
+        this.installConsoleLogger();
+        this.installThemeSync();
         this.loadIndexHTML();
     }
 
@@ -102,6 +113,43 @@ public class ChatBrowserComponent {
 
     public void dispose() {
         this.cefBridge.dispose();
+        if (this.lafManagerConnection != null) {
+            this.lafManagerConnection.dispose();
+            this.lafManagerConnection = null;
+        }
+    }
+
+    private void installConsoleLogger() {
+        try {
+            var jCefClient = this.browser.getJBCefClient();
+            var cefBrowser = this.browser.getCefBrowser();
+            jCefClient.addDisplayHandler(new CefDisplayHandlerAdapter() {
+                @Override
+                public boolean onConsoleMessage(CefBrowser browser, CefSettings.LogSeverity level, String message, String source, int line) {
+                    if (message != null && message.contains("[EasyAgent]")) {
+                        log.error("[JCEF] {} | {}:{}", message, source, line);
+                    }
+                    return false;
+                }
+            }, cefBrowser);
+        } catch (Exception e) {
+            log.warn("Failed to install JCEF console logger", e);
+        }
+    }
+
+    private void installThemeSync() {
+        try {
+            MessageBusConnection connection = ApplicationManager.getApplication().getMessageBus().connect();
+            connection.subscribe(LafManagerListener.TOPIC, (LafManagerListener) source -> {
+                boolean isDark = !com.intellij.ui.JBColor.isBright();
+                log.info("[EasyAgent] IDE theme changed, pushing to JCEF: isDark={}", isDark);
+                this.cefBridge.sendThemeUpdate();
+            });
+            this.lafManagerConnection = connection;
+            log.info("[EasyAgent] LafManagerListener installed for theme sync");
+        } catch (Exception e) {
+            log.warn("[EasyAgent] Failed to install LafManagerListener for theme sync", e);
+        }
     }
 
     private synchronized void registerSchemeHandler() {

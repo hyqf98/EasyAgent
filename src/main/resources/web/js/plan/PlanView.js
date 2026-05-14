@@ -17,6 +17,7 @@ var EA_STATUS_LABELS = {
     KANBAN: 'plan.status.kanban',
     COMPLETED: 'plan.status.completed'
 };
+var EA_PLAN_SCROLL_THRESHOLD = 80;
 
 window.EARegisterComponent('plan-view', 'PlanView', {
     data() {
@@ -432,6 +433,10 @@ window.EARegisterComponent('plan-view', 'PlanView', {
             this.$nextTick(function () {
                 setTimeout(function () { this._tryInitSortable(); }.bind(this), 80);
             }.bind(this));
+        },
+
+        onGoToKanban() {
+            this._backToKanban();
         },
 
         onReSplit() {
@@ -970,7 +975,7 @@ window.EARegisterComponent('plan-view', 'PlanView', {
             var area = this.$refs.messagesArea;
             if (!area) return;
             var distToBottom = area.scrollHeight - area.scrollTop - area.clientHeight;
-            this.showScrollBottom = distToBottom > EA_SCROLL_BOTTOM_THRESHOLD;
+            this.showScrollBottom = distToBottom > EA_PLAN_SCROLL_THRESHOLD;
         },
 
         scrollToBottom() {

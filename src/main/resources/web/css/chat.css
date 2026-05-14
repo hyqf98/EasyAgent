@@ -1491,20 +1491,21 @@
 
 /* === Scroll to Bottom Button === */
 .scroll-bottom-btn {
-    position: absolute;
-    bottom: 80px;
+    position: sticky;
+    bottom: 8px;
     left: 0;
     right: 0;
     display: flex;
     justify-content: center;
     z-index: 10;
     pointer-events: none;
+    margin-top: -8px;
 }
 .scroll-bottom-btn:hover .scroll-bottom-inner { background: var(--ea-bg-hover); color: var(--ea-text); }
 .scroll-bottom-inner {
     pointer-events: auto;
-    width: 32px;
-    height: 32px;
+    width: 28px;
+    height: 28px;
     border-radius: 50%;
     border: 1px solid var(--ea-border);
     background: var(--ea-popup-bg);
@@ -1517,7 +1518,7 @@
     transition: all var(--ea-transition);
     animation: fadeIn .15s ease;
 }
-.scroll-bottom-arrow { font-size: 14px; font-weight: 600; }
+.scroll-bottom-arrow { font-size: 12px; font-weight: 600; }
 
 /* === Message Actions (Retry) === */
 .message-actions {

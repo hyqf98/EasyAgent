@@ -4,6 +4,7 @@ import com.google.gson.reflect.TypeToken;
 import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.util.text.StringUtil;
+import com.intellij.ide.ui.LafManager;
 import com.intellij.ui.jcef.JBCefBrowser;
 import com.intellij.ui.JBColor;
 import io.github.easyagent.ai.StreamEventListener;
@@ -328,10 +329,116 @@ public class JCEFMessageBridge {
 
     /**
      * 同步当前 IDE 主题到前端。
+     * <p>
+     * 从 UIManager 读取 IDEA 实际主题颜色，推导出全部 CSS 变量，
+     * 以 JSON 形式推送给前端，实现与 IDE 主题完全同步。
+     * </p>
      */
     public void sendThemeUpdate() {
-        ThemeType theme = ThemeType.fromDark(!JBColor.isBright());
-        this.invokeJSCallback(JsCallback.THEME_CHANGED, new ThemePayload(theme.isDark()));
+        LafManager lafManager = LafManager.getInstance();
+        String lafName = (lafManager != null && lafManager.getCurrentLookAndFeel() != null)
+                ? lafManager.getCurrentLookAndFeel().getName() : "";
+
+        java.awt.Color panelBg = safeColor("Panel.background", 0xFFFFFF);
+        java.awt.Color labelFg = safeColor("Label.foreground", 0x000000);
+        java.awt.Color inputBg = safeColor("TextField.background", 0xFFFFFF);
+        java.awt.Color border = safeColor("Separator.foreground", safeColor("Component.borderColor", 0xE0E0E0));
+        java.awt.Color disabledFg = safeColor("Label.disabledForeground", null);
+        java.awt.Color accent = safeColor("List.selectionBackground", 0x4F7CFF);
+
+        boolean isDark = ThemeType.fromUiColor(panelBg, lafName).isDark();
+        java.util.Map<String, String> colors = buildThemeColors(panelBg, labelFg, inputBg, border,
+                disabledFg, accent, isDark);
+
+        log.info("[EasyAgent] sendThemeUpdate: laf={}, isDark={}, bg={}", lafName, isDark, toHex(panelBg));
+        this.invokeJSCallback(JsCallback.THEME_CHANGED, new ThemePayload(isDark, colors));
+    }
+
+    private static java.util.Map<String, String> buildThemeColors(
+            java.awt.Color bg, java.awt.Color fg, java.awt.Color inputBg,
+            java.awt.Color border, java.awt.Color disabledFg, java.awt.Color accent, boolean isDark) {
+
+        java.util.LinkedHashMap<String, String> c = new java.util.LinkedHashMap<>();
+        java.awt.Color tintTarget = isDark ? java.awt.Color.WHITE : java.awt.Color.BLACK;
+
+        c.put("--ea-bg", toHex(bg));
+        c.put("--ea-text", toHex(fg));
+        c.put("--ea-border", toHex(border));
+        c.put("--ea-border-light", toHex(blend(border, tintTarget, isDark ? 0.15f : 0.15f)));
+
+        c.put("--ea-bg-secondary", toHex(blend(bg, tintTarget, isDark ? 0.04f : 0.03f)));
+        c.put("--ea-bg-hover", toHex(blend(bg, tintTarget, isDark ? 0.08f : 0.06f)));
+        c.put("--ea-bg-active", toHex(blend(bg, tintTarget, isDark ? 0.15f : 0.12f)));
+
+        if (disabledFg != null) {
+            c.put("--ea-text-secondary", toHex(disabledFg));
+        } else {
+            c.put("--ea-text-secondary", toHex(blend(fg, bg, 0.45f)));
+        }
+        c.put("--ea-text-muted", toHex(blend(fg, bg, 0.6f)));
+
+        c.put("--ea-input-bg", toHex(inputBg));
+        c.put("--ea-input-border", toHex(border));
+        c.put("--ea-input-focus", toHex(accent));
+
+        c.put("--ea-user-bubble", toHex(blend(bg, tintTarget, isDark ? 0.08f : 0.04f)));
+        c.put("--ea-ai-bubble", "transparent");
+
+        java.awt.Color yellow = new java.awt.Color(0xFF, 0xFB, 0xEB);
+        c.put("--ea-thinking-bg", toHex(blend(bg, yellow, isDark ? 0.10f : 0.08f)));
+        c.put("--ea-thinking-border", toHex(blend(border, new java.awt.Color(0xFD, 0xE6, 0x8A), 0.50f)));
+
+        c.put("--ea-tool-bg", toHex(blend(bg, tintTarget, isDark ? 0.03f : 0.02f)));
+        c.put("--ea-tool-border", toHex(blend(border, tintTarget, isDark ? 0.05f : 0.04f)));
+
+        java.awt.Color red = isDark ? new java.awt.Color(0x2A, 0x15, 0x18) : new java.awt.Color(0xFE, 0xF2, 0xF2);
+        c.put("--ea-error-bg", toHex(blend(bg, red, 0.15f)));
+        c.put("--ea-error-border", toHex(blend(border, new java.awt.Color(0xFE, 0xCA, 0xCA), 0.40f)));
+
+        c.put("--ea-code-bg", toHex(blend(bg, tintTarget, isDark ? 0.03f : 0.03f)));
+
+        c.put("--ea-header-bg", String.format("rgba(%d,%d,%d,0.92)",
+                bg.getRed(), bg.getGreen(), bg.getBlue()));
+        c.put("--ea-popup-bg", toHex(blend(bg, tintTarget, isDark ? 0.05f : 0.01f)));
+        c.put("--ea-popup-shadow", isDark
+                ? "0 8px 30px rgba(0,0,0,0.4)" : "0 8px 30px rgba(0,0,0,0.12)");
+
+        c.put("--ea-scrollbar", toHex(blend(border, tintTarget, isDark ? 0.15f : 0.15f)));
+        c.put("--ea-scrollbar-hover", toHex(blend(fg, bg, 0.30f)));
+        c.put("--ea-icon-color", toHex(blend(fg, bg, 0.40f)));
+
+        c.put("--ea-markdown-link", toHex(blend(accent, fg, 0.30f)));
+        c.put("--ea-markdown-code-bg", toHex(blend(bg, tintTarget, isDark ? 0.03f : 0.03f)));
+        c.put("--ea-markdown-blockquote-bg", toHex(blend(bg, tintTarget, isDark ? 0.04f : 0.02f)));
+        c.put("--ea-table-header-bg", toHex(blend(bg, tintTarget, isDark ? 0.04f : 0.03f)));
+        c.put("--ea-table-even-bg", toHex(blend(bg, tintTarget, isDark ? 0.03f : 0.02f)));
+
+        c.put("--ea-accent", toHex(accent));
+        c.put("--ea-accent-hover", toHex(blend(accent, java.awt.Color.WHITE, 0.15f)));
+
+        return c;
+    }
+
+    private static java.awt.Color safeColor(String key, int defaultRgb) {
+        java.awt.Color c = javax.swing.UIManager.getColor(key);
+        return c != null ? c : new java.awt.Color(defaultRgb);
+    }
+
+    private static java.awt.Color safeColor(String key, java.awt.Color fallback) {
+        java.awt.Color c = javax.swing.UIManager.getColor(key);
+        return c != null ? c : fallback;
+    }
+
+    private static String toHex(java.awt.Color c) {
+        return String.format("#%02x%02x%02x", c.getRed(), c.getGreen(), c.getBlue());
+    }
+
+    private static java.awt.Color blend(java.awt.Color a, java.awt.Color b, float t) {
+        return new java.awt.Color(
+                Math.min(255, Math.max(0, Math.round(a.getRed() * (1 - t) + b.getRed() * t))),
+                Math.min(255, Math.max(0, Math.round(a.getGreen() * (1 - t) + b.getGreen() * t))),
+                Math.min(255, Math.max(0, Math.round(a.getBlue() * (1 - t) + b.getBlue() * t)))
+        );
     }
 
     /**
@@ -1960,8 +2067,9 @@ public class JCEFMessageBridge {
      * 主题回调载荷。
      *
      * @param isDark 是否深色主题
+     * @param colors CSS 变量颜色映射
      */
-    private record ThemePayload(boolean isDark) {
+    private record ThemePayload(boolean isDark, java.util.Map<String, String> colors) {
     }
 
     /**
