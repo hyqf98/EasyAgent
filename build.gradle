@@ -46,7 +46,7 @@ dependencies {
         if (ideaLocalPath && !ideaLocalPath.isBlank()) {
             local(ideaLocalPath)
         } else {
-            intellijIdeaCommunity('2026.1')
+            intellijIdeaCommunity('2026.1.1')
         }
 
         plugin("io.nimbly.mcp-companion:3.4.0")
