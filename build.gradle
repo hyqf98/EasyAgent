@@ -42,10 +42,11 @@ repositories {
 
 dependencies {
     intellijPlatform {
-        if (System.getenv('CI') == 'true') {
-            intellijIdeaCommunity('2026.1')
+        def ideaLocalPath = providers.gradleProperty('ideaLocalPath').orNull
+        if (ideaLocalPath && !ideaLocalPath.isBlank()) {
+            local(ideaLocalPath)
         } else {
-            local("/Applications/IntelliJ IDEA.app")
+            intellijIdeaCommunity('2026.1')
         }
 
         plugin("io.nimbly.mcp-companion:3.4.0")
