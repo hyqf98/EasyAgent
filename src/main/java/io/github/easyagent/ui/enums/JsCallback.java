@@ -47,6 +47,15 @@ public enum JsCallback implements ValueEnum<String> {
     /** CLI 模型查询结果推送。 */
     CLI_MODELS("CliModels"),
 
+    /** OpenCode 本地 CLI 模型查询结果推送。 */
+    OPENCODE_MODELS("OpenCodeModels"),
+
+    /** Provider 模型查询结果推送。 */
+    PROVIDER_MODELS("ProviderModels"),
+
+    /** models.dev 所有 Provider 列表推送。 */
+    ALL_PROVIDERS("AllProviders"),
+
     /** 向输入框插入文件引用。 */
     INSERT_REFERENCES("InsertReferences"),
 
