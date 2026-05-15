@@ -99,7 +99,6 @@ window.EARegisterComponent('session-pane', 'SessionPane', {
             }
             var inputTokens = lastUsage.input || lastUsage.total || 0;
             return { input: inputTokens, window: window_ };
-        },
         contextProgress() {
             var info = this.tokenUsageInfo;
             if (!info || info.window <= 0) return 0;

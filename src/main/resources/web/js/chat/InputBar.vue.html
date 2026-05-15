@@ -95,13 +95,19 @@
             <button class="input-ref-btn" type="button" @click="openFileSearchShortcut">@</button>
             <div class="input-bottom-controls">
                 <div class="model-dropdown-wrapper" :class="{ open: showModelDropdown }">
-                    <button class="model-dropdown-trigger" @click="showModelDropdown = !showModelDropdown">
+                    <button class="model-dropdown-trigger" @mousedown.stop @click="showModelDropdown = !showModelDropdown">
                         <span class="model-dropdown-label">{{ currentModelLabel }}</span>
                         <svg class="model-dropdown-arrow" width="8" height="5" viewBox="0 0 8 5"><path d="M0 0l4 5 4-5z" fill="currentColor"/></svg>
                     </button>
-                    <div class="model-dropdown-list" v-if="showModelDropdown && currentModels.length > 0">
-                        <div class="model-dropdown-item" :class="{ active: !store.selectedModelId }" @click="selectModel('')">{{ i18n.t('chat.defaultModel') }}</div>
-                        <div class="model-dropdown-item" :class="{ active: store.selectedModelId === m.modelId }" v-for="m in currentModels" :key="m.modelId" @click="selectModel(m.modelId)">{{ m.displayName || m.modelId }}</div>
+                    <div class="model-dropdown-list" v-if="showModelDropdown" @mousedown.stop>
+                        <div class="model-dropdown-search">
+                            <input class="model-dropdown-search-input" type="text" v-model="modelSearchQuery" :placeholder="i18n.t('input.modelSearchPlaceholder')" @click.stop @focus @mousedown.stop />
+                        </div>
+                        <div class="model-dropdown-items" v-if="currentModels.length > 0">
+                            <div class="model-dropdown-item" :class="{ active: !store.selectedModelId }" @click="selectModel('')">{{ i18n.t('chat.defaultModel') }}</div>
+                            <div class="model-dropdown-item" :class="{ active: store.selectedModelId === m.modelId }" v-for="m in currentModels" :key="m.modelId" @click="selectModel(m.modelId)">{{ store.cliType === 'OPENCODE' ? m.modelId : (m.displayName || m.modelId) }}</div>
+                        </div>
+                        <div class="model-dropdown-empty" v-else>{{ i18n.t('input.modelSearchEmpty') }}</div>
                     </div>
                 </div>
                 <div v-if="currentReasoningLevels.length > 0" class="reasoning-dropdown-wrapper" :class="{ open: showReasoningDropdown }">

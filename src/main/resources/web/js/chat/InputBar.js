@@ -94,6 +94,7 @@ window.EARegisterComponent('input-bar', 'InputBar', {
         return {
             isComposing: false,
             showModelDropdown: false,
+            modelSearchQuery: '',
             showReasoningDropdown: false,
             fileReferences: [],
             referenceRegistry: {},
@@ -127,12 +128,22 @@ window.EARegisterComponent('input-bar', 'InputBar', {
         currentModels() {
             var list = this.store.modelsList || [];
             var cliType = this.store.cliType;
-            return list.filter(function (m) { return m.cliType === cliType; });
+            var models = list.filter(function (m) { return m.cliType === cliType; });
+            var search = (this.modelSearchQuery || '').toLowerCase().trim();
+            if (!search) return models;
+            return models.filter(function (m) {
+                var id = (m.modelId || '').toLowerCase();
+                var name = (m.displayName || '').toLowerCase();
+                var provider = (m.provider || '').toLowerCase();
+                return id.indexOf(search) >= 0 || name.indexOf(search) >= 0 || provider.indexOf(search) >= 0;
+            });
         },
         currentModelLabel() {
             if (!this.store.selectedModelId) return this.i18n.t('chat.defaultModel');
-            var models = this.currentModels;
+            var models = this.store.modelsList || [];
             var selected = this.store.selectedModelId;
+            var cliType = this.store.cliType;
+            if (cliType === 'OPENCODE') return selected;
             for (var i = 0; i < models.length; i++) {
                 if (models[i].modelId === selected) return models[i].displayName || models[i].modelId;
             }
@@ -153,6 +164,7 @@ window.EARegisterComponent('input-bar', 'InputBar', {
         this._onClickOutside = function (e) {
             if (this.showModelDropdown && !e.target.closest('.model-dropdown-wrapper')) {
                 this.showModelDropdown = false;
+                this.modelSearchQuery = '';
             }
             if (this.showReasoningDropdown && !e.target.closest('.reasoning-dropdown-wrapper')) {
                 this.showReasoningDropdown = false;
@@ -233,6 +245,7 @@ window.EARegisterComponent('input-bar', 'InputBar', {
         selectModel(modelId) {
             this.store.selectedModelId = modelId;
             this.showModelDropdown = false;
+            this.modelSearchQuery = '';
         },
         selectReasoningLevel(level) {
             this.store.selectedReasoningLevel = level;
@@ -625,7 +638,8 @@ window.EARegisterComponent('input-bar', 'InputBar', {
         },
         resolveLeadingSlashCommand(text) {
             var raw = text || '';
-            var trimmed = raw.replace(/^\s+/, '');
+            var normalized = raw.replace(/[\uff0f]/g, '/');
+            var trimmed = normalized.replace(/^\s+/, '');
             if (!trimmed.startsWith('/')) {
                 return null;
             }
@@ -650,7 +664,8 @@ window.EARegisterComponent('input-bar', 'InputBar', {
             if (!beforeCaret) {
                 return null;
             }
-            var match = beforeCaret.match(/^\s*\/([^\s/@]*)$/);
+            var normalized = beforeCaret.replace(/[\uff0f]/g, '/');
+            var match = normalized.match(/^\s*\/([^\s\/@]*)$/);
             if (!match) {
                 return null;
             }
@@ -766,7 +781,8 @@ window.EARegisterComponent('input-bar', 'InputBar', {
         },
         resolveSubmittedSlashCommand(text) {
             var raw = text || '';
-            var trimmed = raw.replace(/^\s+/, '');
+            var normalized = raw.replace(/[\uff0f]/g, '/');
+            var trimmed = normalized.replace(/^\s+/, '');
             if (!trimmed.startsWith('/')) {
                 return null;
             }
@@ -859,7 +875,14 @@ window.EARegisterComponent('input-bar', 'InputBar', {
             this.handleCaretInteraction();
         },
         handleKeydown(e) {
-            if (this.isComposing) return;
+            if (this.isComposing || e.keyCode === 229) {
+                this.isComposing = true;
+                if (e.key === 'Escape') {
+                    this.closeCommandSearch();
+                    this.closeFileSearch();
+                }
+                return;
+            }
             if (this.showFileSearch) {
                 if (e.key === 'ArrowDown') {
                     e.preventDefault();
@@ -1021,9 +1044,17 @@ window.EARegisterComponent('input-bar', 'InputBar', {
         },
         handleCompositionEnd() {
             this.isComposing = false;
-            this.handleCaretInteraction();
+            this.$nextTick(function () {
+                this.refreshComposerState();
+                this.handleCaretInteraction();
+            }.bind(this));
         },
         handleInput() {
+            if (this.isComposing) {
+                this.captureSelection();
+                this.refreshComposerState();
+                return;
+            }
             this.captureSelection();
             this.refreshComposerState();
             this.syncFileSearchState();

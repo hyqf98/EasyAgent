@@ -24,7 +24,6 @@ window.EARegisterComponent('chat-view', 'ChatView', {
             selectedSessions: [],
             isDeletingSessions: false,
             pendingDeleteRedirect: false,
-            pendingSlashExecutions: {},
             pendingSlashRefreshSessionId: null,
             toastMessage: '',
             toastTimer: null
@@ -80,16 +79,23 @@ window.EARegisterComponent('chat-view', 'ChatView', {
         }.bind(this);
         this._onSlashCommandExecuted = function (e) {
             var detail = e.detail || {};
-            var requestId = detail.requestId || '';
-            var pending = requestId ? this.pendingSlashExecutions[requestId] : null;
-            if (requestId && !pending) return;
-            if (requestId) delete this.pendingSlashExecutions[requestId];
             if (detail.toastMessage) this.showToast(detail.toastMessage);
             if (detail.openFreshSession) {
                 this.openFreshChatForCurrentCli();
-                if (!detail.prompt) return;
             }
             if (!detail.prompt) return;
+            var prompt = detail.prompt;
+            this.store.addUserMessage(prompt, []);
+            this.store.beginAssistantTurn();
+            this.store.setStreaming(true);
+            this.$nextTick(function () {
+                var activePane = this.store.getFocusedPane();
+                if (activePane && activePane.$refs && activePane.$refs.sessionPane) {
+                    activePane.$refs.sessionPane.scrollToBottom();
+                }
+            }.bind(this));
+            var modelId = this.store.selectedModelId || null;
+            EABridge.sendMessage(prompt, modelId, []);
             if (detail.refreshHistory) {
                 this.pendingSlashRefreshSessionId = this.store.sessionId;
             }
@@ -97,7 +103,7 @@ window.EARegisterComponent('chat-view', 'ChatView', {
         this._onStreamComplete = function (e) {
             var detail = e.detail || {};
             var sessionId = detail.sessionId || this.store.sessionId;
-            if (!sessionId || this.pendingSlashRefreshSessionId !== sessionId) return;
+            if (!sessionId || EAIsProvisionalSessionId(sessionId) || this.pendingSlashRefreshSessionId !== sessionId) return;
             this.pendingSlashRefreshSessionId = null;
             var cliType = this.store.cliType;
             setTimeout(function () {
@@ -106,7 +112,9 @@ window.EARegisterComponent('chat-view', 'ChatView', {
         }.bind(this);
         this._onStateRestored = function (e) {
             var detail = e.detail || {};
-            this._restorePaneLayout(detail.paneLayoutJson);
+            if (!this._restorePaneLayout(detail.paneLayoutJson)) {
+                this._restoreLastSession(detail.currentSessionId, detail.currentCliType);
+            }
         }.bind(this);
         window.addEventListener('ea-session-list', this._onSessionList);
         window.addEventListener('ea-sessions-deleted', this._onSessionsDeleted);
@@ -210,8 +218,12 @@ window.EARegisterComponent('chat-view', 'ChatView', {
         openFreshChatForCurrentCli() {
             this.store._saveCurrentToCache();
             var newSid = 'new-' + Date.now();
-            var pane = this.store.addPane(newSid, this.store.cliType, '');
-            this.store.sessionId = pane.sessionId;
+            var currentPane = this.store.getFocusedPane();
+            if (currentPane) {
+                currentPane.sessionId = newSid;
+                currentPane.title = '';
+            }
+            this.store.sessionId = newSid;
             this.store.messages = [];
             this.store.sessionTitle = '';
             this.store.model = '';
@@ -315,14 +327,14 @@ window.EARegisterComponent('chat-view', 'ChatView', {
             this.clearSelection();
         },
         _restorePaneLayout(paneLayoutJson) {
-            if (!paneLayoutJson) return;
+            if (!paneLayoutJson) return false;
             try {
                 var layout = JSON.parse(paneLayoutJson);
-                if (!layout || !layout.panes || !layout.grid) return;
+                if (!layout || !layout.panes || !layout.grid) return false;
                 var panes = layout.panes;
                 var grid = layout.grid;
-                if (!Array.isArray(panes) || panes.length === 0) return;
-                if (!Array.isArray(grid) || grid.length === 0) return;
+                if (!Array.isArray(panes) || panes.length === 0) return false;
+                if (!Array.isArray(grid) || grid.length === 0) return false;
 
                 var allPaneIds = {};
                 grid.forEach(function (row) {
@@ -331,7 +343,7 @@ window.EARegisterComponent('chat-view', 'ChatView', {
                 var validPanes = panes.filter(function (p) {
                     return !!allPaneIds[p.paneId] && !!p.sessionId && !EAIsProvisionalSessionId(p.sessionId);
                 });
-                if (validPanes.length === 0) return;
+                if (validPanes.length === 0) return false;
 
                 var validGrid = grid.map(function (row) {
                     return (row || []).filter(function (pid) {
@@ -339,7 +351,7 @@ window.EARegisterComponent('chat-view', 'ChatView', {
                     });
                 }).filter(function (row) { return row.length > 0; });
 
-                if (validGrid.length === 0) return;
+                if (validGrid.length === 0) return false;
 
                 var maxSeq = 0;
                 validPanes.forEach(function (p) {
@@ -383,9 +395,21 @@ window.EARegisterComponent('chat-view', 'ChatView', {
                     this.store.messagesVersion++;
                     EABridge.loadHistory(primaryPane.sessionId, primaryPane.cliType || this.store.cliType);
                 }
+                return true;
             } catch (e) {
-                // ignore invalid layout JSON
+                return false;
             }
+        },
+        _restoreLastSession(currentSessionId, currentCliType) {
+            if (!currentSessionId || EAIsProvisionalSessionId(currentSessionId)) return;
+            var cliType = currentCliType || this.store.cliType || 'CLAUDE';
+            this.store.cliType = cliType;
+            var pane = this.store.addPane(currentSessionId, cliType, '');
+            this.store.sessionId = currentSessionId;
+            this.store.sessionTitle = '';
+            this.store.messages = [];
+            this.store.messagesVersion++;
+            EABridge.loadHistory(currentSessionId, cliType);
         },
         _savePaneLayout() {
             var panes = this.store.activePanes;

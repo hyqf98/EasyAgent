@@ -69,8 +69,8 @@
         const stack = escapeHtml(getErrorStack(error));
         target.innerHTML = ''
             + '<div style="padding:24px;font-family:-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif;">'
-            + '<div style="max-width:720px;margin:48px auto;padding:20px 24px;border:1px solid #FCA5A5;'
-            + 'border-radius:12px;background:#FEF2F2;color:#991B1B;">'
+            + '<div style="max-width:720px;margin:48px auto;padding:20px 24px;border:1px solid var(--ea-error-border, #FCA5A5);'
+            + 'border-radius:12px;background:var(--ea-error-bg, #FEF2F2);color:var(--ea-text, #991B1B);">'
             + '<h2 style="margin:0 0 8px;font-size:18px;">EasyAgent UI failed to start</h2>'
             + '<div style="font-size:13px;line-height:1.6;white-space:pre-wrap;">'
             + message
@@ -120,7 +120,7 @@
             },
             template: `
                 <div v-if="errorState" style="padding:16px;">
-                    <div style="border:1px solid #FCA5A5;border-radius:12px;background:#FEF2F2;color:#991B1B;padding:16px 18px;">
+                    <div style="border:1px solid var(--ea-error-border, #FCA5A5);border-radius:12px;background:var(--ea-error-bg, #FEF2F2);color:var(--ea-text, #991B1B);padding:16px 18px;">
                         <div style="font-size:16px;font-weight:600;margin-bottom:6px;">
                             {{ pageName }} failed to render
                         </div>

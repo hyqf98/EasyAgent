@@ -193,6 +193,9 @@ window.EARegisterComponent('message-bubble', 'MessageBubble', {
             return b && b.type === 'SYSTEM_INFO';
         },
         isCliMetaBlock(b) {
+            if (this.message.role === 'ASSISTANT' || this.message.role === 'TOOL_RESULT') {
+                return false;
+            }
             var info = this.isTextBlock(b) ? this.parseMetaLines(b.text) : null;
             if (info && b.collapsed === undefined) {
                 b.collapsed = true;

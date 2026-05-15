@@ -37,7 +37,7 @@ public class OpenCodeCLIProvider extends AbstractCLIProvider {
     private static final Type STREAM_EVENT_TYPE = new TypeToken<StreamEvent<StreamPart>>() {}.getType();
 
     static {
-        GsonUtils.registerEnums(OpenCodeEventType.class);
+        GsonUtils.registerEnums(OpenCodeEventType.class, OpenCodePartType.class);
     }
 
     /**
@@ -131,7 +131,11 @@ public class OpenCodeCLIProvider extends AbstractCLIProvider {
             return this.createStepStart(sessionId, part != null ? part.messageId() : null);
         }
         if (partType == OpenCodePartType.REASONING || type == OpenCodeEventType.REASONING) {
-            return this.createMessage(sessionId, MessageType.THINKING, part != null ? part.text() : null);
+            String text = part != null ? part.text() : null;
+            if (text == null || text.isEmpty()) {
+                return null;
+            }
+            return this.createMessage(sessionId, MessageType.THINKING, text);
         }
         if (partType == OpenCodePartType.TOOL || type == OpenCodeEventType.TOOL_USE) {
             return this.convertToolUse(sessionId, part);
@@ -139,7 +143,11 @@ public class OpenCodeCLIProvider extends AbstractCLIProvider {
         if (partType == OpenCodePartType.STEP_FINISH || type == OpenCodeEventType.STEP_FINISH) {
             return this.convertStepFinish(sessionId, part, rawLine);
         }
-        return this.createMessage(sessionId, MessageType.TEXT, part != null ? part.text() : null);
+        String text = part != null ? part.text() : null;
+        if (text == null || text.isEmpty()) {
+            return null;
+        }
+        return this.createMessage(sessionId, MessageType.TEXT, text);
     }
 
     /**
@@ -202,13 +210,15 @@ public class OpenCodeCLIProvider extends AbstractCLIProvider {
         JsonObject tokensJson = GsonUtils.getJsonObject(partJson, "tokens");
         if (tokensJson != null) {
             TokenUsage tokens = GsonUtils.fromJson(tokensJson, TokenUsage.class);
+            long cacheRead = tokens.cache() != null ? tokens.cache().read() : 0;
+            long cacheWrite = tokens.cache() != null ? tokens.cache().write() : 0;
             tokenUsage = TokenUsageContext.builder()
                     .total(tokens.total())
-                    .input(tokens.input())
+                    .input(tokens.total())
                     .output(tokens.output())
                     .reasoning(tokens.reasoning())
-                    .cacheWrite(tokens.cache() != null ? tokens.cache().write() : 0)
-                    .cacheRead(tokens.cache() != null ? tokens.cache().read() : 0)
+                    .cacheWrite(cacheWrite)
+                    .cacheRead(cacheRead)
                     .build();
         }
 

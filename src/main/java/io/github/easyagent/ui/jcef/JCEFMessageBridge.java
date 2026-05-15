@@ -145,7 +145,7 @@ public class JCEFMessageBridge {
         this.browser = browser;
         this.chatManager = chatManager;
         this.sessionService = new SessionService();
-        this.modelConfigService = new ModelConfigService();
+        this.modelConfigService = ModelConfigService.getInstance();
         this.cliConfigService = new CliConfigService();
         this.mcpConfigService = new McpConfigService();
         this.mcpTestService = new McpTestService();
@@ -163,24 +163,7 @@ public class JCEFMessageBridge {
             this.chatUiBridgeService.registerBridge(this);
         }
         this.registerHandlers();
-        this.initModelConfigs();
-    }
-
-    /**
-     * 初始化模型配置，优先从持久化恢复，其次从本地文件加载。
-     */
-    private void initModelConfigs() {
-        EasyAgentAppState appState = EasyAgentAppState.getInstance();
-        String saved = appState.getModelsJson();
-        if (saved != null && !saved.isBlank()) {
-            this.modelConfigService.loadFromJson(saved);
-            boolean cleared = this.modelConfigService.clearOpenCodeModels();
-            if (cleared) {
-                appState.setModelsJson(this.modelConfigService.toJson());
-            }
-            return;
-        }
-        this.modelConfigService.loadFromLocal();
+        this.modelConfigService.initialize();
     }
 
     /**
@@ -691,7 +674,6 @@ public class JCEFMessageBridge {
                 @Override
                 public void onComplete() {
                     String resolvedSessionId = JCEFMessageBridge.this.currentSessionId != null
-                            && JCEFMessageBridge.this.currentSessionId.equals(effectiveSessionId)
                             ? JCEFMessageBridge.this.currentSessionId
                             : effectiveSessionId;
 
@@ -708,7 +690,6 @@ public class JCEFMessageBridge {
                     String errJson = MessageConverter.toErrorJson(e.getMessage(), effectiveSessionId);
                     JCEFMessageBridge.this.invokeJSCallback(JsCallback.STREAM_EVENT, errJson);
                     String resolvedSid = JCEFMessageBridge.this.currentSessionId != null
-                            && JCEFMessageBridge.this.currentSessionId.equals(effectiveSessionId)
                             ? JCEFMessageBridge.this.currentSessionId
                             : effectiveSessionId;
                     JCEFMessageBridge.this.invokeJSCallback(JsCallback.STREAM_COMPLETE,

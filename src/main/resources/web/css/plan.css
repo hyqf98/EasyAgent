@@ -891,12 +891,12 @@
     font-size: 12px !important;
     width: 24px !important;
     height: 24px !important;
-    color: var(--ea-text-secondary, #888);
+    color: var(--ea-text-secondary, #6B7280);
 }
 .kanban-card:hover .kanban-edit-btn { opacity: 1; }
 .kanban-card.running .kanban-edit-btn,
 .kanban-card.queued .kanban-edit-btn,
-.kanban-card.stopped .kanban-edit-btn { opacity: 1; color: var(--ea-text-secondary, #888); }
+.kanban-card.stopped .kanban-edit-btn { opacity: 1; color: var(--ea-text-secondary, #6B7280); }
 .kanban-edit-btn:hover { color: var(--ea-text, #333); background: var(--ea-bg-hover, rgba(0,0,0,0.05)); }
 
 /* Kanban Card Edit Mode */

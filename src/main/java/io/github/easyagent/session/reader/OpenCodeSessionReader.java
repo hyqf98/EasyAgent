@@ -202,11 +202,17 @@ public class OpenCodeSessionReader implements SessionReader {
                 TokenUsage tokenUsage = null;
                 Map<String, Object> tokens = (Map<String, Object>) data.get("tokens");
                 if (tokens != null) {
+                    Map<String, Object> cache = (Map<String, Object>) tokens.get("cache");
+                    int total = GsonUtils.toInt(tokens.get("total"));
+                    int cacheRead = cache != null ? GsonUtils.toInt(cache.get("read")) : 0;
+                    int cacheWrite = cache != null ? GsonUtils.toInt(cache.get("write")) : 0;
                     tokenUsage = TokenUsage.builder()
-                            .totalTokens(GsonUtils.toInt(tokens.get("total")))
-                            .inputTokens(GsonUtils.toInt(tokens.get("input")))
+                            .totalTokens(total)
+                            .inputTokens(total)
                             .outputTokens(GsonUtils.toInt(tokens.get("output")))
                             .reasoningTokens(GsonUtils.toInt(tokens.get("reasoning")))
+                            .cacheCreationInputTokens(cacheWrite)
+                            .cacheReadInputTokens(cacheRead)
                             .build();
                 }
 

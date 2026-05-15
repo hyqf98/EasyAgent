@@ -178,6 +178,12 @@ var EA_PENDING_MAP = {};
 /** 按会话 ID 存储的流式状态映射（响应式）。 */
 var EA_STREAMING_MAP = Vue.reactive({});
 
+/** 流式超时保护定时器映射。 */
+var EA_STREAMING_TIMEOUT_MAP = {};
+
+/** 流式超时阈值（毫秒），超过此时间未收到任何事件则自动结束。 */
+var EA_STREAMING_TIMEOUT_MS = 300000;
+
 /** 按会话 ID 存储的消息缓存 { messages, retryStatus, isStreaming, loaded }。 */
 var EA_SESSION_CACHE = Vue.reactive({});
 
@@ -365,10 +371,12 @@ window.EAStore = Vue.reactive({
         if (!sid) return;
         if (val) {
             EA_STREAMING_MAP[sid] = true;
+            this._startStreamingTimeout(sid);
             if (sid === this.sessionId) {
                 this.beginAssistantTurn();
             }
         } else {
+            this._clearStreamingTimeout(sid);
             delete EA_STREAMING_MAP[sid];
             if (sid === this.sessionId) {
                 this.streamingText = '';
@@ -379,6 +387,42 @@ window.EAStore = Vue.reactive({
                 EA_SESSION_CACHE[sid].isStreaming = false;
                 this._finalizeAssistantTurn(EA_SESSION_CACHE[sid].messages || [], 'stop');
             }
+        }
+    },
+
+    _startStreamingTimeout(sid) {
+        this._clearStreamingTimeout(sid);
+        EA_STREAMING_TIMEOUT_MAP[sid] = setTimeout(function () {
+            if (EA_STREAMING_MAP[sid]) {
+                console.warn('[EA] Streaming timeout for session:', sid, '- auto finalizing');
+                delete EA_STREAMING_MAP[sid];
+                delete EA_STREAMING_TIMEOUT_MAP[sid];
+                if (window.EAStore) {
+                    if (sid === EAStore.sessionId) {
+                        EAStore.streamingText = '';
+                        EAStore.retryStatus = null;
+                        EAStore._finalizeAssistantTurn(EAStore.messages, 'stop');
+                        EAStore.messagesVersion++;
+                    } else if (EA_SESSION_CACHE[sid]) {
+                        EA_SESSION_CACHE[sid].isStreaming = false;
+                        EAStore._finalizeAssistantTurn(EA_SESSION_CACHE[sid].messages || [], 'stop');
+                    }
+                    window.dispatchEvent(new CustomEvent('ea-stream-complete', { detail: { sessionId: sid } }));
+                }
+            }
+        }, EA_STREAMING_TIMEOUT_MS);
+    },
+
+    _clearStreamingTimeout(sid) {
+        if (EA_STREAMING_TIMEOUT_MAP[sid]) {
+            clearTimeout(EA_STREAMING_TIMEOUT_MAP[sid]);
+            delete EA_STREAMING_TIMEOUT_MAP[sid];
+        }
+    },
+
+    _refreshStreamingTimeout(sid) {
+        if (EA_STREAMING_MAP[sid]) {
+            this._startStreamingTimeout(sid);
         }
     },
 
@@ -438,6 +482,12 @@ window.EAStore = Vue.reactive({
         }
 
         this.sessionId = resolvedSessionId;
+
+        for (var i = 0; i < this.activePanes.length; i++) {
+            if (this.activePanes[i].sessionId === previousSessionId) {
+                this.activePanes[i].sessionId = resolvedSessionId;
+            }
+        }
     },
 
     /**
@@ -464,6 +514,7 @@ window.EAStore = Vue.reactive({
         switch (eventType) {
             case EA_EVENT_STEP_START:
                 EA_STREAMING_MAP[eventSid] = true;
+                this._refreshStreamingTimeout(eventSid);
                 if (eventSid === this.sessionId) {
                     this.beginAssistantTurn();
                     this.messagesVersion++;
@@ -472,17 +523,25 @@ window.EAStore = Vue.reactive({
                 }
                 return;
             case EA_EVENT_STEP_FINISH:
+                this._refreshStreamingTimeout(eventSid);
                 if (eventSid === this.sessionId) {
                     this.accumulateTokenUsage(event);
                     this.retryStatus = null;
                     var currentAssistant = this.getLastAssistantMessage();
-                    if (currentAssistant) currentAssistant.pendingFinishReason = event.reason || 'stop';
+                    if (currentAssistant) {
+                        if (currentAssistant.contents.length === 0 && currentAssistant.streamState === EA_STATE_GENERATING) {
+                            this.messages.splice(this.messages.indexOf(currentAssistant), 1);
+                        } else {
+                            currentAssistant.pendingFinishReason = event.reason || 'stop';
+                        }
+                    }
                     this.messagesVersion++;
                 } else {
                     this._bufferToCache(eventSid, event);
                 }
                 return;
             case EA_EVENT_ERROR:
+                this._clearStreamingTimeout(eventSid);
                 delete EA_STREAMING_MAP[eventSid];
                 if (eventSid === this.sessionId) {
                     this.appendAssistantError(event.message);
@@ -502,6 +561,7 @@ window.EAStore = Vue.reactive({
         }
 
         EA_STREAMING_MAP[eventSid] = true;
+        this._refreshStreamingTimeout(eventSid);
         switch (eventType) {
             case EA_EVENT_MESSAGE:
                 this.appendMessage(event);
@@ -543,7 +603,13 @@ window.EAStore = Vue.reactive({
             case EA_EVENT_STEP_FINISH:
                 this._accumulateTokenUsageIn(msgs, event);
                 var finishMsg = this._getLastAssistantIn(msgs);
-                if (finishMsg) finishMsg.pendingFinishReason = event.reason || 'stop';
+                if (finishMsg) {
+                    if (finishMsg.contents.length === 0 && finishMsg.streamState === EA_STATE_GENERATING) {
+                        msgs.splice(msgs.indexOf(finishMsg), 1);
+                    } else {
+                        finishMsg.pendingFinishReason = event.reason || 'stop';
+                    }
+                }
                 break;
             case EA_EVENT_RETRY_STATUS:
                 var retryMsg = this._ensureAssistantIn(msgs);
@@ -603,20 +669,23 @@ window.EAStore = Vue.reactive({
     },
 
     _appendMsgTo(msgs, event) {
+        var text = event.text;
+        if (text === null || text === undefined || text === '') return;
+
         var isThinking = normalizeEAType(event.messageType) === EA_MSG_THINKING;
         var lastMsg = this._getLastAssistantIn(msgs);
 
         if (isThinking && lastMsg && lastMsg.lastThinkingIndex >= 0) {
-            lastMsg.contents[lastMsg.lastThinkingIndex].text += event.text;
+            lastMsg.contents[lastMsg.lastThinkingIndex].text += text;
             return;
         }
         if (!isThinking && lastMsg && lastMsg.lastTextIndex >= 0) {
-            lastMsg.contents[lastMsg.lastTextIndex].text += event.text;
+            lastMsg.contents[lastMsg.lastTextIndex].text += text;
             return;
         }
 
         var blockType = isThinking ? EA_BLOCK_THINKING : EA_BLOCK_TEXT;
-        var block = { type: blockType, text: event.text };
+        var block = { type: blockType, text: text };
         if (isThinking) block.collapsed = true;
 
         lastMsg = this._ensureAssistantIn(msgs);
@@ -667,9 +736,9 @@ window.EAStore = Vue.reactive({
         if (!lastMsg.tokenUsage) {
             lastMsg.tokenUsage = { input: newInput, output: newOutput, total: newTotal };
         } else {
-            lastMsg.tokenUsage.input += newInput;
-            lastMsg.tokenUsage.output += newOutput;
-            lastMsg.tokenUsage.total += newTotal;
+            lastMsg.tokenUsage.input = newInput;
+            lastMsg.tokenUsage.output = newOutput;
+            lastMsg.tokenUsage.total = Math.max(lastMsg.tokenUsage.total, newTotal);
         }
     },
 

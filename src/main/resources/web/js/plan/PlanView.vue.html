@@ -294,6 +294,9 @@
                     </div>
                 </div>
             </div>
+            </div>
+        </div>
+    </div>
 
     <!-- Task Edit/Add Dialog (shared by collect + kanban views) -->
     <div v-if="showTaskDialog" class="plan-dialog-overlay" @click.self="showTaskDialog = false">
@@ -346,7 +349,7 @@
                     </button>
                     <div class="plan-dialog-dropdown-list" v-if="showTaskModelDropdown">
                         <div class="plan-dialog-dropdown-item" :class="{ active: !editTaskModelId }" @click="selectTaskModel('')">{{ i18n.t('plan.task.modelPlaceholder') }}</div>
-                        <div class="plan-dialog-dropdown-item" :class="{ active: editTaskModelId === m.modelId }" v-for="m in taskDialogModels" :key="m.modelId" @click="selectTaskModel(m.modelId)">{{ m.displayName || m.modelId }}</div>
+                        <div class="plan-dialog-dropdown-item" :class="{ active: editTaskModelId === m.modelId }" v-for="m in taskDialogModels" :key="m.modelId" @click="selectTaskModel(m.modelId)">{{ store.cliType === 'OPENCODE' ? m.modelId : (m.displayName || m.modelId) }}</div>
                     </div>
                 </div>
             </div>
@@ -404,4 +407,6 @@
                         :disabled="!newPlanName.trim()">{{ i18n.t('plan.dialogCreate') }}</button>
             </div>
         </div>
+    </div>
+</div>
 </template>

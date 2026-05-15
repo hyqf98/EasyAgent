@@ -101,6 +101,8 @@ window.EARegisterComponent('plan-view', 'PlanView', {
         },
         taskDialogModelLabel() {
             if (!this.editTaskModelId) return this.i18n.t('plan.task.modelPlaceholder') || '默认';
+            var cliType = this.editTaskCliType || this.currentPlanCliType;
+            if (cliType === 'OPENCODE') return this.editTaskModelId;
             var models = this.taskDialogModels;
             for (var i = 0; i < models.length; i++) {
                 if (models[i].modelId === this.editTaskModelId) {

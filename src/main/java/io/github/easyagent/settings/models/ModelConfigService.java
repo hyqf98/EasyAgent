@@ -1,8 +1,10 @@
 package io.github.easyagent.settings.models;
 
+import com.intellij.openapi.application.ApplicationManager;
 import com.google.gson.JsonObject;
 import com.google.gson.reflect.TypeToken;
 import io.github.easyagent.enums.CLIType;
+import io.github.easyagent.settings.EasyAgentAppState;
 import io.github.easyagent.settings.config.CliConfigService;
 import io.github.easyagent.util.GsonUtils;
 import lombok.extern.slf4j.Slf4j;
@@ -30,9 +32,10 @@ import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 /**
- * AI 模型配置管理服务。
+ * AI 模型配置管理服务（应用级单例）。
  * <p>
  * 提供模型配置的加载、同步、持久化和查询功能。
+ * 通过 {@link ApplicationManager} 注册为应用级服务，所有项目窗口共享同一实例。
  * 支持两种数据来源：
  * <ul>
  *   <li>远程 GitHub 仓库的 {@code models.json}（v2 格式）</li>
@@ -46,6 +49,40 @@ import java.util.stream.Collectors;
  */
 @Slf4j
 public class ModelConfigService {
+
+    /**
+     * 获取应用级别的 {@link ModelConfigService} 单例实例。
+     *
+     * @return 全局模型配置服务实例
+     */
+    public static ModelConfigService getInstance() {
+        return ApplicationManager.getApplication().getService(ModelConfigService.class);
+    }
+
+    /**
+     * 初始化模型配置，优先从持久化恢复，其次从本地文件加载。
+     * <p>
+     * 仅在首次调用时执行初始化，后续调用直接跳过。
+     * </p>
+     */
+    public void initialize() {
+        if (this.initialized) {
+            return;
+        }
+        this.initialized = true;
+
+        EasyAgentAppState appState = EasyAgentAppState.getInstance();
+        String saved = appState.getModelsJson();
+        if (saved != null && !saved.isBlank()) {
+            this.loadFromJson(saved);
+            boolean cleared = this.clearOpenCodeModels();
+            if (cleared) {
+                appState.setModelsJson(this.toJson());
+            }
+            return;
+        }
+        this.loadFromLocal();
+    }
 
     /** 远程 models.json 的 GitHub raw 地址。 */
     private static final String REMOTE_MODELS_URL =
@@ -66,6 +103,9 @@ public class ModelConfigService {
 
     /** {@code List<ModelInfo>} 的泛型类型标记。 */
     private static final Type MODEL_LIST_TYPE = new TypeToken<List<ModelInfo>>() {}.getType();
+
+    /** 标记是否已完成初始化。 */
+    private volatile boolean initialized;
 
     /** 内存缓存，{@link CLIType} -> List<{@link ModelInfo}>。 */
     private final Map<CLIType, List<ModelInfo>> modelCache = new ConcurrentHashMap<>();
