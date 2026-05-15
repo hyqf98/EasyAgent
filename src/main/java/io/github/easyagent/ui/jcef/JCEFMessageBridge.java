@@ -174,6 +174,10 @@ public class JCEFMessageBridge {
         String saved = appState.getModelsJson();
         if (saved != null && !saved.isBlank()) {
             this.modelConfigService.loadFromJson(saved);
+            boolean cleared = this.modelConfigService.clearOpenCodeModels();
+            if (cleared) {
+                appState.setModelsJson(this.modelConfigService.toJson());
+            }
             return;
         }
         this.modelConfigService.loadFromLocal();
@@ -210,6 +214,12 @@ public class JCEFMessageBridge {
         this.registerHandler(JsAction.SAVE_MODELS, SaveModelsRequest.class, this::handleSaveModels);
         this.registerHandler(JsAction.QUERY_CLI_MODELS, QueryCliModelsRequest.class,
                 this::handleQueryCliModels);
+        this.registerHandler(JsAction.QUERY_OPENCODE_MODELS, ActionRequest.class,
+                request -> this.handleQueryOpenCodeModels());
+        this.registerHandler(JsAction.QUERY_PROVIDER_MODELS, QueryProviderModelsRequest.class,
+                this::handleQueryProviderModels);
+        this.registerHandler(JsAction.QUERY_ALL_PROVIDERS, ActionRequest.class,
+                request -> this.handleQueryAllProviders());
         this.registerHandler(JsAction.SEARCH_FILE_REFERENCES, SearchFileReferencesRequest.class,
                 this::handleSearchFileReferences);
         this.registerHandler(JsAction.RESOLVE_FILE_REFERENCE, ResolveFileReferenceRequest.class,
@@ -227,6 +237,10 @@ public class JCEFMessageBridge {
         this.registerHandler(JsAction.GET_CLI_CONFIGS, ActionRequest.class, request -> this.pushCliConfigs());
         this.registerHandler(JsAction.SAVE_CLI_CONFIGS, SaveCliConfigsRequest.class,
                 this::handleSaveCliConfigs);
+        this.registerHandler(JsAction.SAVE_OPENCODE_MODEL, SaveOpenCodeModelRequest.class,
+                this::handleSaveOpenCodeModel);
+        this.registerHandler(JsAction.DELETE_OPENCODE_MODEL, DeleteOpenCodeModelRequest.class,
+                this::handleDeleteOpenCodeModel);
         this.registerHandler(JsAction.SAVE_CLI_PROFILE, SaveCliProfileRequest.class,
                 this::handleSaveCliProfile);
         this.registerHandler(JsAction.DELETE_CLI_PROFILE, DeleteCliProfileRequest.class,
@@ -347,6 +361,9 @@ public class JCEFMessageBridge {
         java.awt.Color accent = safeColor("List.selectionBackground", 0x4F7CFF);
 
         boolean isDark = ThemeType.fromUiColor(panelBg, lafName).isDark();
+        if (isDark) {
+            border = fixDarkBorder(border, panelBg);
+        }
         java.util.Map<String, String> colors = buildThemeColors(panelBg, labelFg, inputBg, border,
                 disabledFg, accent, isDark);
 
@@ -371,11 +388,11 @@ public class JCEFMessageBridge {
         c.put("--ea-bg-active", toHex(blend(bg, tintTarget, isDark ? 0.15f : 0.12f)));
 
         if (disabledFg != null) {
-            c.put("--ea-text-secondary", toHex(disabledFg));
+            c.put("--ea-text-secondary", toHex(isDark ? blend(fg, bg, 0.20f) : disabledFg));
         } else {
-            c.put("--ea-text-secondary", toHex(blend(fg, bg, 0.45f)));
+            c.put("--ea-text-secondary", toHex(blend(fg, bg, isDark ? 0.20f : 0.45f)));
         }
-        c.put("--ea-text-muted", toHex(blend(fg, bg, 0.6f)));
+        c.put("--ea-text-muted", toHex(blend(fg, bg, isDark ? 0.30f : 0.60f)));
 
         c.put("--ea-input-bg", toHex(inputBg));
         c.put("--ea-input-border", toHex(border));
@@ -405,7 +422,7 @@ public class JCEFMessageBridge {
 
         c.put("--ea-scrollbar", toHex(blend(border, tintTarget, isDark ? 0.15f : 0.15f)));
         c.put("--ea-scrollbar-hover", toHex(blend(fg, bg, 0.30f)));
-        c.put("--ea-icon-color", toHex(blend(fg, bg, 0.40f)));
+        c.put("--ea-icon-color", toHex(blend(fg, bg, isDark ? 0.25f : 0.40f)));
 
         c.put("--ea-markdown-link", toHex(blend(accent, fg, 0.30f)));
         c.put("--ea-markdown-code-bg", toHex(blend(bg, tintTarget, isDark ? 0.03f : 0.03f)));
@@ -439,6 +456,19 @@ public class JCEFMessageBridge {
                 Math.min(255, Math.max(0, Math.round(a.getGreen() * (1 - t) + b.getGreen() * t))),
                 Math.min(255, Math.max(0, Math.round(a.getBlue() * (1 - t) + b.getBlue() * t)))
         );
+    }
+
+    private static float luminance(java.awt.Color c) {
+        return (0.299f * c.getRed() + 0.587f * c.getGreen() + 0.114f * c.getBlue()) / 255.0f;
+    }
+
+    private static java.awt.Color fixDarkBorder(java.awt.Color border, java.awt.Color bg) {
+        float borderLum = luminance(border);
+        float bgLum = luminance(bg);
+        if (borderLum - bgLum > 0.25f) {
+            return blend(bg, java.awt.Color.WHITE, 0.18f);
+        }
+        return border;
     }
 
     /**
@@ -677,6 +707,12 @@ public class JCEFMessageBridge {
                 public void onError(Exception e) {
                     String errJson = MessageConverter.toErrorJson(e.getMessage(), effectiveSessionId);
                     JCEFMessageBridge.this.invokeJSCallback(JsCallback.STREAM_EVENT, errJson);
+                    String resolvedSid = JCEFMessageBridge.this.currentSessionId != null
+                            && JCEFMessageBridge.this.currentSessionId.equals(effectiveSessionId)
+                            ? JCEFMessageBridge.this.currentSessionId
+                            : effectiveSessionId;
+                    JCEFMessageBridge.this.invokeJSCallback(JsCallback.STREAM_COMPLETE,
+                            new StreamCompletePayload(resolvedSid));
                 }
             });
         } catch (Exception e) {
@@ -951,11 +987,43 @@ public class JCEFMessageBridge {
         String cliTypeStr = request.cliType();
         this.asyncExecutor.submit(() -> {
             if (CLIType.OPENCODE.name().equals(cliTypeStr)) {
-                List<ModelInfo> models = this.modelConfigService.queryModelsDev();
-                this.invokeJSCallback(JsCallback.CLI_MODELS, models);
+                List<ModelInfo> models = this.modelConfigService.queryOpenCodeModels();
+                this.invokeJSCallback(JsCallback.OPENCODE_MODELS, models);
             } else {
                 this.invokeJSCallback(JsCallback.CLI_MODELS, "[]");
             }
+        });
+    }
+
+    /**
+     * 从 OpenCode CLI 本地查询所有可用模型。
+     */
+    private void handleQueryOpenCodeModels() {
+        this.asyncExecutor.submit(() -> {
+            List<ModelInfo> models = this.modelConfigService.queryOpenCodeModels();
+            this.invokeJSCallback(JsCallback.OPENCODE_MODELS, models);
+        });
+    }
+
+    /**
+     * 从 OpenCode CLI 查询指定 Provider 的模型列表。
+     *
+     * @param request 请求对象，包含 providerId
+     */
+    private void handleQueryProviderModels(QueryProviderModelsRequest request) {
+        this.asyncExecutor.submit(() -> {
+            List<ModelInfo> models = this.modelConfigService.queryProviderModels(request.providerId());
+            this.invokeJSCallback(JsCallback.PROVIDER_MODELS, models);
+        });
+    }
+
+    /**
+     * 从 models.dev API 查询所有 Provider 列表。
+     */
+    private void handleQueryAllProviders() {
+        this.asyncExecutor.submit(() -> {
+            List<CliConfigService.ProviderInfo> providers = this.modelConfigService.queryAllProviders();
+            this.invokeJSCallback(JsCallback.ALL_PROVIDERS, providers);
         });
     }
 
@@ -1989,6 +2057,15 @@ public class JCEFMessageBridge {
     }
 
     /**
+     * 查询 Provider 模型列表请求。
+     *
+     * @param action     动作名称
+     * @param providerId Provider ID
+     */
+    private record QueryProviderModelsRequest(String action, String providerId) implements JsRequest {
+    }
+
+    /**
      * 搜索文件引用请求。
      *
      * @param action    动作名称
@@ -2144,6 +2221,13 @@ public class JCEFMessageBridge {
     private record SaveCliConfigsRequest(String action, String cliType,
                                          ClaudeConfig claude, OpenCodeConfig opencode,
                                          CodexConfig codex) implements JsRequest {
+    }
+
+    private record SaveOpenCodeModelRequest(String action, String providerId, String modelId,
+                                            String name, String npmPackage) implements JsRequest {
+    }
+
+    private record DeleteOpenCodeModelRequest(String action, String providerId, String modelId) implements JsRequest {
     }
 
     /**
@@ -2836,7 +2920,20 @@ public class JCEFMessageBridge {
                 log.warn("[PLAN-STOP] Failed to stop plan task: planId={}, taskId={}",
                         request.planId(), request.taskId(), e);
             }
-         });
+        });
+    }
+
+    private void handleSaveOpenCodeModel(SaveOpenCodeModelRequest request) {
+        this.asyncExecutor.submit(() -> {
+            this.cliConfigService.saveOpenCodeModel(
+                    request.providerId(), request.modelId(), request.name(), request.npmPackage());
+        });
+    }
+
+    private void handleDeleteOpenCodeModel(DeleteOpenCodeModelRequest request) {
+        this.asyncExecutor.submit(() -> {
+            this.cliConfigService.deleteOpenCodeModel(request.providerId(), request.modelId());
+        });
     }
 
     /**

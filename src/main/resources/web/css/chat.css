@@ -1963,6 +1963,12 @@
     min-width: 0;
 }
 .model-add-input:focus, .model-add-select:focus { border-color: var(--ea-accent); }
+.model-add-hint {
+    font-size: 11px;
+    color: var(--ea-text-muted);
+    margin-top: 4px;
+    line-height: 1.4;
+}
 .model-add-actions {
     display: flex;
     gap: 6px;
@@ -2226,7 +2232,7 @@
     border: 1px solid var(--ea-border);
     border-radius: 6px;
     box-shadow: 0 4px 12px rgba(0,0,0,0.15);
-    z-index: 100;
+    z-index: 9100;
     min-width: 80px;
     max-height: 200px;
     overflow-y: auto;
@@ -2333,7 +2339,7 @@
     background: var(--ea-bg-hover);
 }
 .model-dropdown-label {
-    max-width: 200px;
+    max-width: 260px;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -2350,15 +2356,36 @@
     position: absolute;
     bottom: calc(100% + 4px);
     right: 0;
-    min-width: 180px;
-    max-width: 300px;
-    max-height: 240px;
-    overflow-y: auto;
+    min-width: 240px;
+    max-width: 360px;
     background: var(--ea-popup-bg);
     border: 1px solid var(--ea-border);
     border-radius: 8px;
     box-shadow: var(--ea-popup-shadow);
     z-index: 100;
+    padding: 0;
+}
+.model-dropdown-search {
+    padding: 6px 6px 4px;
+    border-bottom: 1px solid var(--ea-border);
+}
+.model-dropdown-search-input {
+    width: 100%;
+    padding: 4px 8px;
+    font-size: 11px;
+    border: 1px solid var(--ea-border);
+    border-radius: 4px;
+    background: var(--ea-input-bg);
+    color: var(--ea-text);
+    outline: none;
+    font-family: var(--ea-font-sans);
+}
+.model-dropdown-search-input:focus {
+    border-color: var(--ea-input-focus);
+}
+.model-dropdown-items {
+    max-height: 220px;
+    overflow-y: auto;
     padding: 4px;
 }
 .model-dropdown-item {
@@ -2379,6 +2406,12 @@
     color: var(--ea-input-focus);
     font-weight: 600;
     background: var(--ea-bg-secondary);
+}
+.model-dropdown-empty {
+    padding: 12px 10px;
+    font-size: 11px;
+    color: var(--ea-text-muted);
+    text-align: center;
 }
 
 /* === Reasoning Level Dropdown (inside input bar) === */
@@ -2541,8 +2574,16 @@
 .provider-item-name {
     color: var(--ea-text-secondary);
     font-size: 11px;
-    overflow: hidden;
-    text-overflow: ellipsis;
+}
+.provider-combobox-empty {
+    padding: 8px 12px;
+    font-size: 12px;
+    color: var(--ea-text-muted);
+    text-align: center;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
 }
 
 .provider-combobox-sm .provider-combobox-arrow {
@@ -2624,16 +2665,16 @@
 .ea-combobox-empty {
     padding: 7px 10px;
     font-size: 12px;
-    color: var(--ea-text-secondary, #888);
+    color: var(--ea-text-secondary, #6B7280);
 }
 .ea-combobox-loading {
     padding: 7px 10px;
     font-size: 12px;
-    color: var(--ea-text-secondary, #888);
+    color: var(--ea-text-secondary, #6B7280);
 }
 .ea-combobox-hint {
     font-size: 11px;
-    color: var(--ea-text-secondary, #888);
+    color: var(--ea-text-secondary, #6B7280);
     margin-left: 8px;
 }
 .version-badge {
@@ -2914,7 +2955,7 @@
 .mcp-action-btn.mcp-action-del:hover {
     color: #DC2626;
     border-color: #DC2626;
-    background: #FEF2F2;
+    background: var(--ea-error-bg);
 }
 .mcp-card-body {
     margin-top: 8px;

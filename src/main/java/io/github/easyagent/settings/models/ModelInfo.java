@@ -15,6 +15,7 @@ import lombok.Builder;
  * @param cliType       所属 CLI 类型（{@link CLIType#CLAUDE}、{@link CLIType#OPENCODE}、{@link CLIType#CODEX}）
  * @param contextWindow 上下文窗口大小（token 数量）
  * @param provider      模型提供商（如 {@code anthropic}、{@code openai}）
+ * @param npmPackage    NPM 包名（如 {@code @ai-sdk/openai-compatible}），仅 OpenCode 使用
  * @author haijun
  * @date 2026/5/6
  * @since 1.0.0
@@ -25,7 +26,8 @@ public record ModelInfo(
         String displayName,
         CLIType cliType,
         int contextWindow,
-        String provider
+        String provider,
+        String npmPackage
 ) {
 
     /** 默认上下文窗口大小（128K）。 */

@@ -400,6 +400,138 @@ public class ModelConfigService {
     }
 
     /**
+     * 从 models.dev API 获取所有 Provider 列表（不获取模型详情）。
+     * <p>
+     * 仅提取每个 provider 的 id 和显示名称，比 {@link #queryModelsDev()} 更轻量。
+     * 结果会更新 {@link #cachedDynamicProviders} 缓存。
+     * </p>
+     *
+     * @return Provider 信息列表，查询失败返回空列表
+     */
+    public List<CliConfigService.ProviderInfo> queryAllProviders() {
+        List<CliConfigService.ProviderInfo> result = new ArrayList<>();
+        try {
+            HttpRequest request = HttpRequest.newBuilder()
+                    .uri(URI.create(MODELS_DEV_URL))
+                    .timeout(Duration.ofSeconds(15))
+                    .GET()
+                    .build();
+            HttpResponse<String> response = this.httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+            if (response.statusCode() != 200) {
+                log.warn("models.dev API returned status: {}", response.statusCode());
+                return result;
+            }
+
+            JsonObject root = GsonUtils.parseObject(response.body());
+            for (String providerKey : root.keySet()) {
+                try {
+                    JsonObject providerObj = root.getAsJsonObject(providerKey);
+                    if (providerObj == null) {
+                        continue;
+                    }
+                    String providerName = GsonUtils.getString(providerObj, "name");
+                    if (providerName == null || providerName.isBlank()) {
+                        providerName = providerKey;
+                    }
+                    result.add(new CliConfigService.ProviderInfo(providerKey, providerName));
+                } catch (Exception ignored) {
+                }
+            }
+
+            this.cachedDynamicProviders = result;
+            log.info("Queried {} providers from models.dev", result.size());
+        } catch (Exception e) {
+            log.warn("Failed to query providers from models.dev", e);
+        }
+        return result;
+    }
+
+    /**
+     * 从 models.dev API 查询指定 Provider 的可用模型列表。
+     *
+     * @param providerId Provider 标识
+     * @return 该 Provider 下的可用模型列表
+     */
+    public List<ModelInfo> queryProviderModels(String providerId) {
+        List<ModelInfo> result = new ArrayList<>();
+        if (providerId == null || providerId.isBlank()) {
+            return result;
+        }
+        try {
+            HttpRequest request = HttpRequest.newBuilder()
+                    .uri(URI.create(MODELS_DEV_URL))
+                    .timeout(Duration.ofSeconds(15))
+                    .GET()
+                    .build();
+            HttpResponse<String> response = this.httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+            if (response.statusCode() != 200) {
+                log.warn("models.dev API returned status: {}", response.statusCode());
+                return result;
+            }
+
+            JsonObject root = GsonUtils.parseObject(response.body());
+            JsonObject providerObj = GsonUtils.getJsonObject(root, providerId);
+            if (providerObj == null) {
+                return result;
+            }
+
+            JsonObject modelsObj = GsonUtils.getJsonObject(providerObj, "models");
+            if (modelsObj == null) {
+                return result;
+            }
+
+            for (String modelKey : modelsObj.keySet()) {
+                try {
+                    JsonObject modelObj = GsonUtils.getJsonObject(modelsObj, modelKey);
+                    String name = modelObj != null ? GsonUtils.getString(modelObj, "name") : null;
+                    String displayName = (name != null && !name.isBlank()) ? name : modelKey;
+                    int contextWindow = DEFAULT_CONTEXT_WINDOW;
+                    if (modelObj != null) {
+                        JsonObject limit = GsonUtils.getJsonObject(modelObj, "limit");
+                        if (limit != null) {
+                            contextWindow = GsonUtils.getInt(limit, "context", DEFAULT_CONTEXT_WINDOW);
+                        }
+                    }
+
+                    result.add(ModelInfo.builder()
+                            .modelId(providerId + "/" + modelKey)
+                            .displayName(displayName)
+                            .cliType(CLIType.OPENCODE)
+                            .contextWindow(contextWindow > 0 ? contextWindow : DEFAULT_CONTEXT_WINDOW)
+                            .provider(providerId)
+                            .build());
+                } catch (Exception ignored) {
+                }
+            }
+
+            log.info("Queried {} models for provider {} from models.dev", result.size(), providerId);
+        } catch (Exception e) {
+            log.warn("Failed to query provider models from models.dev", e);
+        }
+        return result;
+    }
+
+    /**
+     * 清除 OPENCODE 分组的所有模型（用于从旧的 models.dev 同步迁移到 CLI 查询）。
+     * <p>
+     * 旧的持久化数据中可能包含从 models.dev API 同步的大量 OPENCODE 模型，
+     * 现在改为从本地 CLI 查询，因此需要清除旧的同步数据。
+     * 仅在实际存在 OPENCODE 模型时才执行清除。
+     * </p>
+     *
+     * @return {@code true} 如果清除了模型并需要重新持久化
+     */
+    public boolean clearOpenCodeModels() {
+        List<ModelInfo> existing = this.modelCache.get(CLIType.OPENCODE);
+        if (existing == null || existing.isEmpty()) {
+            return false;
+        }
+        this.modelCache.put(CLIType.OPENCODE, new ArrayList<>());
+        log.info("Cleared {} persisted OPENCODE models (migration to CLI query)", existing.size());
+        return true;
+    }
+
+    /**
      * 保存模型列表到内存缓存（覆盖式）。
      *
      * @param models 模型列表
@@ -462,17 +594,77 @@ public class ModelConfigService {
     }
 
     /**
-     * 获取所有 CLI 类型的推理等级配置。
+     * 从 {@code opencode.json} 读取用户已配置的模型。
      * <p>
-     * 优先返回远程同步的数据，为空时回退到内置默认值。
+     * 只返回用户在 provider 配置中明确指定的模型（即通过 /connect 连接过的），
+     * 不包含 OpenCode 内置模型。
      * </p>
      *
-     * @return CLI 类型到推理等级列表的映射
+     * @return 用户已配置的模型列表
      */
-    public Map<CLIType, List<String>> getAllReasoningLevels() {
-        Map<CLIType, List<String>> result = new LinkedHashMap<>();
-        for (CLIType cliType : CLIType.values()) {
-            result.put(cliType, this.getReasoningLevels(cliType));
+    public List<ModelInfo> queryOpenCodeModels() {
+        return this.queryOpenCodeModels(null);
+    }
+
+    /**
+     * 从 {@code opencode.json} 读取用户已配置的指定 Provider 的模型。
+     *
+     * @param providerId Provider ID，为 null 时查询所有
+     * @return 用户已配置的模型列表
+     */
+    public List<ModelInfo> queryOpenCodeModels(String providerId) {
+        List<ModelInfo> result = new ArrayList<>();
+        try {
+            Path configPath = Path.of(System.getProperty("user.home"),
+                    ".config", "opencode", "opencode.json");
+            if (!Files.exists(configPath)) {
+                return result;
+            }
+            String json = Files.readString(configPath);
+            JsonObject root = GsonUtils.parseObject(json);
+            JsonObject providers = GsonUtils.getJsonObject(root, "provider");
+            if (providers == null || providers.keySet().isEmpty()) {
+                return result;
+            }
+            for (String pid : providers.keySet()) {
+                if (providerId != null && !providerId.isBlank() && !pid.equals(providerId)) {
+                    continue;
+                }
+                JsonObject providerObj = GsonUtils.getJsonObject(providers, pid);
+                if (providerObj == null) {
+                    continue;
+                }
+                String npm = GsonUtils.getString(providerObj, "npm");
+                JsonObject modelsObj = GsonUtils.getJsonObject(providerObj, "models");
+                if (modelsObj == null || modelsObj.keySet().isEmpty()) {
+                    continue;
+                }
+                for (String mid : modelsObj.keySet()) {
+                    JsonObject modelObj = GsonUtils.getJsonObject(modelsObj, mid);
+                    String name = modelObj != null ? GsonUtils.getString(modelObj, "name") : null;
+                    String fullModelId = pid + "/" + mid;
+                    String displayName = (name != null && !name.isBlank()) ? name : mid;
+
+                    result.add(ModelInfo.builder()
+                            .modelId(fullModelId)
+                            .displayName(displayName)
+                            .cliType(CLIType.OPENCODE)
+                            .contextWindow(DEFAULT_CONTEXT_WINDOW)
+                            .provider(pid)
+                            .npmPackage(npm != null ? npm : "")
+                            .build());
+                }
+            }
+
+            List<CliConfigService.ProviderInfo> provList = this.extractProviders(result);
+            if (!provList.isEmpty()) {
+                this.cachedDynamicProviders = provList;
+            }
+
+            log.info("Read {} configured models from opencode.json (provider={})",
+                    result.size(), providerId != null ? providerId : "all");
+        } catch (Exception e) {
+            log.warn("Failed to read configured models from opencode.json", e);
         }
         return result;
     }
@@ -545,5 +737,27 @@ public class ModelConfigService {
             dir = parent;
         }
         return null;
+    }
+
+    private List<CliConfigService.ProviderInfo> extractProviders(List<ModelInfo> models) {
+        Map<String, String> providerMap = new LinkedHashMap<>();
+        for (ModelInfo m : models) {
+            String p = m.provider();
+            if (p != null && !p.isBlank() && !providerMap.containsKey(p)) {
+                providerMap.put(p, p);
+            }
+        }
+
+        if (this.cachedDynamicProviders != null) {
+            for (CliConfigService.ProviderInfo info : this.cachedDynamicProviders) {
+                if (!providerMap.containsKey(info.id())) {
+                    providerMap.put(info.id(), info.displayName());
+                }
+            }
+        }
+
+        List<CliConfigService.ProviderInfo> result = new ArrayList<>();
+        providerMap.forEach((id, name) -> result.add(new CliConfigService.ProviderInfo(id, name)));
+        return result;
     }
 }

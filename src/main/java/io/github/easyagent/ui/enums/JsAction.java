@@ -65,6 +65,15 @@ public enum JsAction implements ValueEnum<String> {
     /** 查询 CLI 可用模型列表。 */
     QUERY_CLI_MODELS("queryCliModels"),
 
+    /** 查询 OpenCode 本地 CLI 可用模型列表。 */
+    QUERY_OPENCODE_MODELS("queryOpenCodeModels"),
+
+    /** 查询指定 Provider 的模型列表（从 OpenCode CLI）。 */
+    QUERY_PROVIDER_MODELS("queryProviderModels"),
+
+    /** 查询 models.dev 所有 Provider 列表。 */
+    QUERY_ALL_PROVIDERS("queryAllProviders"),
+
     /** 保存 CLI 配置档案。 */
     SAVE_CLI_PROFILE("saveCliProfile"),
 
@@ -100,6 +109,12 @@ public enum JsAction implements ValueEnum<String> {
 
     /** 保存 CLI 配置。 */
     SAVE_CLI_CONFIGS("saveCliConfigs"),
+
+    /** 保存 OpenCode 模型到 opencode.json。 */
+    SAVE_OPENCODE_MODEL("saveOpenCodeModel"),
+
+    /** 删除 OpenCode 模型从 opencode.json。 */
+    DELETE_OPENCODE_MODEL("deleteOpenCodeModel"),
 
     /** 获取 MCP 服务器配置列表。 */
     GET_MCP_CONFIGS("getMcpConfigs"),

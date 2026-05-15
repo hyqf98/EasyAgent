@@ -1,0 +1,60 @@
+[data-theme="dark"] {
+    --ea-bg: #1E1E1E;
+    --ea-bg-secondary: #2A2A2A;
+    --ea-bg-hover: #363636;
+    --ea-bg-active: #404040;
+    --ea-border: #404040;
+    --ea-border-light: #333333;
+    --ea-text: #D4D4D4;
+    --ea-text-secondary: #9CA3AF;
+    --ea-text-muted: #6B7280;
+    --ea-user-bubble: #2A2A2A;
+    --ea-thinking-bg: #2C2A1E;
+    --ea-thinking-border: #4A3F1F;
+    --ea-tool-bg: #2A2A2A;
+    --ea-tool-border: #404040;
+    --ea-error-bg: #3B1F1F;
+    --ea-error-border: #5C2C2C;
+    --ea-input-bg: #333333;
+    --ea-input-border: #4A4A4A;
+    --ea-code-bg: #2A2A2A;
+    --ea-header-bg: rgba(30,30,30,0.92);
+    --ea-popup-bg: #2A2A2A;
+    --ea-popup-shadow: 0 8px 30px rgba(0,0,0,0.4);
+    --ea-scrollbar: #4A4A4A;
+    --ea-scrollbar-hover: #6B7280;
+    --ea-icon-color: #9CA3AF;
+    --ea-markdown-link: #6BA3FF;
+    --ea-markdown-code-bg: #333333;
+    --ea-markdown-blockquote-bg: #2A2A2A;
+    --ea-table-header-bg: #2A2A2A;
+    --ea-table-even-bg: #252525;
+    --ea-claude-light: #3D2D6B;
+    --ea-opencode-light: #1A3D2E;
+    --ea-codex-light: #1A2D4D;
+}
+
+[data-theme="dark"] .config-toast.success {
+    background: #1A3D2E;
+    color: #6EE7B7;
+    border-color: #2D5A42;
+}
+[data-theme="dark"] .config-toast.error {
+    background: #3B1F1F;
+    color: #FCA5A5;
+    border-color: #5C2C2C;
+}
+
+[data-theme="dark"] .mcp-card-type.stdio { background: #2D2B5E; color: #A5B4FC; }
+[data-theme="dark"] .mcp-card-type.http { background: #1E3A5F; color: #93C5FD; }
+[data-theme="dark"] .mcp-card-type.sse { background: #1A3D2E; color: #6EE7B7; }
+[data-theme="dark"] .mcp-card-scope.user { background: #4A3728; color: #FCD34D; }
+[data-theme="dark"] .mcp-card-scope.project { background: #2D2B5E; color: #A5B4FC; }
+[data-theme="dark"] .mcp-card-status.enabled { background: #1A3D2E; color: #6EE7B7; }
+[data-theme="dark"] .mcp-card-status:not(.enabled) { background: #3B1F1F; color: #FCA5A5; }
+
+[data-theme="dark"] .mcp-action-btn.mcp-action-del:hover {
+    color: #FCA5A5;
+    border-color: #7F1D1D;
+    background: #3B1F1F;
+}

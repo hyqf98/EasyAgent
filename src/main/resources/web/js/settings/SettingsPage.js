@@ -55,6 +55,12 @@ function formatContextWindow(val) {
     return String(val);
 }
 
+function shortModelId(modelId) {
+    if (!modelId) return '';
+    var idx = modelId.indexOf('/');
+    return idx >= 0 ? modelId.substring(idx + 1) : modelId;
+}
+
 window.EARegisterComponent('settings-page', 'SettingsPage', {
     emits: ['close'],
     data() {
@@ -71,8 +77,18 @@ window.EARegisterComponent('settings-page', 'SettingsPage', {
             editForm: { modelId: '', displayName: '', cliType: '', contextWindow: 0, contextDisplay: '', provider: '' },
             showCtxDropdown: false,
             showAddModel: false,
+            showAddModelModal: false,
+            addModelTab: 'builtin',
             addForm: { modelId: '', displayName: '', contextDisplay: '128K', contextWindow: 128000, provider: '', providerId: '' },
             showAddCtxDropdown: false,
+            addModelProviders: [],
+            addModelProvidersLoading: false,
+            addModelProviderModels: [],
+            addModelProviderModelsLoading: false,
+            addModelProviderDropdown: false,
+            addModelProviderFilter: '',
+            addModelModelDropdown: false,
+            addModelModelFilter: '',
             configFilter: 'CLAUDE',
             configLoaded: false,
             configSaving: '',
@@ -96,6 +112,7 @@ window.EARegisterComponent('settings-page', 'SettingsPage', {
             collapsedProviders: {},
             modelDisplayLimit: 200,
             modelsReady: false,
+            cliQueriedModelIds: {},
             editingDefault: false,
             defaultEditForm: { displayName: '', contextDisplay: '', contextWindow: 0 },
             mcpFilter: 'CLAUDE',
@@ -164,33 +181,18 @@ window.EARegisterComponent('settings-page', 'SettingsPage', {
             var search = (this.modelSearch || '').toLowerCase().trim();
 
             if (this.modelFilter === 'OPENCODE') {
-                var groups = {};
-                models.forEach(function (model) {
-                    var provider = model.provider || 'other';
-                    if (!groups[provider]) groups[provider] = [];
-                    groups[provider].push(model);
+                var sorted = models.slice().sort(function (a, b) {
+                    var pa = (a.provider || '').toLowerCase();
+                    var pb = (b.provider || '').toLowerCase();
+                    if (pa < pb) return -1;
+                    if (pa > pb) return 1;
+                    return 0;
                 });
-                var groupKeys = Object.keys(groups).sort();
-                var globalIdx = 0;
-                var self = this;
-                var stopped = false;
-                groupKeys.forEach(function (key) {
-                    if (stopped) return;
-                    var count = groups[key].length;
-                    var isCollapsed = self.collapsedProviders[key] !== false;
-                    rows.push({ rowType: 'provider-header', provider: key, count: count, collapsed: isCollapsed });
-                    if (!isCollapsed || search) {
-                        groups[key].forEach(function (model) {
-                            if (stopped) return;
-                            if (modelCount >= limit) {
-                                stopped = true;
-                                return;
-                            }
-                            rows.push({ rowType: 'model', modelIndex: globalIdx, model: model });
-                            globalIdx++;
-                            modelCount++;
-                        });
-                    }
+                sorted.forEach(function (model) {
+                    if (modelCount >= limit) return;
+                    var realIdx = models.indexOf(model);
+                    rows.push({ rowType: 'model', modelIndex: realIdx, model: model });
+                    modelCount++;
                 });
             } else {
                 models.forEach(function (model, index) {
@@ -286,7 +288,11 @@ window.EARegisterComponent('settings-page', 'SettingsPage', {
         modelFilter() {
             this.editingIndex = -1;
             this.showAddModel = false;
+            this.showAddModelModal = false;
             this.modelDisplayLimit = 200;
+            if (this.modelFilter === 'OPENCODE' && this.activeTab === 'models') {
+                this._queryOpenCodeCLIMModels();
+            }
         }
     },
     mounted() {
@@ -323,6 +329,72 @@ window.EARegisterComponent('settings-page', 'SettingsPage', {
         }.bind(this);
         window.addEventListener('ea-models-loaded', this._onModelsLoaded);
         window.addEventListener('ea-cli-models-loaded', this._onCliModelsLoaded);
+        this._onOpenCodeModelsLoaded = function (e) {
+            this.cliModelsLoading = false;
+            this.modelDisplayLimit = 200;
+            var cliModels = Array.isArray(e.detail) ? e.detail : [];
+            var existing = this.models.filter(function (m) { return m.cliType !== 'OPENCODE'; });
+            var existingIds = {};
+            existing.forEach(function (m) { existingIds[m.modelId] = true; });
+            var cliModelIds = {};
+            cliModels.forEach(function (m) {
+                m.cliType = 'OPENCODE';
+                if (!existingIds[m.modelId]) {
+                    existing.push(m);
+                    existingIds[m.modelId] = true;
+                }
+                cliModelIds[m.modelId] = true;
+            });
+            this.cliQueriedModelIds = cliModelIds;
+            var userAdded = this.models.filter(function (m) {
+                return m.cliType === 'OPENCODE' && !cliModelIds[m.modelId];
+            });
+            userAdded.forEach(function (m) {
+                if (!existingIds[m.modelId]) {
+                    existing.push(m);
+                    existingIds[m.modelId] = true;
+                }
+            });
+            this.models = existing;
+            if (this.store) {
+                this.store.modelsList = existing.slice();
+            }
+            this.modelsReady = true;
+            if (this.isSyncing) {
+                this.isSyncing = false;
+            }
+            var providers = [];
+            var providerSet = {};
+            cliModels.forEach(function (m) {
+                if (m.provider && !providerSet[m.provider]) {
+                    providerSet[m.provider] = true;
+                    providers.push({ id: m.provider, displayName: m.provider });
+                }
+            });
+            if (providers.length > 0) {
+                this.addModelProviders = providers;
+            }
+        }.bind(this);
+        this._onProviderModelsLoaded = function (e) {
+            this.addModelProviderModelsLoading = false;
+            this.addModelProviderModels = Array.isArray(e.detail) ? e.detail : [];
+            if (this.addModelProviderModels.length > 0 && this.showAddModelModal && this.addModelTab === 'builtin') {
+                this.addModelModelDropdown = true;
+            } else {
+                this.addModelModelDropdown = false;
+            }
+        }.bind(this);
+        window.addEventListener('ea-opencode-models-loaded', this._onOpenCodeModelsLoaded);
+        window.addEventListener('ea-provider-models-loaded', this._onProviderModelsLoaded);
+        this._onAllProvidersLoaded = function (e) {
+            var providers = Array.isArray(e.detail) ? e.detail : [];
+            if (providers.length > 0) {
+                this.addModelProviders = providers;
+                this.openCodeProviders = providers;
+            }
+            this.addModelProvidersLoading = false;
+        }.bind(this);
+        window.addEventListener('ea-all-providers-loaded', this._onAllProvidersLoaded);
         this._onCliConfigs = function (e) {
             var detail = e.detail || {};
             var configs = detail.configs || {};
@@ -487,6 +559,9 @@ window.EARegisterComponent('settings-page', 'SettingsPage', {
         if (this._syncTimeout) { clearTimeout(this._syncTimeout); this._syncTimeout = null; }
         if (this._onModelsLoaded) window.removeEventListener('ea-models-loaded', this._onModelsLoaded);
         if (this._onCliModelsLoaded) window.removeEventListener('ea-cli-models-loaded', this._onCliModelsLoaded);
+        if (this._onOpenCodeModelsLoaded) window.removeEventListener('ea-opencode-models-loaded', this._onOpenCodeModelsLoaded);
+        if (this._onProviderModelsLoaded) window.removeEventListener('ea-provider-models-loaded', this._onProviderModelsLoaded);
+        if (this._onAllProvidersLoaded) window.removeEventListener('ea-all-providers-loaded', this._onAllProvidersLoaded);
         if (this._onCliConfigs) window.removeEventListener('ea-cli-configs', this._onCliConfigs);
         if (this._onCliConfigsSaved) window.removeEventListener('ea-cli-configs-saved', this._onCliConfigsSaved);
         if (this._onMcpConfigs) window.removeEventListener('ea-mcp-configs', this._onMcpConfigs);
@@ -544,6 +619,7 @@ window.EARegisterComponent('settings-page', 'SettingsPage', {
             else if (target === 'mcpTest' && this.mcpTestDialogItem) this.onCloseMcpTest(this.mcpTestDialogItem);
             else if (target === 'skillInstallForm') this.onCancelInstallSkill();
             else if (target === 'skillContent') this.skillContentDialog = null;
+            else if (target === 'addModelModal') this.onCancelAddModel();
         },
         incrementRetry() {
             if (this.store.retryMaxCount >= 5) return;
@@ -577,6 +653,28 @@ window.EARegisterComponent('settings-page', 'SettingsPage', {
             this.models = (this.store.modelsList || []).slice();
             this.modelsReady = true;
             EABridge.getModels();
+            if (this.modelFilter === 'OPENCODE') {
+                this._queryOpenCodeCLIMModels();
+            }
+        },
+        _queryOpenCodeCLIMModels() {
+            this.cliModelsLoading = true;
+            EABridge.queryOpenCodeModels();
+        },
+        onSyncModels() {
+            if (this.modelFilter === 'OPENCODE') {
+                this.cliModelsLoading = true;
+                EABridge.queryOpenCodeModels();
+            } else {
+                this.isSyncing = true;
+                this.cliModelsLoading = true;
+                EABridge.syncModels();
+                var self = this;
+                this._syncTimeout = setTimeout(function () {
+                    self.isSyncing = false;
+                    self.cliModelsLoading = false;
+                }, 30000);
+            }
         },
         onSyncAllModels() {
             this.isSyncing = true;
@@ -632,44 +730,146 @@ window.EARegisterComponent('settings-page', 'SettingsPage', {
         // ==================== Add Model ====================
 
         onShowAddModel() {
-            this.showAddModel = true;
+            this.showAddModelModal = true;
+            this.addModelTab = this.isAddProviderMode ? 'builtin' : 'custom';
             this.addForm = {
                 modelId: '',
                 displayName: '',
                 contextDisplay: '128K',
                 contextWindow: 128000,
                 provider: '',
-                providerId: ''
+                providerId: '',
+                npmPackage: '@ai-sdk/openai-compatible'
             };
             this.showAddCtxDropdown = false;
-        },
-        onCancelAdd() {
-            this.showAddModel = false;
-            this.showAddCtxDropdown = false;
-        },
-        onConfirmAdd() {
-            var modelId = this.addForm.modelId.trim();
-            var displayName = this.addForm.displayName.trim();
-            if (!modelId) return;
             if (this.isAddProviderMode) {
-                var pid = this.addForm.providerId || 'anthropic';
-                if (pid === 'custom') {
-                    pid = this.addForm.providerId;
+                this.addModelProviders = this.openCodeProviders && this.openCodeProviders.length > 0
+                    ? this.openCodeProviders.slice() : [];
+                if (this.addModelProviders.length === 0) {
+                    this.addModelProvidersLoading = true;
+                    EABridge.queryAllProviders();
                 }
-                modelId = pid + '/' + modelId;
+            } else {
+                this.addModelProviders = [];
+            }
+            this.addModelProviderModels = [];
+            this.addModelProviderDropdown = false;
+            this.addModelModelDropdown = false;
+            this.addModelProviderFilter = '';
+            this.addModelModelFilter = '';
+            this.addModelProviderModelsLoading = false;
+            this.addModelProvidersLoading = false;
+        },
+        _extractProvidersFromModels() {
+            var providerMap = {};
+            this.models.forEach(function (m) {
+                if (m.cliType === 'OPENCODE' && m.provider) {
+                    providerMap[m.provider] = m.provider;
+                }
+            });
+            var result = [];
+            for (var id in providerMap) {
+                if (providerMap.hasOwnProperty(id)) {
+                    result.push({ id: id, displayName: providerMap[id] });
+                }
+            }
+            return result;
+        },
+        onCancelAddModel() {
+            this.showAddModelModal = false;
+            this.showAddCtxDropdown = false;
+            this.addModelProviderDropdown = false;
+            this.addModelModelDropdown = false;
+        },
+        onConfirmAddModel() {
+            var modelId = (this.addForm.modelId || '').trim();
+            var displayName = (this.addForm.displayName || '').trim();
+            var providerId = (this.addForm.providerId || '').trim();
+            if (!modelId) return;
+            var bareModelId = modelId;
+            if (this.isAddProviderMode && providerId && modelId.indexOf('/') < 0) {
+                modelId = providerId + '/' + modelId;
+            }
+            if (bareModelId.indexOf('/') >= 0) {
+                bareModelId = bareModelId.substring(bareModelId.indexOf('/') + 1);
             }
             var ctxVal = parseContextWindow(this.addForm.contextDisplay);
-            var provider = this.isAddProviderMode ? this.addForm.providerId : '';
+            var npmPackage = (this.addForm.npmPackage || '').trim();
             this.models.push({
                 modelId: modelId,
                 displayName: displayName || modelId,
                 cliType: this.modelFilter,
                 contextWindow: ctxVal,
-                provider: provider || ''
+                provider: providerId,
+                npmPackage: npmPackage
             });
-            this.showAddModel = false;
+            if (this.isAddProviderMode && providerId && bareModelId) {
+                EABridge.saveOpenCodeModel(providerId, bareModelId, displayName || bareModelId, npmPackage);
+            }
+            this.showAddModelModal = false;
             this.showAddCtxDropdown = false;
+            this.addModelProviderDropdown = false;
+            this.addModelModelDropdown = false;
             this._persistModels();
+        },
+        onAddModelSelectProvider(providerId) {
+            this.addForm.providerId = providerId;
+            this.addForm.modelId = '';
+            this.addForm.displayName = '';
+            this.addModelProviderDropdown = false;
+            this.addModelProviderFilter = '';
+            this.addModelProviderModels = [];
+            this.addModelModelDropdown = false;
+            this.addModelProviderModelsLoading = true;
+            EABridge.queryProviderModels(providerId);
+        },
+        onAddModelSelectModel(model) {
+            var bareId = model.modelId || '';
+            var slashIdx = bareId.indexOf('/');
+            if (slashIdx >= 0) bareId = bareId.substring(slashIdx + 1);
+            this.addForm.modelId = bareId;
+            this.addForm.displayName = model.displayName || bareId;
+            if (model.contextWindow) {
+                this.addForm.contextWindow = model.contextWindow;
+                this.addForm.contextDisplay = formatContextWindow(model.contextWindow);
+            }
+            this.addModelModelDropdown = false;
+            this.addModelModelFilter = '';
+        },
+        filteredAddModelProviders() {
+            var q = (this.addModelProviderFilter || '').toLowerCase();
+            if (!q) return this.addModelProviders;
+            return this.addModelProviders.filter(function (p) {
+                return p.id.toLowerCase().indexOf(q) >= 0 || (p.displayName || '').toLowerCase().indexOf(q) >= 0;
+            });
+        },
+        filteredAddModelModels() {
+            var q = (this.addModelModelFilter || '').toLowerCase();
+            if (!q) return this.addModelProviderModels;
+            return this.addModelProviderModels.filter(function (m) {
+                var bareId = (m.modelId || '').split('/').pop();
+                return bareId.toLowerCase().indexOf(q) >= 0 || (m.displayName || '').toLowerCase().indexOf(q) >= 0;
+            });
+        },
+        toggleAddModelProviderDropdown() {
+            this.addModelProviderDropdown = !this.addModelProviderDropdown;
+            this.addModelProviderFilter = '';
+        },
+        toggleAddModelModelDropdown() {
+            if (this.addModelProviderModels.length === 0 && !this.addModelProviderModelsLoading && this.addForm.providerId) {
+                this.addModelProviderModelsLoading = true;
+                EABridge.queryProviderModels(this.addForm.providerId);
+            }
+            this.addModelModelDropdown = !this.addModelModelDropdown;
+            this.addModelModelFilter = '';
+        },
+        onBlurAddModelProvider() {
+            var self = this;
+            setTimeout(function () { self.addModelProviderDropdown = false; }, 150);
+        },
+        onBlurAddModelModel() {
+            var self = this;
+            setTimeout(function () { self.addModelModelDropdown = false; }, 150);
         },
         onAddCtxInput(e) {
             this.addForm.contextDisplay = e.target.value;
@@ -721,9 +921,15 @@ window.EARegisterComponent('settings-page', 'SettingsPage', {
         },
         onDeleteModel(idx) {
             var filtered = this.filteredModels;
-            var realIdx = this.models.indexOf(filtered[idx]);
+            var model = filtered[idx];
+            var realIdx = this.models.indexOf(model);
             if (realIdx >= 0) {
                 this.models.splice(realIdx, 1);
+            }
+            if (model && model.cliType === 'OPENCODE' && model.provider) {
+                var bareId = model.modelId || '';
+                if (bareId.indexOf('/') >= 0) bareId = bareId.substring(bareId.indexOf('/') + 1);
+                EABridge.deleteOpenCodeModel(model.provider, bareId);
             }
             this._persistModels();
         },
@@ -745,6 +951,7 @@ window.EARegisterComponent('settings-page', 'SettingsPage', {
             }, 150);
         },
         formatContextWindow: formatContextWindow,
+        shortModelId: shortModelId,
 
         // ==================== Default Model ====================
 
@@ -788,12 +995,17 @@ window.EARegisterComponent('settings-page', 'SettingsPage', {
         // ==================== Persist ====================
 
         _persistModels() {
+            var self = this;
             var wrapper = { version: 2, cliGroups: {} };
             var cliTypes = ['CLAUDE', 'OPENCODE', 'CODEX'];
             for (var i = 0; i < cliTypes.length; i++) {
                 var ct = cliTypes[i];
                 var group = {
-                    models: this.models.filter(function (m) { return m.cliType === ct; })
+                    models: this.models.filter(function (m) {
+                        if (m.cliType !== ct) return false;
+                        if (ct === 'OPENCODE' && self.cliQueriedModelIds[m.modelId]) return false;
+                        return true;
+                    })
                 };
                 var info = this.store.defaultModelInfoMap[ct];
                 if (info && (info.displayName || info.contextWindow)) {

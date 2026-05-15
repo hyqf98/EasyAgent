@@ -85,11 +85,11 @@
             <div class="settings-content-header">
                 <h3>{{ i18n.t('settings.models') }}</h3>
                 <div class="settings-header-actions">
-                    <button class="sync-btn" :class="{ syncing: isSyncing }" @click="onSyncAllModels" :disabled="isSyncing">
+                    <button class="sync-btn" :class="{ syncing: cliModelsLoading }" @click="onSyncModels" :disabled="cliModelsLoading">
                         <svg class="sync-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0 1 18.8-4.3M22 12.5a10 10 0 0 1-18.8 4.3"/></svg>
-                        <span>{{ isSyncing ? i18n.t('settings.modelsSyncing') : i18n.t('settings.modelsSync') }}</span>
+                        <span>{{ cliModelsLoading ? i18n.t('settings.modelsSyncing') : i18n.t('settings.modelsSync') }}</span>
                     </button>
-                    <button class="add-model-btn" @click="onShowAddModel" v-if="!showAddModel">+ {{ i18n.t('settings.addModel') }}</button>
+                    <button class="add-model-btn" @click="onShowAddModel">+ {{ i18n.t('settings.addModel') }}</button>
                 </div>
             </div>
             <div class="settings-content-body">
@@ -108,61 +108,121 @@
                         <input type="text" class="model-search-input" v-model="modelSearch" :placeholder="i18n.t('settings.modelSearch')" />
                         <button v-if="modelSearch" class="model-search-clear" @click="modelSearch = ''">×</button>
                     </div>
-                    <template v-if="modelFilter === 'OPENCODE'">
-                        <button class="provider-toggle-btn" @click="expandAllProviders" :title="i18n.t('settings.expandAll') || 'Expand All'">▽</button>
-                        <button class="provider-toggle-btn" @click="collapseAllProviders" :title="i18n.t('settings.collapseAll') || 'Collapse All'">▷</button>
-                    </template>
                 </div>
 
-                <!-- Add Model Form -->
-                <div class="model-add-form" v-if="showAddModel">
-                    <template v-if="isAddProviderMode">
-                        <div class="model-add-field">
-                            <label class="model-add-label">Provider</label>
-                            <div class="provider-combobox provider-combobox-sm">
-                                <input class="model-add-input provider-combobox-input" v-model="addForm.providerId"
-                                       @focus="providerDropdownOpen = 'add'; providerFilter = ''"
-                                       @input="providerFilter = $event.target.value"
-                                       @blur="onProviderBlur"
-                                       placeholder="e.g. anthropic" />
-                                <button class="provider-combobox-arrow" :class="{ open: providerDropdownOpen === 'add' }"
-                                        @mousedown.prevent="toggleProviderDropdown('add')">▼</button>
-                                <div class="provider-combobox-dropdown" v-if="providerDropdownOpen === 'add'">
-                                    <div class="provider-combobox-item" v-for="p in filteredProviders()" :key="p.id"
-                                         @mousedown.prevent="selectProvider('add', p.id)">
-                                        <span class="provider-item-id">{{ p.id }}</span>
-                                        <span class="provider-item-name">{{ p.displayName }}</span>
+                <!-- Add Model Modal -->
+                <div class="ea-modal-overlay" v-if="showAddModelModal" @mousedown.self="onOverlayMouseDown($event)" @mouseup.self="onOverlayMouseUp($event, 'addModelModal')">
+                    <div class="ea-modal ea-modal-lg">
+                        <div class="ea-modal-header">
+                            <h4>{{ i18n.t('settings.addModel') }}</h4>
+                            <button class="ea-modal-close" @click="onCancelAddModel">×</button>
+                        </div>
+                        <div class="ea-modal-body">
+                            <!-- Tab switch for OpenCode -->
+                            <div class="mcp-type-tabs" v-if="isAddProviderMode" style="margin-bottom: 16px;">
+                                <div class="mcp-type-tab" :class="{ active: addModelTab === 'builtin' }" @click="addModelTab = 'builtin'">{{ i18n.t('settings.addModelBuiltin') }}</div>
+                                <div class="mcp-type-tab" :class="{ active: addModelTab === 'custom' }" @click="addModelTab = 'custom'">{{ i18n.t('settings.addModelCustom') }}</div>
+                            </div>
+
+                            <!-- Built-in Provider Mode -->
+                            <template v-if="isAddProviderMode && addModelTab === 'builtin'">
+                                <div class="mcp-form-field">
+                                    <label class="mcp-form-label">{{ i18n.t('settings.addModelProvider') }}</label>
+                                    <div class="provider-combobox provider-combobox-sm">
+                                        <input class="mcp-form-input provider-combobox-input" v-model="addForm.providerId"
+                                               @focus="addModelProviderDropdown = true; addModelProviderFilter = ''"
+                                               @input="addModelProviderFilter = $event.target.value"
+                                               @blur="onBlurAddModelProvider"
+                                               :placeholder="i18n.t('settings.addModelProviderPlaceholder')" />
+                                        <button class="provider-combobox-arrow" :class="{ open: addModelProviderDropdown }"
+                                                @mousedown.prevent="toggleAddModelProviderDropdown">▼</button>
+                                        <div class="provider-combobox-dropdown" v-if="addModelProviderDropdown" @mousedown.stop>
+                                            <div v-if="addModelProvidersLoading" class="provider-combobox-empty">
+                                                <svg class="model-loading-spinner" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0 1 18.8-4.3M22 12.5a10 10 0 0 1-18.8 4.3"/></svg>
+                                                {{ i18n.t('settings.modelsLoading') }}
+                                            </div>
+                                            <template v-else>
+                                                <div class="provider-combobox-item" v-for="p in filteredAddModelProviders()" :key="p.id"
+                                                     @mousedown.prevent="onAddModelSelectProvider(p.id)">
+                                                    <span class="provider-item-id">{{ p.id }}</span>
+                                                    <span class="provider-item-name">{{ p.displayName }}</span>
+                                                </div>
+                                                <div class="provider-combobox-empty" v-if="filteredAddModelProviders().length === 0">{{ i18n.t('settings.addModelProviderEmpty') }}</div>
+                                            </template>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="mcp-form-field">
+                                    <label class="mcp-form-label">{{ i18n.t('settings.modelId') }}</label>
+                                    <div class="provider-combobox provider-combobox-sm">
+                                        <input class="mcp-form-input provider-combobox-input" v-model="addForm.modelId"
+                                               @focus="addModelModelDropdown = true"
+                                               @input="addModelModelFilter = $event.target.value"
+                                               @blur="onBlurAddModelModel"
+                                               :placeholder="i18n.t('settings.addModelIdPlaceholder')" />
+                                        <button class="provider-combobox-arrow" :class="{ open: addModelModelDropdown }"
+                                                @mousedown.prevent="toggleAddModelModelDropdown">▼</button>
+                                        <div class="provider-combobox-dropdown" v-if="addModelModelDropdown" @mousedown.stop>
+                                            <div v-if="addModelProviderModelsLoading" class="provider-combobox-empty">
+                                                <svg class="model-loading-spinner" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0 1 18.8-4.3M22 12.5a10 10 0 0 1-18.8 4.3"/></svg>
+                                                {{ i18n.t('settings.modelsLoading') }}
+                                            </div>
+                                            <template v-else>
+                                                <div class="provider-combobox-item" v-for="m in filteredAddModelModels()" :key="m.modelId"
+                                                     @mousedown.prevent="onAddModelSelectModel(m)">
+                                                     <span class="provider-item-id">{{ shortModelId(m.modelId) }}</span>
+                                                    <span class="provider-item-name">{{ m.displayName }}</span>
+                                                </div>
+                                                <div class="provider-combobox-empty" v-if="filteredAddModelModels().length === 0">{{ i18n.t('settings.addModelModelEmpty') }}</div>
+                                            </template>
+                                        </div>
+                                    </div>
+                                </div>
+                            </template>
+
+                            <!-- Custom Mode (or non-OpenCode) -->
+                            <template v-if="!isAddProviderMode || addModelTab === 'custom'">
+                                <div class="mcp-form-field" v-if="isAddProviderMode">
+                                    <label class="mcp-form-label">{{ i18n.t('settings.addModelProvider') }}</label>
+                                    <input class="mcp-form-input" v-model="addForm.providerId" placeholder="e.g. anthropic" />
+                                </div>
+                                <div class="mcp-form-field" v-if="isAddProviderMode">
+                                    <label class="mcp-form-label">{{ i18n.t('settings.addModelApiType') }}</label>
+                                    <input class="mcp-form-input" v-model="addForm.npmPackage" placeholder="@ai-sdk/openai-compatible" />
+                                    <div class="model-add-hint">{{ i18n.t('settings.addModelApiHint') }}</div>
+                                </div>
+
+                                <div class="mcp-form-field">
+                                    <label class="mcp-form-label">{{ i18n.t('settings.modelId') }}</label>
+                                    <input class="mcp-form-input" v-model="addForm.modelId" :placeholder="isAddProviderMode ? 'e.g. claude-sonnet-4-5' : 'e.g. claude-opus-4-7'" />
+                                </div>
+                            </template>
+
+                            <!-- Common fields -->
+                            <div class="mcp-form-field">
+                                <label class="mcp-form-label">{{ i18n.t('settings.modelName') }}</label>
+                                <input class="mcp-form-input" v-model="addForm.displayName" :placeholder="i18n.t('settings.addModelPlaceholder')" />
+                            </div>
+                            <div class="mcp-form-field">
+                                <label class="mcp-form-label">{{ i18n.t('settings.modelContext') }}</label>
+                                <div class="ctx-input-wrapper">
+                                    <input class="mcp-form-input model-edit-ctx"
+                                           :value="addForm.contextDisplay"
+                                           @input="onAddCtxInput($event)"
+                                           @focus="showAddCtxDropdown = true"
+                                           @blur="onAddCtxBlur"
+                                           placeholder="128K" />
+                                    <div class="ctx-dropdown" v-if="showAddCtxDropdown">
+                                        <div class="ctx-dropdown-item" v-for="opt in ctxOptions" :key="opt.value"
+                                             @mousedown.prevent="onAddCtxSelect(opt.value)">{{ opt.label }}</div>
                                     </div>
                                 </div>
                             </div>
                         </div>
-                    </template>
-                    <div class="model-add-field">
-                        <label class="model-add-label">{{ i18n.t('settings.modelId') }}</label>
-                        <input class="model-add-input" v-model="addForm.modelId" :placeholder="isAddProviderMode ? 'e.g. claude-sonnet-4-5' : 'e.g. claude-opus-4-7'" />
-                    </div>
-                    <div class="model-add-field">
-                        <label class="model-add-label">{{ i18n.t('settings.modelName') }}</label>
-                        <input class="model-add-input" v-model="addForm.displayName" :placeholder="i18n.t('settings.addModelPlaceholder')" />
-                    </div>
-                    <div class="model-add-field">
-                        <label class="model-add-label">{{ i18n.t('settings.modelContext') }}</label>
-                        <div class="ctx-input-wrapper">
-                            <input class="model-add-input model-edit-ctx"
-                                   :value="addForm.contextDisplay"
-                                   @input="onAddCtxInput($event)"
-                                   @focus="showAddCtxDropdown = true"
-                                   @blur="onAddCtxBlur"
-                                   placeholder="128K" />
-                            <div class="ctx-dropdown" v-if="showAddCtxDropdown">
-                                <div class="ctx-dropdown-item" v-for="opt in ctxOptions" :key="opt.value"
-                                     @mousedown.prevent="onAddCtxSelect(opt.value)">{{ opt.label }}</div>
-                            </div>
+                        <div class="ea-modal-footer">
+                            <button class="ea-modal-btn ea-modal-btn-primary" @click="onConfirmAddModel">{{ i18n.t('settings.addModelConfirm') }}</button>
+                            <button class="ea-modal-btn ea-modal-btn-ghost" @click="onCancelAddModel">{{ i18n.t('settings.addModelCancel') }}</button>
                         </div>
-                    </div>
-                    <div class="model-add-actions">
-                        <button class="model-add-confirm" @click="onConfirmAdd">{{ i18n.t('settings.addModelConfirm') }}</button>
-                        <button class="model-add-cancel" @click="onCancelAdd">{{ i18n.t('settings.addModelCancel') }}</button>
                     </div>
                 </div>
 
@@ -183,11 +243,9 @@
                             v-for="(row, rowIdx) in modelRows"
                             :key="row.rowType === 'default'
                                 ? 'default-' + modelFilter
-                                : row.rowType === 'provider-header'
-                                    ? 'provider-' + row.provider + '-' + rowIdx
-                                    : row.rowType === 'show-more'
-                                        ? 'show-more-' + rowIdx
-                                        : row.model.modelId + '-' + row.modelIndex + '-' + rowIdx"
+                                : row.rowType === 'show-more'
+                                    ? 'show-more-' + rowIdx
+                                    : row.model.modelId + '-' + row.modelIndex + '-' + rowIdx"
                         >
                         <template v-if="row.rowType === 'default' && !editingDefault">
                             <span class="model-col-id model-cell-ellipsis" :title="defaultModelInfo.modelId || '-'">{{ defaultModelInfo.modelId || '-' }}</span>
@@ -219,11 +277,6 @@
                                 <button class="icon-btn model-action-btn" @click="onCancelDefault">✕</button>
                             </span>
                         </template>
-                        <div v-else-if="row.rowType === 'provider-header'" class="model-provider-header" @click="toggleProvider(row.provider)" :class="{ collapsed: row.collapsed }">
-                            <span class="model-provider-arrow">{{ row.collapsed ? '▶' : '▼' }}</span>
-                            <span class="model-provider-name">{{ row.provider }}</span>
-                            <span class="model-provider-count">{{ row.count }}</span>
-                        </div>
                         <template v-else-if="editingIndex === row.modelIndex">
                             <span class="model-col-id"><input class="model-edit-input" v-model="editForm.modelId" /></span>
                             <span class="model-col-name"><input class="model-edit-input" v-model="editForm.displayName" /></span>
@@ -250,7 +303,7 @@
                             <span class="model-show-more" @click="loadMoreModels">{{ i18n.t('settings.showMore') }} ({{ row.remaining }} {{ i18n.t('settings.remaining') }})</span>
                         </template>
                         <template v-else>
-                            <span class="model-col-id model-cell-ellipsis" :title="row.model.modelId">{{ row.model.modelId }}</span>
+                            <span class="model-col-id model-cell-ellipsis" :title="row.model.modelId">{{ shortModelId(row.model.modelId) }}</span>
                             <span class="model-col-name model-cell-ellipsis" :title="row.model.displayName">{{ row.model.displayName }}</span>
                             <span class="model-col-ctx">{{ formatContextWindow(row.model.contextWindow) }}</span>
                             <span class="model-col-act">

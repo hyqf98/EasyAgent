@@ -45,6 +45,16 @@ window.EABridge = {
             }));
         };
 
+        window.__ea_onStreamAborted = (data) => {
+            var sid = data && data.sessionId ? data.sessionId : (window.EAStore ? EAStore.sessionId : null);
+            if (window.EAStore && EAStore.isStreaming) {
+                EAStore.setStreaming(false, sid);
+            }
+            window.dispatchEvent(new CustomEvent('ea-stream-complete', {
+                detail: data || {}
+            }));
+        };
+
         window.__ea_onSessionCreated = (data) => {
             if (window.EAStore && data.cliType) {
                 EAStore.cliType = data.cliType;
@@ -142,6 +152,21 @@ window.EABridge = {
                 EAStore.modelsList = merged;
             }
             window.dispatchEvent(new CustomEvent('ea-cli-models-loaded', { detail: data }));
+        };
+
+        window.__ea_onOpenCodeModels = (data) => {
+            var models = Array.isArray(data) ? data : (data && data.models ? data.models : []);
+            window.dispatchEvent(new CustomEvent('ea-opencode-models-loaded', { detail: models }));
+        };
+
+        window.__ea_onProviderModels = (data) => {
+            var models = Array.isArray(data) ? data : (data && data.models ? data.models : []);
+            window.dispatchEvent(new CustomEvent('ea-provider-models-loaded', { detail: models }));
+        };
+
+        window.__ea_onAllProviders = (data) => {
+            var providers = Array.isArray(data) ? data : [];
+            window.dispatchEvent(new CustomEvent('ea-all-providers-loaded', { detail: providers }));
         };
 
         window.__ea_onInsertReferences = (data) => { this._forward('ea-insert-file-references', { references: data || [] }); };
@@ -434,6 +459,29 @@ window.EABridge = {
      },
 
      /**
+      * 从 OpenCode CLI 本地查询所有可用模型列表。
+      */
+     queryOpenCodeModels() {
+         this.send('queryOpenCodeModels');
+     },
+
+     /**
+      * 从 OpenCode CLI 查询指定 Provider 的模型列表。
+      *
+      * @param {string} providerId - Provider ID
+      */
+     queryProviderModels(providerId) {
+         this.send('queryProviderModels', { providerId: providerId });
+     },
+
+     /**
+      * 从 models.dev 查询所有 Provider 列表。
+      */
+     queryAllProviders() {
+         this.send('queryAllProviders');
+     },
+
+     /**
       * 搜索项目内文件引用候选。
       *
       * @param {string} query - 模糊搜索关键字
@@ -549,6 +597,14 @@ window.EABridge = {
           else if (cliType === 'OPENCODE') data.opencode = config;
           else if (cliType === 'CODEX') data.codex = config;
           this.send('saveCliConfigs', data);
+      },
+
+      saveOpenCodeModel(providerId, modelId, name, npmPackage) {
+          this.send('saveOpenCodeModel', { providerId: providerId, modelId: modelId, name: name, npmPackage: npmPackage });
+      },
+
+      deleteOpenCodeModel(providerId, modelId) {
+          this.send('deleteOpenCodeModel', { providerId: providerId, modelId: modelId });
       },
 
       /**

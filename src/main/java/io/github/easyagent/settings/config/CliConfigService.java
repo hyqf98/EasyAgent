@@ -254,17 +254,26 @@ public class CliConfigService {
                 }
                 JsonObject provider = root.getAsJsonObject("provider");
 
-                provider.remove(effectiveId);
-                JsonObject providerEntry = new JsonObject();
-                JsonObject options = new JsonObject();
+                JsonObject providerEntry = provider.getAsJsonObject(effectiveId);
+                if (providerEntry == null) {
+                    providerEntry = new JsonObject();
+                }
+                JsonObject options = providerEntry.has("options") && providerEntry.get("options").isJsonObject()
+                        ? providerEntry.getAsJsonObject("options") : new JsonObject();
                 if (config.apiKey() != null && !config.apiKey().isBlank()) {
                     options.addProperty("apiKey", config.apiKey());
+                } else {
+                    options.remove("apiKey");
                 }
                 if (config.baseUrl() != null && !config.baseUrl().isBlank()) {
                     options.addProperty("baseURL", config.baseUrl());
+                } else {
+                    options.remove("baseURL");
                 }
                 if (options.size() > 0) {
                     providerEntry.add("options", options);
+                } else {
+                    providerEntry.remove("options");
                 }
                 provider.add(effectiveId, providerEntry);
             }
@@ -275,6 +284,110 @@ public class CliConfigService {
         } catch (IOException e) {
             log.warn("Failed to save OpenCode config", e);
             throw new RuntimeException("Failed to save OpenCode config: " + e.getMessage(), e);
+        }
+    }
+
+    /**
+     * 向 opencode.json 的指定 Provider 添加一个模型。
+     * <p>
+     * 保留 Provider 已有的 options、npm 等字段，只更新 models 部分。
+     * </p>
+     *
+     * @param providerId Provider 标识
+     * @param modelId    模型 ID（不含 provider 前缀）
+     * @param name       模型显示名称
+     * @param npmPackage NPM 包名（如 @ai-sdk/openai-compatible），可为空
+     */
+    public void saveOpenCodeModel(String providerId, String modelId, String name, String npmPackage) {
+        if (providerId == null || providerId.isBlank() || modelId == null || modelId.isBlank()) {
+            return;
+        }
+        Path configPath = OPENCODE_CONFIG_PATH;
+        try {
+            Files.createDirectories(configPath.getParent());
+
+            JsonObject root = new JsonObject();
+            if (Files.exists(configPath)) {
+                try {
+                    String existing = Files.readString(configPath);
+                    root = GsonUtils.parseObject(existing);
+                } catch (Exception ignored) {
+                }
+            }
+
+            if (!root.has("provider") || !root.get("provider").isJsonObject()) {
+                root.add("provider", new JsonObject());
+            }
+            JsonObject provider = root.getAsJsonObject("provider");
+
+            JsonObject providerEntry = provider.getAsJsonObject(providerId);
+            if (providerEntry == null) {
+                providerEntry = new JsonObject();
+            }
+
+            if (npmPackage != null && !npmPackage.isBlank()) {
+                providerEntry.addProperty("npm", npmPackage);
+            }
+
+            if (!providerEntry.has("models") || !providerEntry.get("models").isJsonObject()) {
+                providerEntry.add("models", new JsonObject());
+            }
+            JsonObject models = providerEntry.getAsJsonObject("models");
+
+            JsonObject modelEntry = new JsonObject();
+            modelEntry.addProperty("name", name != null && !name.isBlank() ? name : modelId);
+            models.add(modelId, modelEntry);
+
+            provider.add(providerId, providerEntry);
+
+            String json = GsonUtils.toJson(root);
+            Files.writeString(configPath, json);
+            log.info("OpenCode model saved: {}/{} to {}", providerId, modelId, configPath);
+        } catch (IOException e) {
+            log.warn("Failed to save OpenCode model", e);
+        }
+    }
+
+    /**
+     * 从 opencode.json 删除指定 Provider 的一个模型。
+     *
+     * @param providerId Provider 标识
+     * @param modelId    模型 ID（不含 provider 前缀）
+     */
+    public void deleteOpenCodeModel(String providerId, String modelId) {
+        if (providerId == null || providerId.isBlank() || modelId == null || modelId.isBlank()) {
+            return;
+        }
+        Path configPath = OPENCODE_CONFIG_PATH;
+        try {
+            if (!Files.exists(configPath)) {
+                return;
+            }
+            String existing = Files.readString(configPath);
+            JsonObject root = GsonUtils.parseObject(existing);
+            JsonObject provider = GsonUtils.getJsonObject(root, "provider");
+            if (provider == null) {
+                return;
+            }
+            JsonObject providerEntry = GsonUtils.getJsonObject(provider, providerId);
+            if (providerEntry == null) {
+                return;
+            }
+            JsonObject models = GsonUtils.getJsonObject(providerEntry, "models");
+            if (models == null) {
+                return;
+            }
+            models.remove(modelId);
+            if (models.size() == 0) {
+                providerEntry.remove("models");
+            }
+            provider.add(providerId, providerEntry);
+
+            String json = GsonUtils.toJson(root);
+            Files.writeString(configPath, json);
+            log.info("OpenCode model deleted: {}/{} from {}", providerId, modelId, configPath);
+        } catch (IOException e) {
+            log.warn("Failed to delete OpenCode model", e);
         }
     }
 
