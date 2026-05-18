@@ -123,7 +123,7 @@ public class ClaudeCLIProvider extends AbstractCLIProvider {
         if ("init".equals(subtype)) {
             out.add(this.createStepStart(sessionId, null));
         } else if (subtype != null && subtype.startsWith("compact")) {
-            out.add(this.createCompact(sessionId, "context compact: " + subtype));
+            out.add(this.createCompactFromJson(sessionId, "context compact: " + subtype, obj));
         }
     }
 
@@ -232,5 +232,42 @@ public class ClaudeCLIProvider extends AbstractCLIProvider {
                 .sessionId(sessionId)
                 .compact(CompactContent.builder().reason(reason).build())
                 .build();
+    }
+
+    private AIResponse createCompactFromJson(String sessionId, String reason, JsonObject obj) {
+        JsonObject meta = GsonUtils.getJsonObject(obj, "compactMetadata");
+        if (meta == null) {
+            meta = GsonUtils.getJsonObject(obj, "compact_metadata");
+        }
+        CompactContent.CompactContentBuilder builder = CompactContent.builder().reason(reason);
+        if (meta != null) {
+            String trigger = GsonUtils.getString(meta, "trigger");
+            builder.trigger(trigger);
+            this.extractLong(meta, "preTokens", builder::preTokens);
+            this.extractLong(meta, "pre_tokens", builder::preTokens);
+            this.extractLong(meta, "postTokens", builder::postTokens);
+            this.extractLong(meta, "post_tokens", builder::postTokens);
+            this.extractLong(meta, "durationMs", builder::durationMs);
+            this.extractLong(meta, "duration_ms", builder::durationMs);
+            log.debug("[CLI] Compact metadata | trigger={} preTokens field={} | raw meta={}",
+                    trigger, meta.has("pre_tokens") ? meta.get("pre_tokens") : meta.has("preTokens") ? meta.get("preTokens") : "null",
+                    meta);
+        } else {
+            log.debug("[CLI] Compact metadata | NO compact_metadata found in: {}", obj.keySet());
+        }
+        CompactContent compact = builder.build();
+        log.debug("[CLI] Compact content | trigger={} preTokens={} postTokens={} durationMs={}",
+                compact.trigger(), compact.preTokens(), compact.postTokens(), compact.durationMs());
+        return AIResponse.builder()
+                .type(ResponseType.COMPACT)
+                .sessionId(sessionId)
+                .compact(compact)
+                .build();
+    }
+
+    private void extractLong(JsonObject obj, String key, java.util.function.LongConsumer setter) {
+        if (obj.has(key) && !obj.get(key).isJsonNull()) {
+            setter.accept(obj.get(key).getAsLong());
+        }
     }
 }

@@ -132,7 +132,9 @@ public class OpenCodeCLIProvider extends AbstractCLIProvider {
         }
         if (partType == OpenCodePartType.REASONING || type == OpenCodeEventType.REASONING) {
             String text = part != null ? part.text() : null;
+            log.debug("[OpenCode] REASONING | eventType={} | partType={} | partNull={} | textLen={}", type, partType, part == null, text != null ? text.length() : -1);
             if (text == null || text.isEmpty()) {
+                log.debug("[OpenCode] REASONING skipped: text empty | rawLine={}", rawLine.length() > 200 ? rawLine.substring(0, 200) + "..." : rawLine);
                 return null;
             }
             return this.createMessage(sessionId, MessageType.THINKING, text);
@@ -145,6 +147,7 @@ public class OpenCodeCLIProvider extends AbstractCLIProvider {
         }
         String text = part != null ? part.text() : null;
         if (text == null || text.isEmpty()) {
+            log.debug("[OpenCode] UNKNOWN | eventType={} | partType={} | rawLine={}", type, partType, rawLine.length() > 200 ? rawLine.substring(0, 200) + "..." : rawLine);
             return null;
         }
         return this.createMessage(sessionId, MessageType.TEXT, text);

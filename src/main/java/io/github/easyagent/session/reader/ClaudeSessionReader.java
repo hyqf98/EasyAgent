@@ -331,7 +331,9 @@ public class ClaudeSessionReader implements SessionReader {
     @SuppressWarnings("unchecked")
     private SessionMessage parseMessage(Map<String, Object> entry, String sessionId) {
         Map<String, Object> message = (Map<String, Object>) entry.get("message");
-        Map<String, Object> toolUseResult = (Map<String, Object>) entry.get("toolUseResult");
+        Object toolUseResultRaw = entry.get("toolUseResult");
+        Map<String, Object> toolUseResult = (toolUseResultRaw instanceof Map<?, ?>)
+                ? (Map<String, Object>) toolUseResultRaw : null;
         if (message == null) {
             return null;
         }

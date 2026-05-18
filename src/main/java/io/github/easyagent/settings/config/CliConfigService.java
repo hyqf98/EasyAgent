@@ -125,18 +125,20 @@ public class CliConfigService {
     // ==================== Claude Code ====================
 
     /**
-     * 读取 Claude Code 配置（从 shell profile 环境变量）。
+     * 读取 Claude Code 配置（从 shell profile 环境变量 + settings.json env）。
+     * <p>
+     * 优先级：{@code ~/.claude/settings.json} 的 {@code env} 字段 > shell profile 导出变量。
+     * 因为 Claude Code 自身使用 settings.json 覆盖 shell 环境变量。
+     * </p>
      *
      * @param commandPath 用户覆盖的命令路径，可为 null
      * @return Claude 配置
      */
     public ClaudeConfig readClaudeConfig(String commandPath) {
         java.util.Map<String, String> envVars = this.readShellExports();
-        if (IS_WINDOWS) {
-            java.util.Map<String, String> settingsEnv = this.readClaudeSettingsJson();
-            for (Map.Entry<String, String> e : settingsEnv.entrySet()) {
-                envVars.putIfAbsent(e.getKey(), e.getValue());
-            }
+        java.util.Map<String, String> settingsEnv = this.readClaudeSettingsJson();
+        for (Map.Entry<String, String> e : settingsEnv.entrySet()) {
+            envVars.put(e.getKey(), e.getValue());
         }
         return ClaudeConfig.builder()
                 .baseUrl(envVars.getOrDefault("ANTHROPIC_BASE_URL", ""))

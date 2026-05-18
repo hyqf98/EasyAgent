@@ -125,6 +125,7 @@ public final class FileEditService {
             targetTracked.file = file;
             targetTracked.afterExists = file != null;
             targetTracked.afterContent = ReadAction.compute(() -> readCurrentText(file));
+            this.recoverBeforeContentIfNeeded(targetTracked, toolCall);
             this.persistTrackedEdit(targetTracked);
         }
     }
@@ -358,6 +359,38 @@ public final class FileEditService {
             String beforeContent = readCurrentText(file);
             return new TrackedFileEdit(fileEdit, file != null, beforeContent, false, null, file);
         });
+    }
+
+    /**
+     * 当 beforeContent 与 afterContent 相同时，尝试从工具输入中逆向恢复原始内容。
+     * <p>
+     * 当 CLI（如 OpenCode）只发送一个 completed 状态的事件时，
+     * createTrackedEdit 和 afterContent 读取的是同一时刻的文件内容，
+     * 导致 beforeContent === afterContent。此方法通过 input 中的
+     * oldString/newString 信息反向推导出编辑前的内容。
+     * </p>
+     *
+     * @param tracked  跟踪对象
+     * @param toolCall 工具调用内容
+     */
+    private void recoverBeforeContentIfNeeded(TrackedFileEdit tracked, ToolCallContent toolCall) {
+        if (tracked.afterContent == null || !tracked.afterContent.equals(tracked.beforeContent)) {
+            return;
+        }
+        if (toolCall == null || toolCall.input() == null || toolCall.input().isBlank()) {
+            return;
+        }
+        HistoricalFileEditData historical = ToolMetadataSupport.resolveHistoricalFileEdit(
+                toolCall.toolName(), toolCall.input());
+        if (historical == null || historical.newString() == null || historical.newString().isBlank()) {
+            return;
+        }
+        String recovered = this.applyReverseHistoricalReplacement(
+                tracked.afterContent, historical.oldString(), historical.newString(), historical.replaceAll());
+        if (recovered != null && !recovered.equals(tracked.afterContent)) {
+            tracked.beforeContent = recovered;
+            tracked.beforeExists = true;
+        }
     }
 
     /**

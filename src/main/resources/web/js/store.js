@@ -16,6 +16,7 @@ var EA_BLOCK_TODO_LIST = 'TODO_LIST';
 var EA_BLOCK_ERROR = 'ERROR';
 var EA_BLOCK_SYSTEM_INFO = 'SYSTEM_INFO';
 var EA_BLOCK_REFERENCE = 'REFERENCE';
+var EA_BLOCK_COMPACT = 'COMPACT';
 
 /** 消息角色常量。 */
 var EA_ROLE_USER = 'USER';
@@ -570,7 +571,32 @@ window.EAStore = Vue.reactive({
                 this.appendToolCall(event);
                 break;
             case EA_EVENT_COMPACT:
-                this.appendSystemMessage('Context compacted: ' + event.reason);
+                console.log('[EA] COMPACT event | full=', JSON.stringify(event));
+                this.lastTokenUsage = null;
+                var compactMsg = this.getLastAssistantMessage();
+                if (compactMsg) compactMsg.tokenUsage = null;
+                var compactBlock = this._findCompactBlockInAssistant();
+                if (compactBlock) {
+                    compactBlock.completed = true;
+                    if (event.preTokens != null) compactBlock.preTokens = event.preTokens;
+                    if (event.postTokens != null) compactBlock.postTokens = event.postTokens;
+                    if (event.durationMs != null) compactBlock.durationMs = event.durationMs;
+                    if (event.trigger) compactBlock.trigger = event.trigger;
+                    console.log('[EA] COMPACT block updated | preTokens=', compactBlock.preTokens, 'postTokens=', compactBlock.postTokens);
+                } else if (compactMsg) {
+                    compactMsg.contents.push({
+                        type: EA_BLOCK_COMPACT, text: 'Compaction', completed: true,
+                        preTokens: event.preTokens || null,
+                        postTokens: event.postTokens || null,
+                        durationMs: event.durationMs || null,
+                        trigger: event.trigger || null
+                    });
+                    compactMsg.lastTextIndex = -1;
+                    compactMsg.lastThinkingIndex = -1;
+                    console.log('[EA] COMPACT block appended | preTokens=', event.preTokens, 'postTokens=', event.postTokens, 'trigger=', event.trigger);
+                } else {
+                    console.log('[EA] COMPACT no assistant message found!');
+                }
                 break;
             case EA_EVENT_RETRY_STATUS:
                 this.retryStatus = event;
@@ -654,9 +680,21 @@ window.EAStore = Vue.reactive({
         return null;
     },
 
+    _findCompactBlockInAssistant() {
+        var last = this._getLastAssistantIn(this.messages);
+        if (!last || !last.contents) return null;
+        for (var i = last.contents.length - 1; i >= 0; i--) {
+            if (last.contents[i].type === EA_BLOCK_COMPACT) return last.contents[i];
+        }
+        return null;
+    },
+
     _ensureAssistantIn(msgs) {
         var last = msgs[msgs.length - 1];
-        if (last && last.role === EA_ROLE_ASSISTANT) return last;
+        if (last && last.role === EA_ROLE_ASSISTANT) {
+            console.log('[EA] _ensureAssistantIn REUSE existing | msgsLen=' + msgs.length + ' | contentsLen=' + last.contents.length);
+            return last;
+        }
 
         var msg = {
             role: EA_ROLE_ASSISTANT, contents: [],
@@ -665,6 +703,7 @@ window.EAStore = Vue.reactive({
             streamState: EA_STATE_GENERATING, retryStatus: null
         };
         msgs.push(msg);
+        console.log('[EA] _ensureAssistantIn CREATE new | msgsLen=' + msgs.length + ' | lastRole=' + (last ? last.role : 'null'));
         return msg;
     },
 
@@ -673,6 +712,9 @@ window.EAStore = Vue.reactive({
         if (text === null || text === undefined || text === '') return;
 
         var isThinking = normalizeEAType(event.messageType) === EA_MSG_THINKING;
+        if (isThinking) {
+            console.log('[EA] THINKING msg | textLen=' + text.length + ' | preview=' + text.substring(0, 60));
+        }
         var lastMsg = this._getLastAssistantIn(msgs);
 
         if (isThinking && lastMsg && lastMsg.lastThinkingIndex >= 0) {
@@ -700,6 +742,7 @@ window.EAStore = Vue.reactive({
         lastMsg.streamState = EA_STATE_GENERATING;
         var status = normalizeEAType(event.status);
         var isComplete = status === EA_TOOL_COMPLETED || status === EA_TOOL_FAILED;
+        var toolName = event.toolName || '';
 
         if (isComplete) {
             var tool = this.findLastToolCall(lastMsg, event);
@@ -707,13 +750,19 @@ window.EAStore = Vue.reactive({
                 tool.status = status;
                 tool.output = event.output || tool.output;
                 tool.fileEdit = event.fileEdit || tool.fileEdit || null;
+                if (this._isTodoWriteTool(toolName)) {
+                    var todoItems = this._parseTodoItems(event.input || tool.input);
+                    if (todoItems && todoItems.length > 0) {
+                        this._appendTodoBlock(lastMsg, todoItems);
+                    }
+                }
                 return;
             }
         }
 
         lastMsg.contents.push({
             type: EA_BLOCK_TOOL_USE,
-            toolName: event.toolName,
+            toolName: toolName,
             title: event.title,
             toolUseId: event.toolUseId || '',
             status: status || EA_TOOL_CALLING,
@@ -722,6 +771,12 @@ window.EAStore = Vue.reactive({
             fileEdit: event.fileEdit || null,
             collapsed: true
         });
+        if (isComplete && this._isTodoWriteTool(toolName)) {
+            var todoItems = this._parseTodoItems(event.input);
+            if (todoItems && todoItems.length > 0) {
+                this._appendTodoBlock(lastMsg, todoItems);
+            }
+        }
         lastMsg.lastTextIndex = -1;
         lastMsg.lastThinkingIndex = -1;
     },
@@ -854,6 +909,14 @@ window.EAStore = Vue.reactive({
                 return;
             }
 
+            if (msg.role === EA_ROLE_SYSTEM && currentGroup && currentGroup.role === EA_ROLE_ASSISTANT) {
+                var hasCompact = msg.contents && msg.contents.some(function (b) { return b.type === EA_BLOCK_COMPACT; });
+                if (hasCompact) {
+                    currentGroup.contents = currentGroup.contents.concat(msg.contents);
+                    return;
+                }
+            }
+
             if (msg.role === EA_ROLE_ASSISTANT) {
                 currentGroup = {
                     role: EA_ROLE_ASSISTANT,
@@ -889,9 +952,23 @@ window.EAStore = Vue.reactive({
         var isSystemLike = msg.role === EA_ROLE_SYSTEM
             || msg.role === EA_ROLE_DEVELOPER
             || (msg.role === EA_ROLE_USER && this._isSystemMessage(msg.contents));
-        var contents = isSystemLike
-            ? [{ type: EA_BLOCK_SYSTEM_INFO, summary: this._extractSystemSummary(msg.contents), fullText: this._extractFullText(msg.contents), collapsed: true }]
-            : this._convertContentBlocks(msg.contents || []);
+        var hasCompactBlock = false;
+        if (isSystemLike && msg.contents) {
+            for (var ci = 0; ci < msg.contents.length; ci++) {
+                if (normalizeEAType(msg.contents[ci].type || '') === EA_BLOCK_COMPACT) {
+                    hasCompactBlock = true;
+                    break;
+                }
+            }
+        }
+        var contents;
+        if (hasCompactBlock) {
+            contents = this._convertContentBlocks(msg.contents || []);
+        } else if (isSystemLike) {
+            contents = [{ type: EA_BLOCK_SYSTEM_INFO, summary: this._extractSystemSummary(msg.contents), fullText: this._extractFullText(msg.contents), collapsed: true }];
+        } else {
+            contents = this._convertContentBlocks(msg.contents || []);
+        }
 
         return {
             role: isSystemLike ? EA_ROLE_SYSTEM : msg.role,
@@ -1051,6 +1128,12 @@ window.EAStore = Vue.reactive({
             return { type: EA_BLOCK_THINKING, text: block.thinking || block.text || '', collapsed: true };
         }
         if (type === EA_BLOCK_TOOL_USE || (!type && (block.toolName || block.toolInput || block.fileEdit))) {
+            if (this._isTodoWriteTool(block.toolName)) {
+                var todoItems = this._parseTodoItems(block.toolInput);
+                if (todoItems && todoItems.length > 0) {
+                    return { type: EA_BLOCK_TODO_LIST, items: todoItems };
+                }
+            }
             return {
                 type: EA_BLOCK_TOOL_USE, toolName: block.toolName || '', title: '',
                 toolUseId: block.toolUseId || '', status: EA_TOOL_COMPLETED,
@@ -1069,6 +1152,9 @@ window.EAStore = Vue.reactive({
         }
         if (type === EA_BLOCK_TODO_LIST) {
             return { type: EA_BLOCK_TODO_LIST, items: block.items || [] };
+        }
+        if (type === EA_BLOCK_COMPACT) {
+            return { type: EA_BLOCK_COMPACT, text: block.text || 'Compaction', completed: true };
         }
         if (type === 'STEP_START' || type === 'STEP_FINISH') {
             return null;
@@ -1103,6 +1189,48 @@ window.EAStore = Vue.reactive({
     _formatToolInput(input) {
         if (!input) return '';
         return typeof input === 'string' ? input : JSON.stringify(input, null, 2);
+    },
+
+    _isTodoWriteTool(toolName) {
+        if (!toolName) return false;
+        var n = toolName.toLowerCase().replace(/[-_]/g, '');
+        return n === 'todowrite';
+    },
+
+    _parseTodoItems(input) {
+        if (!input) return null;
+        try {
+            var obj = typeof input === 'string' ? JSON.parse(input) : input;
+            var todos = obj && obj.todos;
+            if (!Array.isArray(todos) || todos.length === 0) return null;
+            var statusMap = {
+                'in_progress': 'IN_PROGRESS', 'inprogress': 'IN_PROGRESS',
+                'pending': 'PENDING', 'queued': 'PENDING',
+                'completed': 'COMPLETED', 'done': 'COMPLETED',
+                'cancelled': 'CANCELLED', 'canceled': 'CANCELLED'
+            };
+            return todos.filter(function (t) { return t && (t.content || t.title || t.text); }).map(function (t) {
+                var raw = (t.status || 'pending').toLowerCase().trim();
+                return {
+                    id: t.id || String(Math.random()),
+                    title: t.content || t.title || t.text || '',
+                    status: statusMap[raw] || 'PENDING'
+                };
+            });
+        } catch (e) {
+            return null;
+        }
+    },
+
+    _appendTodoBlock(lastMsg, items) {
+        var existing = lastMsg.contents.filter(function (b) { return b.type === EA_BLOCK_TODO_LIST; });
+        if (existing.length > 0) {
+            existing[existing.length - 1].items = items;
+            return;
+        }
+        lastMsg.contents.push({ type: EA_BLOCK_TODO_LIST, items: items });
+        lastMsg.lastTextIndex = -1;
+        lastMsg.lastThinkingIndex = -1;
     },
 
     /**

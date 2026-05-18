@@ -72,7 +72,8 @@ public class ChatBrowserComponent {
             "js/message/TodoListBlock.vue.html",
             "js/message/ToolCallBlock.vue.html",
             "js/plan/PlanView.vue.html",
-            "js/settings/SettingsPage.vue.html"
+            "js/settings/SettingsPage.vue.html",
+            "js/utils/EAConfirmDialog.vue.html"
     );
 
     private final Project project;

@@ -186,6 +186,21 @@ window.EARegisterComponent('message-bubble', 'MessageBubble', {
         isToolBlock(b) { return b.type === 'TOOL_USE'; },
         isErrorBlock(b) { return b.type === 'ERROR'; },
         isTodoBlock(b) { return b.type === 'TODO_LIST'; },
+        isCompactBlock(b) { return b.type === 'COMPACT'; },
+        compactLabel(block) { return block.completed ? 'COMPACTION' : 'COMPACTING'; },
+        compactMeta(block) {
+            if (!block || !block.preTokens) return '';
+            var parts = [];
+            if (block.trigger) parts.push(block.trigger === 'auto' ? 'auto' : 'manual');
+            var preK = Math.round(block.preTokens / 1000);
+            var postK = block.postTokens ? Math.round(block.postTokens / 1000) : 0;
+            parts.push(preK + 'K → ' + postK + 'K tokens');
+            if (block.durationMs) {
+                var sec = (block.durationMs / 1000).toFixed(1);
+                parts.push(sec + 's');
+            }
+            return '· ' + parts.join(' · ');
+        },
         isSystemInfoBlock(b) {
             if (b && b.type === 'SYSTEM_INFO' && b.collapsed === undefined) {
                 b.collapsed = true;

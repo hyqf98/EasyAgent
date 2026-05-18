@@ -85,9 +85,15 @@ window.EARegisterComponent('chat-view', 'ChatView', {
             }
             if (!detail.prompt) return;
             var prompt = detail.prompt;
-            this.store.addUserMessage(prompt, []);
-            this.store.beginAssistantTurn();
-            this.store.setStreaming(true);
+            if (detail.commandName === 'compact') {
+                var assistantMsg = this.store.beginAssistantTurn();
+                assistantMsg.contents.push({ type: 'COMPACT', text: 'Compaction', completed: false });
+                this.store.setStreaming(true);
+            } else {
+                this.store.addUserMessage(prompt, []);
+                this.store.beginAssistantTurn();
+                this.store.setStreaming(true);
+            }
             this.$nextTick(function () {
                 var activePane = this.store.getFocusedPane();
                 if (activePane && activePane.$refs && activePane.$refs.sessionPane) {
@@ -98,13 +104,18 @@ window.EARegisterComponent('chat-view', 'ChatView', {
             EABridge.sendMessage(prompt, modelId, []);
             if (detail.refreshHistory) {
                 this.pendingSlashRefreshSessionId = this.store.sessionId;
+                this._pendingSlashIsProvisional = EAIsProvisionalSessionId(this.store.sessionId);
             }
         }.bind(this);
         this._onStreamComplete = function (e) {
             var detail = e.detail || {};
             var sessionId = detail.sessionId || this.store.sessionId;
-            if (!sessionId || EAIsProvisionalSessionId(sessionId) || this.pendingSlashRefreshSessionId !== sessionId) return;
+            if (!sessionId) return;
+            var shouldRefresh = this.pendingSlashRefreshSessionId === sessionId
+                || (this._pendingSlashIsProvisional && this.pendingSlashRefreshSessionId && this.store.sessionId === sessionId);
+            if (!shouldRefresh) return;
             this.pendingSlashRefreshSessionId = null;
+            this._pendingSlashIsProvisional = false;
             var cliType = this.store.cliType;
             setTimeout(function () {
                 EABridge.loadHistory(sessionId, cliType, true);
@@ -317,14 +328,23 @@ window.EARegisterComponent('chat-view', 'ChatView', {
         confirmDelete() {
             if (this.selectedSessions.length === 0) return;
             if (this.isDeletingSessions) return;
-            if (!confirm(this.i18n.t('session.deleteConfirm', { n: this.selectedSessions.length }))) return;
-            this.isDeletingSessions = true;
-            this.pendingDeleteRedirect = this.selectedSessions.indexOf(this.store.sessionId) >= 0;
-            var idsToDelete = this.selectedSessions.slice();
             var self = this;
-            setTimeout(function () { self.isDeletingSessions = false; }, 15000);
-            EABridge.deleteSessions(idsToDelete);
-            this.clearSelection();
+            var n = this.selectedSessions.length;
+            EAConfirm.show({
+                title: this.i18n.t('session.delete'),
+                message: this.i18n.t('session.deleteConfirm', { n: n }),
+                confirmText: this.i18n.t('session.delete'),
+                cancelText: this.i18n.t('session.cancel', 'Cancel'),
+                danger: true
+            }).then(function (confirmed) {
+                if (!confirmed) return;
+                self.isDeletingSessions = true;
+                self.pendingDeleteRedirect = self.selectedSessions.indexOf(self.store.sessionId) >= 0;
+                var idsToDelete = self.selectedSessions.slice();
+                setTimeout(function () { self.isDeletingSessions = false; }, 15000);
+                EABridge.deleteSessions(idsToDelete);
+                self.clearSelection();
+            });
         },
         _restorePaneLayout(paneLayoutJson) {
             if (!paneLayoutJson) return false;

@@ -9,12 +9,20 @@ import lombok.Builder;
  * 将历史对话摘要为精简内容以释放空间。
  * </p>
  *
- * @param reason 压缩原因描述
+ * @param reason     压缩原因描述
+ * @param trigger    触发方式（auto/manual）
+ * @param preTokens  压缩前 token 数量
+ * @param postTokens 压缩后 token 数量
+ * @param durationMs 压缩耗时（毫秒）
  * @author haijun
  * @date 2026/4/30
  * @since 1.0.0
  */
 @Builder
 public record CompactContent(
-        String reason
+        String reason,
+        String trigger,
+        Long preTokens,
+        Long postTokens,
+        Long durationMs
 ) {}

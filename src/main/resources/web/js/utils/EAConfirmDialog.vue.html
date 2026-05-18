@@ -1,0 +1,15 @@
+<template>
+<div v-if="s.visible" class="ea-modal-overlay" @click="onOverlayClick">
+    <div class="ea-modal ea-confirm-dialog">
+        <div class="ea-modal-header">
+            <h4>{{ s.title }}</h4>
+            <button class="ea-modal-close" @click="onCancel">×</button>
+        </div>
+        <div class="ea-modal-body ea-confirm-body">{{ s.message }}</div>
+        <div class="ea-modal-footer">
+            <button class="ea-modal-btn ea-modal-btn-ghost" @click="onCancel">{{ s.cancelText }}</button>
+            <button class="ea-modal-btn" :class="s.danger ? 'ea-modal-btn-danger' : 'ea-modal-btn-primary'" @click="onConfirm">{{ s.confirmText }}</button>
+        </div>
+    </div>
+</div>
+</template>

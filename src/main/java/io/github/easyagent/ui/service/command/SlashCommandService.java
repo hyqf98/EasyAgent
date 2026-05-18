@@ -260,8 +260,8 @@ public final class SlashCommandService {
                 SlashCommandActionType.OPEN_NEW_SESSION, SlashCommandSourceType.BUILTIN, List.of("clear", "reset"),
                 null, true, false));
         this.addDefinition(definitions, this.definition(cliType, "compact", this.coreCompactDescription(cliType),
-                SlashCommandActionType.SEND_PROMPT, SlashCommandSourceType.BUILTIN, List.of(),
-                this.coreCompactPrompt(), false, true));
+                SlashCommandActionType.PASS_THROUGH, SlashCommandSourceType.BUILTIN, List.of(),
+                null, false, true));
         this.addDefinition(definitions, this.definition(cliType, "init", this.coreInitDescription(cliType),
                 SlashCommandActionType.SEND_PROMPT, SlashCommandSourceType.BUILTIN, List.of(),
                 this.coreInitPrompt(cliType), false, false));

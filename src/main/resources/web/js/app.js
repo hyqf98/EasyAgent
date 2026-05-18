@@ -171,6 +171,7 @@
                 return { store: window.EAStore };
             },
             template: `
+                <ea-confirm-dialog></ea-confirm-dialog>
                 <ea-page-error-boundary
                     v-if="store.appMode !== 'plan'"
                     page-name="chat-page"

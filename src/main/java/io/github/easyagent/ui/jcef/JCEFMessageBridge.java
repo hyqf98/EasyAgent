@@ -4,7 +4,7 @@ import com.google.gson.reflect.TypeToken;
 import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.util.text.StringUtil;
-import com.intellij.ide.ui.LafManager;
+import javax.swing.UIManager;
 import com.intellij.ui.jcef.JBCefBrowser;
 import com.intellij.ui.JBColor;
 import io.github.easyagent.ai.StreamEventListener;
@@ -60,6 +60,7 @@ import org.cef.browser.CefMessageRouter;
 import org.cef.callback.CefQueryCallback;
 import org.cef.handler.CefMessageRouterHandlerAdapter;
 
+import java.awt.Color;
 import java.util.ArrayList;
 import java.util.EnumMap;
 import java.util.List;
@@ -332,16 +333,15 @@ public class JCEFMessageBridge {
      * </p>
      */
     public void sendThemeUpdate() {
-        LafManager lafManager = LafManager.getInstance();
-        String lafName = (lafManager != null && lafManager.getCurrentLookAndFeel() != null)
-                ? lafManager.getCurrentLookAndFeel().getName() : "";
+        String lafName = UIManager.getLookAndFeel() != null
+                ? UIManager.getLookAndFeel().getName() : "";
 
-        java.awt.Color panelBg = safeColor("Panel.background", 0xFFFFFF);
-        java.awt.Color labelFg = safeColor("Label.foreground", 0x000000);
-        java.awt.Color inputBg = safeColor("TextField.background", 0xFFFFFF);
-        java.awt.Color border = safeColor("Separator.foreground", safeColor("Component.borderColor", 0xE0E0E0));
-        java.awt.Color disabledFg = safeColor("Label.disabledForeground", null);
-        java.awt.Color accent = safeColor("List.selectionBackground", 0x4F7CFF);
+        Color panelBg = safeColor("Panel.background", 0xFFFFFF);
+        Color labelFg = safeColor("Label.foreground", 0x000000);
+        Color inputBg = safeColor("TextField.background", 0xFFFFFF);
+        Color border = safeColor("Separator.foreground", safeColor("Component.borderColor", 0xE0E0E0));
+        Color disabledFg = safeColor("Label.disabledForeground", null);
+        Color accent = safeColor("List.selectionBackground", 0x4F7CFF);
 
         boolean isDark = ThemeType.fromUiColor(panelBg, lafName).isDark();
         if (isDark) {
@@ -355,11 +355,11 @@ public class JCEFMessageBridge {
     }
 
     private static java.util.Map<String, String> buildThemeColors(
-            java.awt.Color bg, java.awt.Color fg, java.awt.Color inputBg,
-            java.awt.Color border, java.awt.Color disabledFg, java.awt.Color accent, boolean isDark) {
+            Color bg, Color fg, Color inputBg,
+            Color border, Color disabledFg, Color accent, boolean isDark) {
 
         java.util.LinkedHashMap<String, String> c = new java.util.LinkedHashMap<>();
-        java.awt.Color tintTarget = isDark ? java.awt.Color.WHITE : java.awt.Color.BLACK;
+        Color tintTarget = isDark ? Color.WHITE : Color.BLACK;
 
         c.put("--ea-bg", toHex(bg));
         c.put("--ea-text", toHex(fg));
@@ -384,16 +384,16 @@ public class JCEFMessageBridge {
         c.put("--ea-user-bubble", toHex(blend(bg, tintTarget, isDark ? 0.08f : 0.04f)));
         c.put("--ea-ai-bubble", "transparent");
 
-        java.awt.Color yellow = new java.awt.Color(0xFF, 0xFB, 0xEB);
+        Color yellow = new Color(0xFF, 0xFB, 0xEB);
         c.put("--ea-thinking-bg", toHex(blend(bg, yellow, isDark ? 0.10f : 0.08f)));
-        c.put("--ea-thinking-border", toHex(blend(border, new java.awt.Color(0xFD, 0xE6, 0x8A), 0.50f)));
+        c.put("--ea-thinking-border", toHex(blend(border, new Color(0xFD, 0xE6, 0x8A), 0.50f)));
 
         c.put("--ea-tool-bg", toHex(blend(bg, tintTarget, isDark ? 0.03f : 0.02f)));
         c.put("--ea-tool-border", toHex(blend(border, tintTarget, isDark ? 0.05f : 0.04f)));
 
-        java.awt.Color red = isDark ? new java.awt.Color(0x2A, 0x15, 0x18) : new java.awt.Color(0xFE, 0xF2, 0xF2);
+        Color red = isDark ? new Color(0x2A, 0x15, 0x18) : new Color(0xFE, 0xF2, 0xF2);
         c.put("--ea-error-bg", toHex(blend(bg, red, 0.15f)));
-        c.put("--ea-error-border", toHex(blend(border, new java.awt.Color(0xFE, 0xCA, 0xCA), 0.40f)));
+        c.put("--ea-error-border", toHex(blend(border, new Color(0xFE, 0xCA, 0xCA), 0.40f)));
 
         c.put("--ea-code-bg", toHex(blend(bg, tintTarget, isDark ? 0.03f : 0.03f)));
 
@@ -414,42 +414,42 @@ public class JCEFMessageBridge {
         c.put("--ea-table-even-bg", toHex(blend(bg, tintTarget, isDark ? 0.03f : 0.02f)));
 
         c.put("--ea-accent", toHex(accent));
-        c.put("--ea-accent-hover", toHex(blend(accent, java.awt.Color.WHITE, 0.15f)));
+        c.put("--ea-accent-hover", toHex(blend(accent, Color.WHITE, 0.15f)));
 
         return c;
     }
 
-    private static java.awt.Color safeColor(String key, int defaultRgb) {
-        java.awt.Color c = javax.swing.UIManager.getColor(key);
-        return c != null ? c : new java.awt.Color(defaultRgb);
+    private static Color safeColor(String key, int defaultRgb) {
+        Color c = UIManager.getColor(key);
+        return c != null ? c : new Color(defaultRgb);
     }
 
-    private static java.awt.Color safeColor(String key, java.awt.Color fallback) {
-        java.awt.Color c = javax.swing.UIManager.getColor(key);
+    private static Color safeColor(String key, Color fallback) {
+        Color c = UIManager.getColor(key);
         return c != null ? c : fallback;
     }
 
-    private static String toHex(java.awt.Color c) {
+    private static String toHex(Color c) {
         return String.format("#%02x%02x%02x", c.getRed(), c.getGreen(), c.getBlue());
     }
 
-    private static java.awt.Color blend(java.awt.Color a, java.awt.Color b, float t) {
-        return new java.awt.Color(
+    private static Color blend(Color a, Color b, float t) {
+        return new Color(
                 Math.min(255, Math.max(0, Math.round(a.getRed() * (1 - t) + b.getRed() * t))),
                 Math.min(255, Math.max(0, Math.round(a.getGreen() * (1 - t) + b.getGreen() * t))),
                 Math.min(255, Math.max(0, Math.round(a.getBlue() * (1 - t) + b.getBlue() * t)))
         );
     }
 
-    private static float luminance(java.awt.Color c) {
+    private static float luminance(Color c) {
         return (0.299f * c.getRed() + 0.587f * c.getGreen() + 0.114f * c.getBlue()) / 255.0f;
     }
 
-    private static java.awt.Color fixDarkBorder(java.awt.Color border, java.awt.Color bg) {
+    private static Color fixDarkBorder(Color border, Color bg) {
         float borderLum = luminance(border);
         float bgLum = luminance(bg);
         if (borderLum - bgLum > 0.25f) {
-            return blend(bg, java.awt.Color.WHITE, 0.18f);
+            return blend(bg, Color.WHITE, 0.18f);
         }
         return border;
     }
@@ -788,7 +788,10 @@ public class JCEFMessageBridge {
             case STEP_FINISH -> log.debug("[AI] STEP_FINISH  | session: {}", this.shortSid(sid));
             case ERROR -> log.debug("[AI] ERROR        | {}", this.truncate(response.error() != null ? response.error().message() : "unknown", 120));
             case RETRY_STATUS -> log.debug("[AI] RETRY_STATUS | attempt: {}/{}", response.retryStatus().currentAttempt(), response.retryStatus().maxAttempts());
-            case COMPACT -> log.debug("[AI] COMPACT      | session: {}", this.shortSid(sid));
+            case COMPACT -> {
+                String compactReason = response.compact() != null ? response.compact().reason() : "unknown";
+                log.debug("[AI] COMPACT      | session: {} | reason: {}", this.shortSid(sid), this.truncate(compactReason, 80));
+            }
         }
     }
 
@@ -926,20 +929,30 @@ public class JCEFMessageBridge {
     }
 
     /**
-     * 从远程同步最新的模型配置，并从 models.dev API 查询 OpenCode 支持的模型。
+     * 从各 CLI 配置的 API 地址同步模型列表。
+     * <p>
+     * Claude/Codex 从各自配置的 API 实时拉取模型，
+     * OpenCode 从本地 opencode.json 读取已配置的模型。
+     * </p>
      */
     private void handleSyncModels() {
         this.asyncExecutor.submit(() -> {
-            String json = this.modelConfigService.syncFromRemote();
-            if (json != null) {
-                EasyAgentAppState.getInstance().setModelsJson(json);
+            List<ModelInfo> claudeModels = this.modelConfigService.fetchClaudeModels();
+            if (!claudeModels.isEmpty()) {
+                this.modelConfigService.saveCliModels(CLIType.CLAUDE, claudeModels);
             }
 
-            List<ModelInfo> openCodeModels = this.modelConfigService.queryModelsDev();
+            List<ModelInfo> codexModels = this.modelConfigService.fetchCodexModels();
+            if (!codexModels.isEmpty()) {
+                this.modelConfigService.saveCliModels(CLIType.CODEX, codexModels);
+            }
+
+            List<ModelInfo> openCodeModels = this.modelConfigService.queryOpenCodeModels();
             if (!openCodeModels.isEmpty()) {
-                this.modelConfigService.mergeModels(openCodeModels);
+                this.modelConfigService.saveCliModels(CLIType.OPENCODE, openCodeModels);
             }
 
+            this.modelConfigService.redetectDefaultModels();
             EasyAgentAppState.getInstance().setModelsJson(this.modelConfigService.toJson());
             this.pushModels();
         });

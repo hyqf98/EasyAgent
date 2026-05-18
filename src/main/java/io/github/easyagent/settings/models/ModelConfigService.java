@@ -9,7 +9,6 @@ import io.github.easyagent.settings.config.CliConfigService;
 import io.github.easyagent.util.GsonUtils;
 import lombok.extern.slf4j.Slf4j;
 
-import java.io.IOException;
 import java.lang.reflect.Type;
 import java.net.InetSocketAddress;
 import java.net.ProxySelector;
@@ -19,7 +18,6 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.Paths;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -36,10 +34,11 @@ import java.util.stream.Collectors;
  * <p>
  * 提供模型配置的加载、同步、持久化和查询功能。
  * 通过 {@link ApplicationManager} 注册为应用级服务，所有项目窗口共享同一实例。
- * 支持两种数据来源：
+ * 支持三种数据来源：
  * <ul>
- *   <li>远程 GitHub 仓库的 {@code models.json}（v2 格式）</li>
- *   <li>{@code models.dev} API 获取 OpenCode 支持的全量模型</li>
+ *   <li>Claude：从配置的 API 地址实时拉取模型列表</li>
+ *   <li>Codex：从配置的 API 地址实时拉取模型列表</li>
+ *   <li>OpenCode：从本地 {@code opencode.json} 读取已配置的模型</li>
  * </ul>
  * </p>
  *
@@ -81,12 +80,8 @@ public class ModelConfigService {
             }
             return;
         }
-        this.loadFromLocal();
+        this.detectDefaultModels();
     }
-
-    /** 远程 models.json 的 GitHub raw 地址。 */
-    private static final String REMOTE_MODELS_URL =
-            "https://raw.githubusercontent.com/hyqf98/EasyAgent/main/models.json";
 
     /** models.dev API 地址，包含所有 OpenCode 支持的 provider 和模型。 */
     private static final String MODELS_DEV_URL = "https://models.dev/api.json";
@@ -285,76 +280,223 @@ public class ModelConfigService {
         root.addProperty("version", 2);
 
         JsonObject cliGroups = new JsonObject();
-        for (CLIType cliType : CLIType.values()) {
-            JsonObject group = new JsonObject();
+         for (CLIType cliType : CLIType.values()) {
+             JsonObject group = new JsonObject();
 
-            List<String> levels = this.getReasoningLevels(cliType);
-            group.add("reasoningLevels", GsonUtils.toJsonTree(levels));
+             List<String> levels = this.getReasoningLevels(cliType);
+             group.add("reasoningLevels", GsonUtils.toJsonTree(levels));
 
-            List<ModelInfo> models = this.modelCache.getOrDefault(cliType, Collections.emptyList());
-            group.add("models", GsonUtils.toJsonTree(models));
+             List<ModelInfo> models = this.modelCache.getOrDefault(cliType, Collections.emptyList());
+             DefaultModelInfo defaultInfo = this.getDefaultModelInfo(cliType);
+             if (defaultInfo != null) {
+                 List<ModelInfo> filtered = models.stream()
+                         .filter(m -> !this.isSameModel(defaultInfo.modelId(), m.modelId()))
+                         .collect(Collectors.toList());
+                 group.add("models", GsonUtils.toJsonTree(filtered));
+                 group.add("defaultModelInfo", GsonUtils.toJsonTree(defaultInfo));
+             } else {
+                 group.add("models", GsonUtils.toJsonTree(models));
+             }
 
-            DefaultModelInfo defaultInfo = this.getDefaultModelInfo(cliType);
-            if (defaultInfo != null) {
-                group.add("defaultModelInfo", GsonUtils.toJsonTree(defaultInfo));
-            }
-
-            cliGroups.add(cliType.name(), group);
-        }
+             cliGroups.add(cliType.name(), group);
+         }
         root.add("cliGroups", cliGroups);
 
         return GsonUtils.toJson(root);
     }
 
     /**
-     * 从本地项目根目录的 models.json 加载。
+     * 从 Claude 配置的 API 地址拉取可用模型列表。
+     * <p>
+     * 读取 {@link CliConfigService#readClaudeConfig(String)} 获取 baseUrl 和认证信息，
+     * 然后调用 {@code GET {baseUrl}/v1/models?limit=1000} 获取模型列表。
+     * 第三方 API 可能不返回 {@code max_input_tokens}，此时回退到 128K。
+     * </p>
      *
-     * @return {@code true} 加载成功
+     * @return 模型配置列表，失败返回空列表
      */
-    public boolean loadFromLocal() {
-        String rootPath = this.findProjectRoot();
-        if (rootPath == null) {
-            return false;
-        }
-        Path file = Paths.get(rootPath, "models.json");
-        if (!Files.exists(file)) {
-            return false;
-        }
+    public List<ModelInfo> fetchClaudeModels() {
+        List<ModelInfo> result = new ArrayList<>();
         try {
-            String json = Files.readString(file);
-            this.loadFromJson(json);
-            log.info("Loaded models from local file: {}", file);
-            return true;
-        } catch (IOException e) {
-            log.warn("Failed to read local models.json", e);
-            return false;
+            CliConfigService configService = new CliConfigService();
+            var config = configService.readClaudeConfig(null);
+            String baseUrl = config.baseUrl();
+            if (baseUrl == null || baseUrl.isBlank()) {
+                log.warn("Claude base URL not configured, skip fetching models");
+                return result;
+            }
+
+            String url = baseUrl.replaceAll("/+$", "") + "/v1/models?limit=1000";
+            String token = config.authToken();
+            if (token == null || token.isBlank()) {
+                token = config.apiKey();
+            }
+            if (token == null || token.isBlank()) {
+                log.warn("Claude auth token not configured, skip fetching models");
+                return result;
+            }
+
+            HttpRequest.Builder reqBuilder = HttpRequest.newBuilder()
+                    .uri(URI.create(url))
+                    .timeout(Duration.ofSeconds(15))
+                    .header("Authorization", "Bearer " + token)
+                    .header("anthropic-version", "2023-06-01")
+                    .GET();
+            HttpRequest request = reqBuilder.build();
+            HttpResponse<String> response = this.httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+
+            if (response.statusCode() != 200) {
+                log.warn("Claude API returned status: {}, body: {}", response.statusCode(),
+                        response.body().length() > 200 ? response.body().substring(0, 200) : response.body());
+                return result;
+            }
+
+            JsonObject root = GsonUtils.parseObject(response.body());
+            var dataEl = root.get("data");
+            if (dataEl != null && dataEl.isJsonArray()) {
+                for (var element : dataEl.getAsJsonArray()) {
+                    try {
+                        if (!element.isJsonObject()) {
+                            continue;
+                        }
+                        JsonObject m = element.getAsJsonObject();
+                        String id = GsonUtils.getString(m, "id");
+                        if (id == null || id.isBlank()) {
+                            continue;
+                        }
+                        int maxInput = GsonUtils.getInt(m, "max_input_tokens", 0);
+                        int contextWindow = maxInput > 0 ? maxInput : DEFAULT_CONTEXT_WINDOW;
+                        result.add(ModelInfo.builder()
+                                .modelId(id)
+                                .displayName(id)
+                                .cliType(CLIType.CLAUDE)
+                                .contextWindow(contextWindow)
+                                .build());
+                    } catch (Exception ignored) {
+                    }
+                }
+            }
+
+            log.info("Fetched {} Claude models from {}", result.size(), baseUrl);
+        } catch (Exception e) {
+            log.warn("Failed to fetch Claude models", e);
         }
+        return result;
     }
 
     /**
-     * 从远程 GitHub 仓库同步最新的 models.json。
+     * 从 Codex 配置的 API 地址拉取可用模型列表。
+     * <p>
+     * 读取 {@link CliConfigService#readCodexConfig(String)} 获取 baseUrl 和 API Key，
+     * 然后调用 {@code GET {baseUrl}/models} 获取模型列表。
+     * 第三方 API 可能不返回 {@code context_window}，此时回退到 128K。
+     * </p>
      *
-     * @return 同步后的 JSON 字符串，失败返回 {@code null}
+     * @return 模型配置列表，失败返回空列表
      */
-    public String syncFromRemote() {
+    public List<ModelInfo> fetchCodexModels() {
+        List<ModelInfo> result = new ArrayList<>();
         try {
+            CliConfigService configService = new CliConfigService();
+            var config = configService.readCodexConfig(null);
+            String baseUrl = config.baseUrl();
+            if (baseUrl == null || baseUrl.isBlank()) {
+                log.warn("Codex base URL not configured, skip fetching models");
+                return result;
+            }
+
+            String url = baseUrl.replaceAll("/+$", "") + "/models";
+            String apiKey = config.apiKey();
+            if (apiKey == null || apiKey.isBlank()) {
+                log.warn("Codex API key not configured, skip fetching models");
+                return result;
+            }
+
             HttpRequest request = HttpRequest.newBuilder()
-                    .uri(URI.create(REMOTE_MODELS_URL))
+                    .uri(URI.create(url))
                     .timeout(Duration.ofSeconds(15))
+                    .header("Authorization", "Bearer " + apiKey)
                     .GET()
                     .build();
             HttpResponse<String> response = this.httpClient.send(request, HttpResponse.BodyHandlers.ofString());
-            if (response.statusCode() == 200) {
-                String json = response.body();
-                this.loadFromJson(json);
-                log.info("Synced {} models from remote", this.getAllModels().size());
-                return json;
+
+            if (response.statusCode() != 200) {
+                log.warn("Codex API returned status: {}, body: {}", response.statusCode(),
+                        response.body().length() > 200 ? response.body().substring(0, 200) : response.body());
+                return result;
             }
-            log.warn("Failed to sync models, HTTP status: {}", response.statusCode());
+
+            JsonObject root = GsonUtils.parseObject(response.body());
+            var dataEl = root.get("data");
+            if (dataEl != null && dataEl.isJsonArray()) {
+                for (var element : dataEl.getAsJsonArray()) {
+                    try {
+                        if (!element.isJsonObject()) {
+                            continue;
+                        }
+                        JsonObject m = element.getAsJsonObject();
+                        String id = GsonUtils.getString(m, "id");
+                        if (id == null || id.isBlank()) {
+                            continue;
+                        }
+                        int ctx = GsonUtils.getInt(m, "context_window", 0);
+                        if (ctx <= 0) {
+                            ctx = GsonUtils.getInt(m, "max_input_tokens", 0);
+                        }
+                        int contextWindow = ctx > 0 ? ctx : DEFAULT_CONTEXT_WINDOW;
+                        result.add(ModelInfo.builder()
+                                .modelId(id)
+                                .displayName(id)
+                                .cliType(CLIType.CODEX)
+                                .contextWindow(contextWindow)
+                                .build());
+                    } catch (Exception ignored) {
+                    }
+                }
+            }
+
+            log.info("Fetched {} Codex models from {}", result.size(), baseUrl);
         } catch (Exception e) {
-            log.warn("Failed to sync models from remote", e);
+            log.warn("Failed to fetch Codex models", e);
         }
-        return null;
+        return result;
+    }
+
+    /**
+     * 保存指定 CLI 类型的模型列表到内存缓存（覆盖式），保留用户手动编辑的上下文窗口。
+     *
+     * @param cliType CLI 类型
+     * @param models  新的模型列表
+     */
+    public void saveCliModels(CLIType cliType, List<ModelInfo> models) {
+        List<ModelInfo> existing = this.modelCache.getOrDefault(cliType, Collections.emptyList());
+        Map<String, Integer> userEditedContextWindows = new LinkedHashMap<>();
+        for (ModelInfo m : existing) {
+            userEditedContextWindows.put(m.modelId(), m.contextWindow());
+        }
+
+        List<ModelInfo> merged = new ArrayList<>();
+        for (ModelInfo m : models) {
+            Integer userContext = userEditedContextWindows.get(m.modelId());
+            if (userContext != null && m.contextWindow() == DEFAULT_CONTEXT_WINDOW && userContext != DEFAULT_CONTEXT_WINDOW) {
+                log.info("Preserving user-edited context window for {}: {} -> {}", m.modelId(), DEFAULT_CONTEXT_WINDOW, userContext);
+                merged.add(ModelInfo.builder()
+                        .modelId(m.modelId())
+                        .displayName(m.displayName())
+                        .cliType(m.cliType())
+                        .contextWindow(userContext)
+                        .provider(m.provider())
+                        .npmPackage(m.npmPackage())
+                        .build());
+            } else {
+                merged.add(m);
+            }
+        }
+
+        this.modelCache.put(cliType, merged);
+        for (ModelInfo m : merged) {
+            log.info("Saved {} model: {} contextWindow={}", cliType, m.modelId(), m.contextWindow());
+        }
     }
 
     /**
@@ -602,21 +744,56 @@ public class ModelConfigService {
 
     /**
      * 根据模型 ID 查找上下文窗口大小。
+     * <p>
+     * 优先在指定 CLI 类型的模型中查找，避免跨 CLI 的 tail 匹配误命中
+     * （例如 Claude 的 "glm-5.1" 与 OpenCode 的 "modelhub/glm-5.1"）。
+     * </p>
+     *
+     * @param modelId 模型 ID
+     * @param cliType 优先匹配的 CLI 类型，为 null 时搜索所有类型
+     * @return 上下文窗口大小，未找到返回 {@link ModelInfo#DEFAULT_CONTEXT_WINDOW}
+     */
+    public int getContextWindow(String modelId, CLIType cliType) {
+        if (modelId == null || modelId.isBlank()) {
+            return DEFAULT_CONTEXT_WINDOW;
+        }
+        String lower = modelId.toLowerCase();
+
+        if (cliType != null) {
+            List<ModelInfo> sameType = this.modelCache.getOrDefault(cliType, Collections.emptyList());
+            for (ModelInfo m : sameType) {
+                if (this.matchModelId(lower, m.modelId())) {
+                    return m.contextWindow();
+                }
+            }
+        }
+
+        for (ModelInfo m : this.getAllModels()) {
+            if (this.matchModelId(lower, m.modelId())) {
+                return m.contextWindow();
+            }
+        }
+        return DEFAULT_CONTEXT_WINDOW;
+    }
+
+    /**
+     * 根据模型 ID 查找上下文窗口大小（搜索所有 CLI 类型）。
      *
      * @param modelId 模型 ID
      * @return 上下文窗口大小，未找到返回 {@link ModelInfo#DEFAULT_CONTEXT_WINDOW}
      */
     public int getContextWindow(String modelId) {
-        if (modelId == null || modelId.isBlank()) {
-            return DEFAULT_CONTEXT_WINDOW;
+        return this.getContextWindow(modelId, null);
+    }
+
+    private boolean matchModelId(String lowerQuery, String candidateId) {
+        String mLower = candidateId.toLowerCase();
+        if (mLower.equals(lowerQuery) || lowerQuery.endsWith("/" + mLower) || mLower.endsWith("/" + lowerQuery)) {
+            return true;
         }
-        String lower = modelId.toLowerCase();
-        for (ModelInfo m : this.getAllModels()) {
-            if (m.modelId().equalsIgnoreCase(modelId) || lower.contains(m.modelId().toLowerCase())) {
-                return m.contextWindow();
-            }
-        }
-        return DEFAULT_CONTEXT_WINDOW;
+        String tail = mLower.contains("/") ? mLower.substring(mLower.lastIndexOf('/') + 1) : mLower;
+        String queryTail = lowerQuery.contains("/") ? lowerQuery.substring(lowerQuery.lastIndexOf('/') + 1) : lowerQuery;
+        return tail.equals(queryTail) || lowerQuery.contains(tail) || tail.contains(lowerQuery);
     }
 
     /**
@@ -685,11 +862,21 @@ public class ModelConfigService {
                     String fullModelId = pid + "/" + mid;
                     String displayName = (name != null && !name.isBlank()) ? name : mid;
 
+                    int contextWindow = DEFAULT_CONTEXT_WINDOW;
+                    if (modelObj != null) {
+                        JsonObject limit = GsonUtils.getJsonObject(modelObj, "limit");
+                        if (limit != null) {
+                            contextWindow = GsonUtils.getInt(limit, "context", 0);
+                        }
+                    }
+
+                    log.info("OpenCode model {} limit.context={}", fullModelId, contextWindow > 0 ? contextWindow : DEFAULT_CONTEXT_WINDOW);
+
                     result.add(ModelInfo.builder()
                             .modelId(fullModelId)
                             .displayName(displayName)
                             .cliType(CLIType.OPENCODE)
-                            .contextWindow(DEFAULT_CONTEXT_WINDOW)
+                            .contextWindow(contextWindow > 0 ? contextWindow : DEFAULT_CONTEXT_WINDOW)
                             .provider(pid)
                             .npmPackage(npm != null ? npm : "")
                             .build());
@@ -723,7 +910,18 @@ public class ModelConfigService {
         if (cached != null) {
             return cached;
         }
-        DefaultModelInfo detected = this.defaultModelDetector.detect(cliType, DEFAULT_CONTEXT_WINDOW);
+        int contextWindow = DEFAULT_CONTEXT_WINDOW;
+        DefaultModelInfo rawDetected = this.defaultModelDetector.detect(cliType, DEFAULT_CONTEXT_WINDOW);
+        if (rawDetected != null) {
+            contextWindow = this.getContextWindow(rawDetected.modelId(), cliType);
+        }
+        DefaultModelInfo detected = rawDetected != null
+                ? DefaultModelInfo.builder()
+                    .displayName(rawDetected.displayName())
+                    .modelId(rawDetected.modelId())
+                    .contextWindow(contextWindow)
+                    .build()
+                : null;
         if (detected != null) {
             this.defaultModelInfoMap.put(cliType, detected);
         }
@@ -738,7 +936,20 @@ public class ModelConfigService {
         for (CLIType cliType : CLIType.values()) {
             DefaultModelInfo detected = this.defaultModelDetector.detect(cliType, DEFAULT_CONTEXT_WINDOW);
             if (detected != null) {
-                this.defaultModelInfoMap.put(cliType, detected);
+                int contextWindow = this.getContextWindow(detected.modelId(), cliType);
+                log.info("Redetect default {}: modelId={}, rawContext={}, resolvedContext={}",
+                        cliType, detected.modelId(), detected.contextWindow(), contextWindow);
+                List<ModelInfo> cached = this.modelCache.getOrDefault(cliType, Collections.emptyList());
+                for (ModelInfo m : cached) {
+                    if (m.modelId().equalsIgnoreCase(detected.modelId())) {
+                        log.info("  matched cache entry: {} contextWindow={}", m.modelId(), m.contextWindow());
+                    }
+                }
+                this.defaultModelInfoMap.put(cliType, DefaultModelInfo.builder()
+                        .displayName(detected.displayName())
+                        .modelId(detected.modelId())
+                        .contextWindow(contextWindow)
+                        .build());
             } else {
                 this.defaultModelInfoMap.remove(cliType);
             }
@@ -754,29 +965,36 @@ public class ModelConfigService {
         for (CLIType cliType : CLIType.values()) {
             DefaultModelInfo detected = this.defaultModelDetector.detect(cliType, DEFAULT_CONTEXT_WINDOW);
             if (detected != null) {
-                this.defaultModelInfoMap.put(cliType, detected);
+                int contextWindow = this.getContextWindow(detected.modelId(), cliType);
+                this.defaultModelInfoMap.put(cliType, DefaultModelInfo.builder()
+                        .displayName(detected.displayName())
+                        .modelId(detected.modelId())
+                        .contextWindow(contextWindow)
+                        .build());
             }
         }
     }
 
     /**
-     * 查找项目根目录（向上查找包含 models.json 的目录）。
+     * 判断两个模型 ID 是否表示同一个模型（支持 tail 匹配）。
+     * <p>
+     * 例如 {@code "glm-5.1"} 与 {@code "modelhub/glm-5.1"} 视为相同。
+     * </p>
      *
-     * @return 项目根目录路径，未找到返回 {@code null}
+     * @param modelId1 模型 ID 1
+     * @param modelId2 模型 ID 2
+     * @return 是否为同一模型
      */
-    private String findProjectRoot() {
-        Path dir = Paths.get("").toAbsolutePath();
-        for (int i = 0; i < 10; i++) {
-            if (Files.exists(dir.resolve("models.json"))) {
-                return dir.toString();
-            }
-            Path parent = dir.getParent();
-            if (parent == null) {
-                break;
-            }
-            dir = parent;
+    private boolean isSameModel(String modelId1, String modelId2) {
+        if (modelId1 == null || modelId2 == null) {
+            return false;
         }
-        return null;
+        if (modelId1.equalsIgnoreCase(modelId2)) {
+            return true;
+        }
+        String tail1 = modelId1.contains("/") ? modelId1.substring(modelId1.lastIndexOf('/') + 1) : modelId1;
+        String tail2 = modelId2.contains("/") ? modelId2.substring(modelId2.lastIndexOf('/') + 1) : modelId2;
+        return tail1.equalsIgnoreCase(tail2);
     }
 
     private List<CliConfigService.ProviderInfo> extractProviders(List<ModelInfo> models) {

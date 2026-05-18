@@ -5,6 +5,8 @@
     overflow: hidden;
     background: var(--ea-thinking-bg);
     margin: 6px 0;
+    width: 100%;
+    box-sizing: border-box;
 }
 .thinking-header {
     display: flex;
@@ -40,6 +42,8 @@
     overflow: hidden;
     background: var(--ea-tool-bg);
     margin: 6px 0;
+    width: 100%;
+    box-sizing: border-box;
 }
 .tool-block.calling { border-left-color: #F59E0B; }
 .tool-block.completed { border-left-color: #10B981; }
@@ -174,6 +178,8 @@
     overflow: hidden;
     background: var(--ea-bg-secondary);
     margin: 6px 0;
+    width: 100%;
+    box-sizing: border-box;
 }
 .todo-header { display: flex; align-items: center; gap: 6px; padding: 8px 12px; font-size: 12px; font-weight: 500; color: var(--ea-text); cursor: pointer; user-select: none; transition: background var(--ea-transition); }
 .todo-header:hover { background: var(--ea-bg-hover); }
@@ -202,6 +208,8 @@
     font-size: 12px;
     color: var(--ea-text-secondary);
     margin: 6px 0;
+    width: 100%;
+    box-sizing: border-box;
 }
 .error-block .error-icon { color: #EF4444; margin-right: 6px; }
 

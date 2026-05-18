@@ -662,19 +662,14 @@ window.EARegisterComponent('settings-page', 'SettingsPage', {
             EABridge.queryOpenCodeModels();
         },
         onSyncModels() {
-            if (this.modelFilter === 'OPENCODE') {
-                this.cliModelsLoading = true;
-                EABridge.queryOpenCodeModels();
-            } else {
-                this.isSyncing = true;
-                this.cliModelsLoading = true;
-                EABridge.syncModels();
-                var self = this;
-                this._syncTimeout = setTimeout(function () {
-                    self.isSyncing = false;
-                    self.cliModelsLoading = false;
-                }, 30000);
-            }
+            this.isSyncing = true;
+            this.cliModelsLoading = true;
+            EABridge.syncModels();
+            var self = this;
+            this._syncTimeout = setTimeout(function () {
+                self.isSyncing = false;
+                self.cliModelsLoading = false;
+            }, 30000);
         },
         onSyncAllModels() {
             this.isSyncing = true;
@@ -1096,8 +1091,15 @@ window.EARegisterComponent('settings-page', 'SettingsPage', {
             EABridge.applyCliProfile(cliType, profileId);
         },
         deleteProfile(cliType, profileId) {
-            if (!confirm(this.i18n.t('settings.profileConfirmDelete'))) return;
-            EABridge.deleteCliProfile(cliType, profileId);
+            EAConfirm.show({
+                title: this.i18n.t('settings.profileDelete', 'Delete Profile'),
+                message: this.i18n.t('settings.profileConfirmDelete'),
+                confirmText: this.i18n.t('settings.profileDelete', 'Delete'),
+                cancelText: this.i18n.t('settings.cancel', 'Cancel'),
+                danger: true
+            }).then(function (confirmed) {
+                if (confirmed) EABridge.deleteCliProfile(cliType, profileId);
+            });
         },
         toggleProviderDropdown(key) {
             this.providerDropdownOpen = this.providerDropdownOpen === key ? '' : key;
@@ -1219,12 +1221,21 @@ window.EARegisterComponent('settings-page', 'SettingsPage', {
             EABridge.send(payload);
         },
         onDeleteMcp(item) {
-            if (!confirm('Delete MCP server: ' + item.name + '?')) return;
-            EABridge.send({
-                action: 'deleteMcpServer',
-                cliType: this.mcpFilter,
-                scope: item.scope,
-                serverName: item.name
+            var self = this;
+            EAConfirm.show({
+                title: this.i18n.t('settings.mcpDelete', 'Delete MCP Server'),
+                message: 'Delete MCP server: ' + item.name + '?',
+                confirmText: this.i18n.t('settings.mcpDelete', 'Delete'),
+                cancelText: this.i18n.t('settings.cancel', 'Cancel'),
+                danger: true
+            }).then(function (confirmed) {
+                if (!confirmed) return;
+                EABridge.send({
+                    action: 'deleteMcpServer',
+                    cliType: self.mcpFilter,
+                    scope: item.scope,
+                    serverName: item.name
+                });
             });
         },
         _onMcpConfigsLoaded(data) {
@@ -1401,8 +1412,15 @@ window.EARegisterComponent('settings-page', 'SettingsPage', {
             EABridge.installSkill(this.skillFilter, form.githubUrl.trim(), form.skillName.trim(), form.scope);
         },
         onDeleteSkill(item) {
-            if (!confirm(this.i18n.t('settings.skillDeleteConfirm', { name: item.name }))) return;
-            EABridge.deleteSkill(this.skillFilter, item.name, item.skillPath);
+            EAConfirm.show({
+                title: this.i18n.t('settings.skillDelete', 'Delete Skill'),
+                message: this.i18n.t('settings.skillDeleteConfirm', { name: item.name }),
+                confirmText: this.i18n.t('settings.skillDelete', 'Delete'),
+                cancelText: this.i18n.t('settings.cancel', 'Cancel'),
+                danger: true
+            }).then(function (confirmed) {
+                if (confirmed) EABridge.deleteSkill(this.skillFilter, item.name, item.skillPath);
+            }.bind(this));
         },
         onViewSkillContent(item) {
             this.skillContentDialog = { name: item.name, content: null, htmlContent: null, skillPath: item.skillPath, saving: false };
@@ -1499,8 +1517,15 @@ window.EARegisterComponent('settings-page', 'SettingsPage', {
             EABridge.installPlugin(this.pluginFilter, form.githubUrl.trim(), form.pluginName.trim(), form.scope);
         },
         onDeletePlugin(item) {
-            if (!confirm(this.i18n.t('settings.pluginDeleteConfirm', { name: item.name }))) return;
-            EABridge.deletePlugin(this.pluginFilter, item.name, item.installPath);
+            EAConfirm.show({
+                title: this.i18n.t('settings.pluginDelete', 'Delete Plugin'),
+                message: this.i18n.t('settings.pluginDeleteConfirm', { name: item.name }),
+                confirmText: this.i18n.t('settings.pluginDelete', 'Delete'),
+                cancelText: this.i18n.t('settings.cancel', 'Cancel'),
+                danger: true
+            }).then(function (confirmed) {
+                if (confirmed) EABridge.deletePlugin(this.pluginFilter, item.name, item.installPath);
+            }.bind(this));
         },
         onClosePluginContent() {
             this._destroyEditor('plugin');

@@ -1,6 +1,7 @@
 package io.github.easyagent.ui.service;
 
 import io.github.easyagent.ai.entity.AIResponse;
+import io.github.easyagent.ai.entity.CompactContent;
 import io.github.easyagent.ai.entity.MessageContent;
 import io.github.easyagent.ai.entity.ToolCallContent;
 import io.github.easyagent.enums.ResponseType;
@@ -217,7 +218,9 @@ public class MessageConverter {
      * @param event    目标 JSON 对象
      */
     private static CompactEventPayload convertCompactEvent(String sessionId, AIResponse response) {
-        return new CompactEventPayload(sessionId, ResponseType.COMPACT.name(), response.compact().reason());
+        CompactContent compact = response.compact();
+        return new CompactEventPayload(sessionId, ResponseType.COMPACT.name(), compact.reason(),
+                compact.trigger(), compact.preTokens(), compact.postTokens(), compact.durationMs());
     }
 
     /**
@@ -396,7 +399,8 @@ public class MessageConverter {
      * @param type      事件类型
      * @param reason    压缩原因
      */
-    private record CompactEventPayload(String sessionId, String type, String reason) {
+    private record CompactEventPayload(String sessionId, String type, String reason,
+                                       String trigger, Long preTokens, Long postTokens, Long durationMs) {
     }
 
     /**
