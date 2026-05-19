@@ -29,6 +29,12 @@ import java.util.List;
 @Slf4j
 public class CodexCLIProvider extends AbstractCLIProvider {
 
+    private static final String PLAN_MODE_PREFIX = "[PLAN MODE - READ ONLY] You are in plan mode. "
+            + "You may read files, search code, and analyze the project. "
+            + "You MUST NOT edit, create, delete, or modify any files. "
+            + "You MUST NOT execute shell commands that modify the filesystem. "
+            + "Provide a detailed, actionable plan instead of making changes.\n\n";
+
     private volatile String currentThreadId;
 
     static {
@@ -68,11 +74,14 @@ public class CodexCLIProvider extends AbstractCLIProvider {
      * @param sessionId      可选的会话 ID
      * @param modelId        可选的模型 ID
      * @param reasoningLevel 可选的推理等级
+     * @param planMode       是否启用计划模式（只读）
      * @return 配置好的命令行对象
      */
     @Override
-    protected GeneralCommandLine buildCommandLine(String prompt, String sessionId, String modelId, String reasoningLevel) {
-        GeneralCommandLine cmd = super.buildCommandLine(prompt, sessionId, modelId, reasoningLevel);
+    protected GeneralCommandLine buildCommandLine(String prompt, String sessionId, String modelId,
+                                                  String reasoningLevel, boolean planMode) {
+        String effectivePrompt = planMode ? PLAN_MODE_PREFIX + prompt : prompt;
+        GeneralCommandLine cmd = super.buildCommandLine(effectivePrompt, sessionId, modelId, reasoningLevel, planMode);
         cmd.addParameters("exec", "--json", "--skip-git-repo-check", "--sandbox", "workspace-write", "--ask-for-approval", "never");
         if (GsonUtils.isNotEmpty(modelId)) {
             cmd.addParameters("--model", modelId);
@@ -80,7 +89,7 @@ public class CodexCLIProvider extends AbstractCLIProvider {
         if (GsonUtils.isNotEmpty(reasoningLevel)) {
             cmd.addParameters("--config", "model_reasoning_effort=" + reasoningLevel);
         }
-        cmd.addParameters("--", prompt);
+        cmd.addParameters("--", effectivePrompt);
         return cmd;
     }
 

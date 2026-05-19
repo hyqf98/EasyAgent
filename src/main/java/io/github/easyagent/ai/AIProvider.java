@@ -64,6 +64,25 @@ public interface AIProvider {
     void chat(String prompt, String sessionId, String modelId, String reasoningLevel, StreamEventListener listener);
 
     /**
+     * 发送提示消息（带计划模式标记）并流式监听响应。
+     * <p>
+     * 计划模式下，CLI 以只读方式运行，不执行文件编辑或写入操作。
+     * </p>
+     *
+     * @param prompt         用户输入的提示内容
+     * @param sessionId      会话 ID，为 null 时创建新会话
+     * @param modelId        模型 ID，为 null 时使用 CLI 默认模型
+     * @param reasoningLevel 推理等级，为 null 时使用默认
+     * @param planMode       是否启用计划模式（只读）
+     * @param listener       流式事件监听器
+     * @since 1.1.0
+     */
+    default void chat(String prompt, String sessionId, String modelId, String reasoningLevel,
+                       boolean planMode, StreamEventListener listener) {
+        this.chat(prompt, sessionId, modelId, reasoningLevel, listener);
+    }
+
+    /**
      * 停止当前正在运行的 CLI 进程。
      *
      * @since 1.0.0

@@ -73,9 +73,13 @@ public class ClaudeCLIProvider extends AbstractCLIProvider {
      * @return 配置好的命令行对象
      */
     @Override
-    protected GeneralCommandLine buildCommandLine(String prompt, String sessionId, String modelId, String reasoningLevel) {
-        GeneralCommandLine cmd = super.buildCommandLine(prompt, sessionId, modelId, reasoningLevel);
-        cmd.addParameters("-p", "--output-format", "stream-json", "--verbose", "--dangerously-skip-permissions");
+    protected GeneralCommandLine buildCommandLine(String prompt, String sessionId, String modelId, String reasoningLevel, boolean planMode) {
+        GeneralCommandLine cmd = super.buildCommandLine(prompt, sessionId, modelId, reasoningLevel, planMode);
+        if (planMode) {
+            cmd.addParameters("-p", "--output-format", "stream-json", "--verbose", "--permission-mode", "plan");
+        } else {
+            cmd.addParameters("-p", "--output-format", "stream-json", "--verbose", "--dangerously-skip-permissions");
+        }
         if (GsonUtils.isNotEmpty(modelId)) {
             cmd.addParameters("--model", modelId);
         }

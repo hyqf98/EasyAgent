@@ -80,6 +80,13 @@ window.EARegisterComponent('chat-view', 'ChatView', {
         this._onSlashCommandExecuted = function (e) {
             var detail = e.detail || {};
             if (detail.toastMessage) this.showToast(detail.toastMessage);
+            if (detail.executionType === 'TOGGLE_PLAN_MODE') {
+                this.store.planMode = !this.store.planMode;
+                this.store.planModeReady = false;
+                var toastKey = this.store.planMode ? 'chat.planMode.toastOn' : 'chat.planMode.toastOff';
+                this.showToast(EAi18n.t(toastKey));
+                return;
+            }
             if (detail.openFreshSession) {
                 this.openFreshChatForCurrentCli();
             }
@@ -101,7 +108,7 @@ window.EARegisterComponent('chat-view', 'ChatView', {
                 }
             }.bind(this));
             var modelId = this.store.selectedModelId || null;
-            EABridge.sendMessage(prompt, modelId, []);
+            EABridge.sendMessage(prompt, modelId, [], this.store.planMode);
             if (detail.refreshHistory) {
                 this.pendingSlashRefreshSessionId = this.store.sessionId;
                 this._pendingSlashIsProvisional = EAIsProvisionalSessionId(this.store.sessionId);
@@ -110,6 +117,9 @@ window.EARegisterComponent('chat-view', 'ChatView', {
         this._onStreamComplete = function (e) {
             var detail = e.detail || {};
             var sessionId = detail.sessionId || this.store.sessionId;
+            if (this.store.planMode && this.store.isStreaming) {
+                this.store.planModeReady = true;
+            }
             if (!sessionId) return;
             var shouldRefresh = this.pendingSlashRefreshSessionId === sessionId
                 || (this._pendingSlashIsProvisional && this.pendingSlashRefreshSessionId && this.store.sessionId === sessionId);

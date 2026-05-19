@@ -356,13 +356,14 @@ window.EABridge = {
      * @param {string} text - 用户输入的文本内容
      * @param {string} [modelId] - 可选的模型 ID
      */
-    sendMessage(text, modelId, fileReferences) {
+    sendMessage(text, modelId, fileReferences, planMode) {
         var sid = window.EAStore ? EAStore.sessionId : null;
         var data = { text: text, cliType: window.EAStore ? EAStore.cliType : 'CLAUDE', sessionId: sid };
         if (modelId) data.modelId = modelId;
         var reasoningLevel = window.EAStore ? EAStore.selectedReasoningLevel : '';
         if (reasoningLevel) data.reasoningLevel = reasoningLevel;
         if (fileReferences && fileReferences.length > 0) data.fileReferences = fileReferences;
+        if (planMode) data.planMode = true;
         this.send('sendMessage', data);
     },
 

@@ -366,6 +366,79 @@
     position: relative;
 }
 
+.input-area.plan-mode-active .input-wrapper {
+    border-color: var(--ea-accent, #f59e0b);
+    box-shadow: 0 0 0 1px color-mix(in srgb, var(--ea-accent, #f59e0b) 30%, transparent);
+}
+
+.plan-mode-badge {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 10px;
+    margin-bottom: 6px;
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--ea-accent, #f59e0b);
+    background: color-mix(in srgb, var(--ea-accent, #f59e0b) 12%, var(--ea-bg));
+    border-radius: 6px;
+}
+
+.plan-mode-badge-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--ea-accent, #f59e0b);
+    animation: plan-mode-pulse 2s ease-in-out infinite;
+}
+
+@keyframes plan-mode-pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.4; }
+}
+
+.plan-mode-actions {
+    display: flex;
+    gap: 6px;
+    margin-bottom: 6px;
+}
+
+.plan-action-btn {
+    padding: 5px 12px;
+    border: 1px solid var(--ea-border);
+    border-radius: 6px;
+    font-size: 12px;
+    font-weight: 500;
+    cursor: pointer;
+    background: var(--ea-bg);
+    color: var(--ea-text);
+    transition: all 0.15s ease;
+}
+
+.plan-action-btn:hover {
+    border-color: var(--ea-input-focus);
+}
+
+.plan-action-execute {
+    background: var(--ea-accent, #f59e0b);
+    color: #fff;
+    border-color: var(--ea-accent, #f59e0b);
+}
+
+.plan-action-execute:hover {
+    opacity: 0.9;
+}
+
+.plan-action-cancel {
+    color: var(--ea-text-secondary);
+    border-color: transparent;
+}
+
+.plan-action-cancel:hover {
+    color: var(--ea-text);
+    border-color: var(--ea-border);
+}
+
 /* === Floating Todo (above input) === */
 .floating-todo {
     flex-shrink: 0;

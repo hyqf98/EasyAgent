@@ -20,7 +20,10 @@ public enum SlashCommandActionType implements ValueEnum<String> {
     SEND_PROMPT("SEND_PROMPT"),
 
     /** 直接透传给 CLI。 */
-    PASS_THROUGH("PASS_THROUGH");
+    PASS_THROUGH("PASS_THROUGH"),
+
+    /** 切换计划模式（只读）。 */
+    TOGGLE_PLAN_MODE("TOGGLE_PLAN_MODE");
 
     /** 执行方式值。 */
     private final String value;

@@ -104,6 +104,7 @@ public final class SlashCommandService {
     public SlashCommandService() {
         this.strategies = List.of(
                 new OpenNewSessionStrategy(),
+                new TogglePlanModeStrategy(),
                 new PromptTemplateStrategy()
         );
     }
@@ -254,7 +255,7 @@ public final class SlashCommandService {
      */
     private void addCoreDefinitions(List<SlashCommandDefinition> definitions, CLIType cliType) {
         this.addDefinition(definitions, this.definition(cliType, "plan", this.corePlanDescription(cliType),
-                SlashCommandActionType.PASS_THROUGH, SlashCommandSourceType.BUILTIN, List.of(),
+                SlashCommandActionType.TOGGLE_PLAN_MODE, SlashCommandSourceType.BUILTIN, List.of(),
                 null, false, true));
         this.addDefinition(definitions, this.definition(cliType, "new", this.coreNewDescription(cliType),
                 SlashCommandActionType.OPEN_NEW_SESSION, SlashCommandSourceType.BUILTIN, List.of("clear", "reset"),
@@ -1189,6 +1190,32 @@ public final class SlashCommandService {
                     .openFreshSession(definition.openFreshSession() || definition.actionType() == SlashCommandActionType.OPEN_NEW_SESSION)
                     .refreshHistory(definition.refreshHistory())
                     .toastMessage(null)
+                    .planMode(null)
+                    .build();
+        }
+    }
+
+    private static final class TogglePlanModeStrategy implements SlashCommandStrategy {
+
+        @Override
+        public boolean supports(SlashCommandDefinition definition) {
+            return definition.actionType() == SlashCommandActionType.TOGGLE_PLAN_MODE;
+        }
+
+        @Override
+        public SlashCommandExecutionPayload execute(SlashCommandDefinition definition,
+                                                    SlashCommandInvocation invocation,
+                                                    SlashCommandService service) {
+            return SlashCommandExecutionPayload.builder()
+                    .requestId(invocation.requestId())
+                    .cliType(invocation.cliType().name())
+                    .commandName(definition.name())
+                    .executionType(SlashCommandActionType.TOGGLE_PLAN_MODE.name())
+                    .prompt(null)
+                    .openFreshSession(false)
+                    .refreshHistory(false)
+                    .toastMessage(null)
+                    .planMode(true)
                     .build();
         }
     }
@@ -1226,6 +1253,7 @@ public final class SlashCommandService {
                     .openFreshSession(definition.openFreshSession())
                     .refreshHistory(definition.refreshHistory())
                     .toastMessage(null)
+                    .planMode(null)
                     .build();
         }
     }

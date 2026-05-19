@@ -26,5 +26,6 @@ public record SlashCommandExecutionPayload(
         String prompt,
         Boolean openFreshSession,
         Boolean refreshHistory,
-        String toastMessage
+        String toastMessage,
+        Boolean planMode
 ) {}

@@ -75,9 +75,16 @@ public class OpenCodeCLIProvider extends AbstractCLIProvider {
      * @param reasoningLevel 可选的推理等级
      * @return 配置好的命令行对象
      */
+    private static final String PLAN_MODE_PREFIX = "[PLAN MODE - READ ONLY] You are in plan mode. "
+            + "You may read files, search code, and analyze the project. "
+            + "You MUST NOT edit, create, delete, or modify any files. "
+            + "You MUST NOT execute shell commands that modify the filesystem. "
+            + "Provide a detailed, actionable plan instead of making changes.\n\n";
+
     @Override
-    protected GeneralCommandLine buildCommandLine(String prompt, String sessionId, String modelId, String reasoningLevel) {
-        GeneralCommandLine cmd = super.buildCommandLine(prompt, sessionId, modelId, reasoningLevel);
+    protected GeneralCommandLine buildCommandLine(String prompt, String sessionId, String modelId, String reasoningLevel, boolean planMode) {
+        String effectivePrompt = planMode ? PLAN_MODE_PREFIX + prompt : prompt;
+        GeneralCommandLine cmd = super.buildCommandLine(effectivePrompt, sessionId, modelId, reasoningLevel, planMode);
         cmd.addParameters("run", "--format", "json", "--dangerously-skip-permissions");
         if (GsonUtils.isNotEmpty(modelId)) {
             cmd.addParameters("--model", modelId);

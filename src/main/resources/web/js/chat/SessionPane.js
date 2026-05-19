@@ -213,7 +213,7 @@ window.EARegisterComponent('session-pane', 'SessionPane', {
             this.store.setStreaming(true);
             this.$nextTick(this.scrollToBottom);
             var modelId = this.store.selectedModelId || null;
-            EABridge.sendMessage(text, modelId, fileReferences);
+            EABridge.sendMessage(text, modelId, fileReferences, this.store.planMode);
         },
 
         _ensurePaneActive() {
@@ -263,7 +263,7 @@ window.EARegisterComponent('session-pane', 'SessionPane', {
             this.store.beginAssistantTurn();
             this.store.setStreaming(true);
             var modelId = this.store.selectedModelId || null;
-            EABridge.sendMessage(text, modelId, fileReferences);
+            EABridge.sendMessage(text, modelId, fileReferences, this.store.planMode);
         },
 
         addToPendingQueue(payload) {

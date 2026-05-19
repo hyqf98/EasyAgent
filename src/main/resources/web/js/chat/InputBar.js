@@ -242,6 +242,22 @@ window.EARegisterComponent('input-bar', 'InputBar', {
         }
     },
     methods: {
+        executePlan() {
+            this.store.planMode = false;
+            this.store.planModeReady = false;
+            this.$emit('send', {
+                text: 'Please proceed to execute the plan above.',
+                fileReferences: [],
+                slashCommand: null
+            });
+        },
+        refinePlan() {
+            this.store.planModeReady = false;
+        },
+        cancelPlan() {
+            this.store.planMode = false;
+            this.store.planModeReady = false;
+        },
         selectModel(modelId) {
             this.store.selectedModelId = modelId;
             this.showModelDropdown = false;
